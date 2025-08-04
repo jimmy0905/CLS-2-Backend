@@ -5,6 +5,9 @@ services:
       dockerfile: Dockerfile
     container_name: connex_backend
     restart: unless-stopped
+    environment:
+      - FASTAPI_ROOT_PATH=/api
+      - DATABASE_NAME=connex
     env_file:
       - .env
     ports:

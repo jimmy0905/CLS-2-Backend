@@ -5,6 +5,9 @@ services:
       dockerfile: Dockerfile
     container_name: wtchk_backend
     restart: unless-stopped
+    environment:
+      - FASTAPI_ROOT_PATH=/wtchk/api
+      - DATABASE_NAME=wtchk
     env_file:
       - .env
     ports:
