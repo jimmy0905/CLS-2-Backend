@@ -1,0 +1,23 @@
+services:
+  wtchk-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: wtchk_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    networks:
+      - connex_network
+    volumes:
+      - upload_tasks:/app/upload_tasks
+
+volumes:
+  upload_tasks:
+    driver: local
+
+networks:
+  connex_network:
+    external: true
