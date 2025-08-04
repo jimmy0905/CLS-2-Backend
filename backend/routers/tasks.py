@@ -16,7 +16,7 @@ from utils.security import get_current_user
 router = APIRouter(
     prefix="/tasks",
     tags=["tasks"],
-    dependencies=[Depends(get_db)],
+    dependencies=[Depends(get_db), Depends(get_current_user)],
 )
 
 
