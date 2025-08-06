@@ -1,0 +1,26 @@
+services:
+  wtcmy-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: wtcmy_backend
+    restart: unless-stopped
+    environment:
+      - FASTAPI_ROOT_PATH=/wtcmy/api
+      - DATABASE_NAME=wtcmy
+    env_file:
+      - .env
+    ports:
+      - "8002:8000"
+    networks:
+      - connex_network
+    volumes:
+      - upload_tasks:/app/upload_tasks
+
+volumes:
+  upload_tasks:
+    driver: local
+
+networks:
+  connex_network:
+    external: true
