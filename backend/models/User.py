@@ -5,10 +5,14 @@ import uuid
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-
+from sqlalchemy import event
 
 class User(Base):
     __tablename__ = "users"
+
+    @staticmethod
+    def _update_updated_at(mapper, connection, target):
+        target.updated_at = datetime.now()
 
     id = Column(CHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     username = Column(String(50), unique=True, nullable=False, index=True)
@@ -36,4 +40,9 @@ class User(Base):
             "id": self.id,
             "username": self.username,
             "role": self.role,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "is_deleted": self.is_deleted,
         }
+
+event.listen(User, 'before_update', User._update_updated_at)

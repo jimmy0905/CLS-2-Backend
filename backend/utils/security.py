@@ -16,7 +16,9 @@ JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "default_secret_key")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", 30))
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl=os.getenv("FASTAPI_ROOT_PATH", None) + "/auth/token")
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl=os.getenv("FASTAPI_ROOT_PATH", "/") + "/auth/token"
+)
 
 
 async def get_current_user(
@@ -35,7 +37,12 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
 
-    user = db.query(User).filter(User.username == username).first()
+    user = (
+        db.query(User)
+        .filter(User.username == username)
+        .filter(User.is_deleted == False)
+        .first()
+    )
     if user is None:
         raise credentials_exception
     return user

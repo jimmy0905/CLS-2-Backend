@@ -37,6 +37,7 @@ class StoreResponse(BaseModel):
     district: DistrictResponse
     source: SourceResponse
     region: RegionResponse
+    is_active: bool
 
 
 @router.get("/")
@@ -105,7 +106,7 @@ async def create_store(
             status_code=400,
             detail="Either region id or region name must be provided",
         )
-    
+
     # Check if region id and region name are provided together
     if (
         create_store_request.region_id is not None
@@ -123,11 +124,6 @@ async def create_store(
         )
         if store:
             raise HTTPException(status_code=400, detail="Store id already exists")
-    # If store name is provided, check if store exists
-    if create_store_request.name:
-        store = db.query(Store).filter(Store.name == create_store_request.name).first()
-        if store:
-            raise HTTPException(status_code=400, detail="Store name already exists")
     # If district id is provided, check if district exists
     if create_store_request.district_id:
         district = (
@@ -209,6 +205,9 @@ async def create_store(
 class UpdateStoreRequest(BaseModel):
     name: Optional[str] = None
     district_id: Optional[int] = None
+    source_id: Optional[int] = None
+    region_id: Optional[int] = None
+    is_active: Optional[bool] = None
 
 
 @router.put("/{store_id}")
@@ -231,6 +230,22 @@ async def update_store(
         if not district:
             raise HTTPException(status_code=404, detail="District not found")
         store.district_id = update_store_request.district_id
+    if update_store_request.source_id:
+        source = (
+            db.query(Source).filter(Source.id == update_store_request.source_id).first()
+        )
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+        store.source_id = update_store_request.source_id
+    if update_store_request.region_id:
+        region = (
+            db.query(Region).filter(Region.id == update_store_request.region_id).first()
+        )
+        if not region:
+            raise HTTPException(status_code=404, detail="Region not found")
+        store.region_id = update_store_request.region_id
+    if update_store_request.is_active is not None:
+        store.is_active = update_store_request.is_active
     db.commit()
     db.refresh(store)
     return store
@@ -244,6 +259,6 @@ async def delete_store(
     store = db.query(Store).filter(Store.id == store_id).first()
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
-    db.delete(store)
+    store.is_active = False
     db.commit()
     return {"message": "Store dseleted successfully"}

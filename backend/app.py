@@ -15,6 +15,7 @@ from routers import (
     departments,
     regions,
     tasks,
+    users,
 )
 import os
 from config import PATH_TO_UPLOAD_FOLDER
@@ -58,6 +59,8 @@ app.include_router(departments.router)
 app.include_router(userBehavoiorLogs.router)
 app.include_router(regions.router)
 app.include_router(tasks.router)
+app.include_router(users.router)
+
 
 
 

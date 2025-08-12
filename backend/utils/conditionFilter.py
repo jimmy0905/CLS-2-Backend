@@ -6,6 +6,7 @@ from models.District import District
 from models.Source import Source
 from models.SurveyTopics import SurveyTopics
 from models.SurveyKeywords import SurveyKeywords
+from models.Keyword import Keyword
 from models.Region import Region
 from sqlalchemy import and_
 from sqlalchemy.orm import joinedload
@@ -13,6 +14,9 @@ from sqlalchemy.orm import Query
 from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 from typing import List
+from fastapi import HTTPException, Query
+from pydantic import BaseModel
+from typing import Optional
 
 
 def build_survey_filter_conditions(filter_dict):
@@ -52,6 +56,9 @@ def build_store_filter_conditions(filter_dict):
 
     if filter_dict.get("store_names"):
         conditions.append(Store.name.in_(filter_dict["store_names"]))
+
+    # Active store filter, default is true
+    conditions.append(Store.is_active == True)
 
     return conditions
 
@@ -95,6 +102,16 @@ def build_source_filter_conditions(filter_dict):
     return conditions
 
 
+def build_keyword_filter_conditions(filter_dict):
+    """Build filter conditions for keyword-related queries that include keyword filtering"""
+    conditions = []
+    # Keyword filter - this requires joining with SurveyKeywords and Keyword tables
+    if filter_dict.get("keywords"):
+        conditions.append(Keyword.keyword.in_(filter_dict["keywords"]))
+
+    return conditions
+
+
 def build_survey_query(query: Query, filter_dict) -> Query:
     """Build a complete survey query with appropriate joins and optimizations based on filter conditions"""
     # Build all filter conditions
@@ -105,12 +122,17 @@ def build_survey_query(query: Query, filter_dict) -> Query:
     source_conditions = build_source_filter_conditions(filter_dict)
     topic_conditions = build_topic_filter_conditions(filter_dict)
     region_conditions = build_region_filter_conditions(filter_dict)
-
+    keyword_conditions = build_keyword_filter_conditions(filter_dict)
     # Add joins only when filtering is needed to avoid cartesian products
     joins_added = set()
 
     # Join Store if store filters are applied or if we need it for district/source/region joins
-    if store_conditions or district_conditions or source_conditions or region_conditions:
+    if (
+        store_conditions
+        or district_conditions
+        or source_conditions
+        or region_conditions
+    ):
         query = query.join(Store, Survey.store_id == Store.id)
         joins_added.add("store")
 
@@ -140,6 +162,12 @@ def build_survey_query(query: Query, filter_dict) -> Query:
         query = query.join(Region, Store.region_id == Region.id)
         joins_added.add("region")
 
+    # Join Keyword through SurveyKeywords if keyword filters are applied
+    if keyword_conditions:
+        query = query.join(SurveyKeywords, Survey.id == SurveyKeywords.survey_id)
+        query = query.join(Keyword, SurveyKeywords.keyword_id == Keyword.id)
+        joins_added.add("keyword")
+
     # Optimize loading of relationships
     query = query.options(
         joinedload(Survey.survey_topics).joinedload(SurveyTopics.topic),
@@ -160,6 +188,7 @@ def build_survey_query(query: Query, filter_dict) -> Query:
         source_conditions,
         topic_conditions,
         region_conditions,
+        keyword_conditions,
     )
     if filter_conditions is not None:
         query = query.filter(filter_conditions)
@@ -211,6 +240,7 @@ def build_optimized_query(
     district_conditions = build_district_filter_conditions(working_filter)
     source_conditions = build_source_filter_conditions(working_filter)
     topic_conditions = build_topic_filter_conditions(working_filter)
+    keyword_conditions = build_keyword_filter_conditions(working_filter)
     region_conditions = build_region_filter_conditions(working_filter)
 
     # Start with base query
@@ -220,7 +250,12 @@ def build_optimized_query(
     joined_tables = set()
 
     # Join Store if store filters are applied or if we need it for district/source/region joins
-    if store_conditions or district_conditions or source_conditions or region_conditions:
+    if (
+        store_conditions
+        or district_conditions
+        or source_conditions
+        or region_conditions
+    ):
         query = query.join(Store, Survey.store_id == Store.id)
         joined_tables.add("store")
 
@@ -245,6 +280,11 @@ def build_optimized_query(
         query = query.join(Region, Store.region_id == Region.id)
         joined_tables.add("region")
 
+    if keyword_conditions:
+        query = query.join(SurveyKeywords, Survey.id == SurveyKeywords.survey_id)
+        query = query.join(Keyword, SurveyKeywords.keyword_id == Keyword.id)
+        joined_tables.add("keyword")
+
     # Apply filters
     filter_conditions = merge_filter_conditions(
         survey_conditions,
@@ -254,6 +294,7 @@ def build_optimized_query(
         source_conditions,
         topic_conditions,
         region_conditions,
+        keyword_conditions,
     )
 
     if filter_conditions is not None:
@@ -276,3 +317,133 @@ def build_sentiment_aggregation_query(base_query, group_by_field):
             "negative_count"
         ),
     ).group_by(group_by_field)
+
+
+class FilterRequest(BaseModel):
+    store_ids: List[int] = []
+    store_names: List[str] = []
+    department_ids: List[int] = []
+    department_names: List[str] = []
+    district_ids: List[int] = []
+    district_names: List[str] = []
+    region_ids: List[int] = []
+    region_names: List[str] = []
+    source_ids: List[int] = []
+    source_names: List[str] = []
+    topics: List[str] = []
+    keywords: List[str] = []
+    from_date: Optional[str] = ""
+    to_date: Optional[str] = ""
+    sentiments: List[str] = []
+
+
+def get_filter_params(
+    store_ids: List[int] = Query(
+        default=[],
+        description="The store ids to filter by, separated by |",
+    ),
+    store_names: List[str] = Query(
+        default=[],
+        description="The store names to filter by",
+    ),
+    department_ids: List[int] = Query(
+        default=[],
+        description="The department ids to filter by",
+    ),
+    department_names: List[str] = Query(
+        default=[],
+        description="The department names to filter by",
+    ),
+    district_ids: List[int] = Query(
+        default=[],
+        description="The district ids to filter by",
+    ),
+    district_names: List[str] = Query(
+        default=[],
+        description="The district names to filter by",
+    ),
+    region_ids: List[int] = Query(
+        default=[],
+        description="The region ids to filter by",
+    ),
+    region_names: List[str] = Query(
+        default=[],
+        description="The region names to filter by",
+    ),
+    source_ids: List[int] = Query(
+        default=[],
+        description="The source ids to filter by",
+    ),
+    source_names: List[str] = Query(
+        default=[],
+        description="The source names to filter by",
+    ),
+    topics: List[str] = Query(
+        default=[],
+        description="The topics to filter by",
+    ),
+    keywords: List[str] = Query(
+        default=[],
+        description="The keywords to filter by",
+    ),
+    from_date: str = Query(
+        default="",
+        description="The start date to filter by, in the format YYYY-MM-DD",
+    ),
+    to_date: str = Query(
+        default="",
+        description="The end date to filter by, in the format YYYY-MM-DD",
+    ),
+    sentiments: List[str] = Query(
+        default=[],
+        description="The sentiments to filter by",
+    ),
+) -> FilterRequest:
+    # store_ids and store_names cannot be used together
+    if store_ids and store_names:
+        raise HTTPException(
+            status_code=400,
+            detail="store_ids and store_names cannot be used together",
+        )
+    # department_ids and department_names cannot be used together
+    if department_ids and department_names:
+        raise HTTPException(
+            status_code=400,
+            detail="department_ids and department_names cannot be used together",
+        )
+    # district_ids and district_names cannot be used together
+    if district_ids and district_names:
+        raise HTTPException(
+            status_code=400,
+            detail="district_ids and district_names cannot be used together",
+        )
+    # region_ids and region_names cannot be used together
+    if region_ids and region_names:
+        raise HTTPException(
+            status_code=400,
+            detail="region_ids and region_names cannot be used together",
+        )
+    # source_ids and source_names cannot be used together
+    if source_ids and source_names:
+        raise HTTPException(
+            status_code=400,
+            detail="source_ids and source_names cannot be used together",
+        )
+
+    return FilterRequest(
+        store_ids=store_ids,
+        store_names=store_names,
+        department_ids=department_ids,
+        department_names=department_names,
+        district_ids=district_ids,
+        district_names=district_names,
+        region_ids=region_ids,
+        region_names=region_names,
+        source_ids=source_ids,
+        source_names=source_names,
+        topics=topics,
+        keywords=keywords,
+        from_date=from_date,
+        to_date=to_date,
+        sentiments=sentiments,
+    )

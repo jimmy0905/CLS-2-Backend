@@ -16,6 +16,8 @@ from typing import Literal, List, Optional
 from datetime import datetime
 from utils.conditionFilter import (
     build_survey_query,
+    FilterRequest,
+    get_filter_params,
 )
 from utils.llm import (
     extract_keywords,
@@ -73,123 +75,6 @@ class SurveyResponse(BaseModel):
     updated_at: datetime
     topics: List[str]
     keywords: List[str]
-
-
-class FilterRequest(BaseModel):
-    store_ids: List[int] = []
-    store_names: List[str] = []
-    department_ids: List[int] = []
-    department_names: List[str] = []
-    district_ids: List[int] = []
-    district_names: List[str] = []
-    region_ids: List[int] = []
-    region_names: List[str] = []
-    source_ids: List[int] = []
-    source_names: List[str] = []
-    topics: List[str] = []
-    from_date: Optional[str] = ""
-    to_date: Optional[str] = ""
-    sentiments: List[str] = []
-
-
-def get_filter_params(
-    store_ids: List[int] = Query(
-        default=[],
-        description="The store ids to filter by, separated by |",
-    ),
-    store_names: List[str] = Query(
-        default=[],
-        description="The store names to filter by",
-    ),
-    department_ids: List[int] = Query(
-        default=[],
-        description="The department ids to filter by",
-    ),
-    department_names: List[str] = Query(
-        default=[],
-        description="The department names to filter by",
-    ),
-    district_ids: List[int] = Query(
-        default=[],
-        description="The district ids to filter by",
-    ),
-    district_names: List[str] = Query(
-        default=[],
-        description="The district names to filter by",
-    ),
-    region_ids: List[int] = Query(
-        default=[],
-        description="The region ids to filter by",
-    ),
-    region_names: List[str] = Query(
-        default=[],
-        description="The region names to filter by",
-    ),
-    source_ids: List[int] = Query(
-        default=[],
-        description="The source ids to filter by",
-    ),
-    source_names: List[str] = Query(
-        default=[],
-        description="The source names to filter by",
-    ),
-    topics: List[str] = Query(
-        default=[],
-        description="The topics to filter by",
-    ),
-    from_date: str = Query(
-        default="",
-        description="The start date to filter by, in the format YYYY-MM-DD",
-    ),
-    to_date: str = Query(
-        default="",
-        description="The end date to filter by, in the format YYYY-MM-DD",
-    ),
-    sentiments: List[str] = Query(
-        default=[],
-        description="The sentiments to filter by",
-    ),
-) -> FilterRequest:
-    # store_ids and store_names cannot be used together
-    if store_ids and store_names:
-        raise HTTPException(
-            status_code=400,
-            detail="store_ids and store_names cannot be used together",
-        )
-    # department_ids and department_names cannot be used together
-    if department_ids and department_names:
-        raise HTTPException(
-            status_code=400,
-            detail="department_ids and department_names cannot be used together",
-        )
-    # district_ids and district_names cannot be used together
-    if district_ids and district_names:
-        raise HTTPException(
-            status_code=400,
-            detail="district_ids and district_names cannot be used together",
-        )
-    # source_ids and source_names cannot be used together
-    if source_ids and source_names:
-        raise HTTPException(
-            status_code=400,
-            detail="source_ids and source_names cannot be used together",
-        )
-
-    return FilterRequest(
-        store_ids=store_ids,
-        store_names=store_names,
-        department_ids=department_ids,
-        department_names=department_names,
-        district_ids=district_ids,
-        district_names=district_names,
-        source_ids=source_ids,
-        source_names=source_names,
-        topics=topics,
-        from_date=from_date,
-        to_date=to_date,
-        sentiments=sentiments,
-    )
-
 
 @router.get("")
 async def get_surveys(
@@ -361,30 +246,30 @@ class ExtractRequest(BaseModel):
 @router.post("/extract-keywords")
 async def extract_keywords_route(
     request: ExtractRequest,
-) -> List[str]:
-    keywords = await extract_keywords(request.comment)
-    return keywords
+) -> tuple[List[str], dict]:
+    keywords, usage = await extract_keywords(request.comment)
+    return keywords, usage
 
 
 @router.post("/extract-topics")
 async def extract_topics_route(
     request: ExtractRequest,
-) -> List[str]:
-    topics = await extract_topics(request.comment)
-    return topics
+) -> tuple[List[str], dict]:
+    topics, usage = await extract_topics(request.comment)
+    return topics, usage
 
 
 @router.post("/extract-department")
 async def extract_department_route(
     request: ExtractRequest,
-) -> str:
-    department = await extract_department(request.comment)
-    return department
+) -> tuple[str, dict]:
+    department, usage = await extract_department(request.comment)
+    return department, usage
 
 
 @router.post("/extract-sentiment")
 async def extract_sentiment_route(
     request: ExtractRequest,
-) -> List[str]:
-    sentiment = await extract_sentiment(request.comment)
-    return [sentiment]
+) -> tuple[str, dict]:
+    sentiment, usage = await extract_sentiment(request.comment)
+    return sentiment, usage

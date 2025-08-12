@@ -1,3 +1,4 @@
+from tabnanny import verbose
 from openai import AzureOpenAI
 import json
 import os
@@ -136,7 +137,7 @@ GENERATE_STRATEGY_MODEL = os.getenv("GENERATE_STRATEGY_MODEL", "gpt-4.1")
 GENERATE_STRATEGY_TEMPERATURE = float(os.getenv("GENERATE_STRATEGY_TEMPERATURE", 0.25))
 GENERATE_STRATEGY_MAX_TOKENS = int(os.getenv("GENERATE_STRATEGY_MAX_TOKENS", 10000))
 
-def _extract_keywords_sync(text: str) -> list[str]:
+def _extract_keywords_sync(text: str) -> tuple[list[str], dict]:
     system_prompt = """You are an AI assistant specialized in analyzing retail customer feedback. Your task is to extract 1 to 3 most important keywords from the comments. These keywords should focus on areas such as product quality, IT, customer service, pricing, and overall shopping experience or anything related to retails."""
     user_prompt = f"""Extract 1 to 3 most important keywords from the following customer comment. Make sure the words should be exactly the same as in the comment. Output only JSON with key \"keywords\":\n\n"{text}"\n"""
 
@@ -150,17 +151,17 @@ def _extract_keywords_sync(text: str) -> list[str]:
     )
     response_content = response.choices[0].message.content
     if response_content is None:
-        return []
+        return [], None
     try:
         cleaned_response_content = _clean_response_content(response_content)
-        return json.loads(cleaned_response_content)["keywords"]
+        return json.loads(cleaned_response_content)["keywords"], response.usage.model_dump()
     except Exception as e:
         print(f"Error validating JSON response: {e}")
         print(f"Response content (first 500 chars): {response_content[:500]}")
         raise Exception(f"Failed to validate keywords response: {e}")
 
 
-def _extract_topics_sync(text: str) -> list[str]:
+def _extract_topics_sync(text: str) -> tuple[list[str], dict]:
     system_prompt = """You are an AI assistant specialized in analyzing retail customer feedback. Your task is to extract 2 to 3 primary keywords that capture the essential topics of the customer comment. These keywords should focus on areas such as product quality, IT, customer service, pricing, and overall shopping experience."""
     user_prompt = f"""Extract 2 to 3 keywords from the following customer comment that best summarize its main points.All the output should be in English. Output only JSON with key \"keywords\":\n\n"{text}"\n"""
 
@@ -174,17 +175,17 @@ def _extract_topics_sync(text: str) -> list[str]:
     )
     response_content = response.choices[0].message.content
     if response_content is None:
-        return []
+        return [], None
     try:
         cleaned_response_content = _clean_response_content(response_content)
-        return json.loads(cleaned_response_content)["keywords"]
+        return json.loads(cleaned_response_content)["keywords"], response.usage.model_dump()
     except Exception as e:
         print(f"Error validating topics JSON response: {e}")
         print(f"Response content (first 500 chars): {response_content[:500]}")
         raise Exception(f"Failed to validate topics response: {e}")
 
 
-def _extract_department_sync(text: str) -> str:
+def _extract_department_sync(text: str) -> tuple[str, dict]:
     system_prompt = """You are a highly capable AI assistant specializing in categorizing retail customer feedback. 
 You will be given a single customer comment, and your task is to identify which department(s) 
 within a retail organization should address that comment.
@@ -222,7 +223,7 @@ Here are the possible departments and their typical responsibilities:
     - Manages regulatory, legal, and compliance-related matters, including data privacy and consumer rights.
 
 11. E-commerce & Digital Experience
-    - Responsible for the online shopping platform, checkout process, website/app usability, 
+    - Responsible for the online shopping platformlatform, checkout process, website/app usability, 
       and digital marketing efforts.
 
 Instructions:
@@ -252,17 +253,17 @@ Example output format:
     )
     response_content = response.choices[0].message.content
     if response_content is None:
-        return ""
+        return "", None
     try:
         cleaned_response_content = _clean_response_content(response_content)
-        return json.loads(cleaned_response_content)["departments"][0]
+        return json.loads(cleaned_response_content)["departments"][0], response.usage.model_dump()
     except Exception as e:
         print(f"Error validating JSON response: {e}")
         print(f"Response content (first 500 chars): {response_content[:500]}")
         raise Exception(f"Failed to validate departments response: {e}")
 
 
-def _extract_sentiment_sync(text: str) -> str:
+def _extract_sentiment_sync(text: str) -> tuple[str, dict]:
     system_prompt = """You are a highly capable AI assistant specializing in sentiment analysis of retail customer feedback.
 You will be given a single customer comment, and your task is to analyze its sentiment.
 
@@ -302,10 +303,10 @@ Remember to output in JSON format with ONLY the sentiment field:
     )
     response_content = response.choices[0].message.content
     if response_content is None:
-        return ""
+        return "", None
     try:
         cleaned_response_content = _clean_response_content(response_content)
-        return json.loads(cleaned_response_content)["sentiment"]
+        return json.loads(cleaned_response_content)["sentiment"], response.usage.model_dump()
     except Exception as e:
         print(f"Error validating JSON response: {e}")
         print(f"Response content (first 500 chars): {response_content[:500]}")
@@ -330,7 +331,7 @@ class ActionsResponse(BaseModel):
 
 def _generate_actions_sync(
     data: list[Survey],
-) -> ActionsResponse:
+) -> tuple[ActionsResponse, dict]:
     # Convert Survey objects to dictionaries
     survey_data = [survey.to_dict() for survey in data]
 
@@ -487,9 +488,7 @@ def _generate_actions_sync(
     try: 
         cleaned_content = _clean_response_content(response_content)
         parsed_json = json.loads(cleaned_content)
-        
-        # Finally validate with Pydantic
-        return ActionsResponse.model_validate(parsed_json)
+        return ActionsResponse.model_validate(parsed_json), response.usage
     except Exception as e:
         print(f"Error validating JSON response: {e}")
         print(f"Response content (first 500 chars): {response_content[:500]}")
@@ -514,7 +513,7 @@ class EmailResponse(BaseModel):
     email_body: str
 
 
-def _generate_email_sync(data: EmailData) -> EmailResponse:
+def _generate_email_sync(data: EmailData) -> tuple[EmailResponse, dict]:
     system_prompt = """Role:  
 You are “WatsonsHongKong Internal Email Composer.”  Your sole task is to transform the user-supplied prompt—containing customer-feedback details, recommended actions, and deadlines—into a polished internal email body in English.
 
@@ -605,7 +604,7 @@ Output requirements
     
     try:
         cleaned_response_content = _clean_response_content(response_content)
-        return EmailResponse.model_validate_json(cleaned_response_content)
+        return EmailResponse.model_validate_json(cleaned_response_content), response.usage
     except Exception as e:
         print(f"Error validating email JSON response: {e}")
         print(f"Response content (first 500 chars): {response_content[:500]}")
@@ -619,7 +618,7 @@ Output requirements
         raise Exception(f"Failed to validate email response: {e}")
 
 
-def _generate_strategy_sync(data: list[Survey]) -> str:
+def _generate_strategy_sync(data: list[Survey]) -> tuple[str, dict]:
     system_prompt = """You are given a JSON array of customer comments from the Top10 Watsons 香港 stores by sentiment score. Each object has these fields: id, store, department, district, comment, sentiment, topics, keywords.
 
 Your tasks:
@@ -718,32 +717,32 @@ Chain‑of‑thought guidance:
     response_content = response.choices[0].message.content
     if response_content is None:
         raise Exception("Failed to generate strategy")
-    return response_content
+    return response_content, response.usage.model_dump()
 
 
-async def extract_keywords(text: str) -> list[str]:
+async def extract_keywords(text: str) -> tuple[list[str], dict]:
     return await run_in_threadpool(_extract_keywords_sync, text)
 
 
-async def extract_topics(text: str) -> list[str]:
+async def extract_topics(text: str) -> tuple[list[str], dict]:
     return await run_in_threadpool(_extract_topics_sync, text)
 
 
-async def extract_department(text: str) -> str:
+async def extract_department(text: str) -> tuple[str, dict]:
     return await run_in_threadpool(_extract_department_sync, text)
 
 
-async def extract_sentiment(text: str) -> str:
+async def extract_sentiment(text: str) -> tuple[str, dict]:
     return await run_in_threadpool(_extract_sentiment_sync, text)
 
 
-async def generate_actions(data: list[Survey]) -> ActionsResponse:
+async def generate_actions(data: list[Survey]) -> tuple[ActionsResponse, dict]:
     return await run_in_threadpool(_generate_actions_sync, data)
 
 
-async def generate_email(data: EmailData) -> EmailResponse:
+async def generate_email(data: EmailData) -> tuple[EmailResponse, dict]:
     return await run_in_threadpool(_generate_email_sync, data)
 
 
-async def generate_strategy(data: list[Survey]) -> str:
+async def generate_strategy(data: list[Survey]) -> tuple[str, dict]:
     return await run_in_threadpool(_generate_strategy_sync, data)

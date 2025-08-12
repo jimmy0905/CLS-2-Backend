@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from models.User import User
 from models.db_config import get_db
-from utils.security import create_access_token, get_current_user  
+from utils.security import create_access_token, get_current_user
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -13,7 +13,12 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 async def token(
     form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
 ):
-    user = db.query(User).filter(User.username == form_data.username).first()
+    user = (
+        db.query(User)
+        .filter(User.username == form_data.username)
+        .filter(User.is_deleted == False)
+        .first()
+    )
     # Check if user exists and password is correct
     if not user or not user.check_password(form_data.password):
         raise HTTPException(
@@ -56,12 +61,14 @@ async def register(request: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/renew-token")
-async def renew_token(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def renew_token(
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
     user = db.query(User).filter(User.username == current_user.username).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",    
+            detail="User not found",
         )
     access_token = create_access_token(
         data={
