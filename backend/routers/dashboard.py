@@ -119,6 +119,11 @@ async def get_keyword_analysis(
     # Build base query with filters
     base_query, joined_tables = build_optimized_query(db, filter_dict)
 
+    # Check if keyword joins are already present, if not add them
+    if "keyword" not in joined_tables:
+        base_query = base_query.join(SurveyKeywords, Survey.id == SurveyKeywords.survey_id)
+        base_query = base_query.join(Keyword, SurveyKeywords.keyword_id == Keyword.id)
+
     # Single optimized query for keyword analysis
     keyword_results = (
         base_query.with_entities(
@@ -134,8 +139,6 @@ async def get_keyword_analysis(
             ),
             func.count(Survey.id).label("total_count"),
         )
-        .join(SurveyKeywords, Survey.id == SurveyKeywords.survey_id)
-        .join(Keyword, SurveyKeywords.keyword_id == Keyword.id)
         .group_by(Keyword.id, Keyword.keyword)
         .order_by(func.count(Survey.id).desc())
         .limit(k)

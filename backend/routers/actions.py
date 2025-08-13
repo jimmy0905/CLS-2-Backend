@@ -39,6 +39,7 @@ class ActionFilterRequest(BaseModel):
     source_ids: List[int] = []
     source_names: List[str] = []
     topics: List[str] = []
+    keywords: List[str] = []
     from_date: Optional[str] = ""
     to_date: Optional[str] = ""
     sentiments: List[str] = []
@@ -138,7 +139,7 @@ async def get_actions(
             status_code=400,
             detail=f"Too many surveys found, please filter the data, there are {len(surveys)} surveys found. Max is {LIMIT}.",
         )
-    actions = await generate_actions(surveys)
+    actions, _ = await generate_actions(surveys)
     survey_data = [
         SurveyResponse.model_validate(survey.to_dict()) for survey in surveys
     ]
@@ -184,7 +185,7 @@ async def generate_email(
         survey_data=survey_data_dicts,
     )
 
-    llm_response = await generate_email_llm(email_data)
+    llm_response, _ = await generate_email_llm(email_data)
     generated_email = GeneratedEmail(
         user_id=current_user.id,
         input_data=email_data.model_dump(mode="json"),
