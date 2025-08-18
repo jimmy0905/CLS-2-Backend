@@ -82,6 +82,7 @@ class SurveyResponse(BaseModel):
 
 class GetActionsResponse(BaseModel):
     summary: str
+    impact_analysis_summary: str
     actions: list[Action]
     survey_data: list[SurveyResponse]
 
@@ -153,6 +154,7 @@ async def get_actions(
     db.commit()
     return GetActionsResponse(
         summary=actions.summary,
+        impact_analysis_summary=actions.impact_analysis_summary,
         actions=actions.actions,
         survey_data=survey_data,
     )

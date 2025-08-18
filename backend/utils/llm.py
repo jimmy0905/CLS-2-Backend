@@ -326,6 +326,7 @@ class Action(BaseModel):
 
 class ActionsResponse(BaseModel):
     summary: str
+    impact_analysis_summary: str
     actions: list[Action]
 
 
@@ -336,93 +337,53 @@ def _generate_actions_sync(
     survey_data = [survey.to_dict() for survey in data]
 
     system_prompt = """You are a "Customer Feedback Action Assistant" for Watsons Hong Kong (a health & beauty retail chain). Your task is to process customer comments collected from stores, online shops, self-pickup stations, and membership apps.
-
+ 
 ## Your goal:
-1. **Summarize** customer feedback into a concise bullet points with some critical details.
+1. **Summarize** customer feedback into detailed summary bullet points.
 2. **Generate specific, actionable tasks** in the form of internal email instructions.
-
+3. **Include Impact Analysis** The Impact Analysis should evaluate possible effects on sales, customer satisfaction, compliance, brand reputation, and operational efficiency. It should be some brief explanation of how the issue may affect sales, customer satisfaction, compliance, brand reputation, or operational efficiency.  
 ---
-
+ 
 ## Input format:
 {
-    "id": 1472,
-    "store": {
-      "id": 3498,
-      "name": "Lohas",
-      "district": {
-        "id": 14,
-        "name": "Sai Kung"
-      },
-      "source": {
-        "id": 1,
-        "name": "Watsons"
-      }
-    },
-    "department": {
-      "id": 1,
-      "name": "Operations / Store Management"
-    },
-    "comment": "貨品擺放好亂，周圍太多什物",
+    "id": 12701,
+    "submit_date": "2024-11-07T18:48:06",
+    "store": "",
+    "department": "Product Management / Merchandising",
+    "district": "Kowloon City",
+    "comment": "屈臣氏沐浴露3支優惠裝常缺貨，而且味道由以前多種減少到只有綠茶及柚子味。希望能有返玫瑰味及其他花味。同時，3支裝的組合能更多元化就更好。",
     "sentiment": "Negative",
-    "reported_at": "2024-11-30T15:24:09",
-    "created_at": "2025-07-28T06:46:09.654512",
-    "updated_at": "2025-07-28T06:46:09.654512",
-    "topics": [
-      "shopping experience",
-      "product placement",
-      "store organization"
-    ],
-    "keywords": [
-      "貨品",
-      "擺放",
-      "亂"
-    ]
+    "topics": ["Stock availability"],
+    "keywords": ["缺貨", "味道", "組合"],
+    "source": "watsons"
   },
   {
-    "id": 1317,
-    "store": {
-      "id": 3247,
-      "name": "The Southside",
-      "district": {
-        "id": 5,
-        "name": "Southern"
-      },
-      "source": {
-        "id": 1,
-        "name": "Watsons"
-      }
-    },
-    "department": {
-      "id": 4,
-      "name": "Human Resources"
-    },
-    "comment": "店員Sunny鳳，望客人既眼神，令人感到有敵意",
+    "id": 12764,
+    "submit_date": "2024-11-09T01:02:20",
+    "store": "",
+    "department": "Supply Chain & Logistics",
+    "district": "Tuen Mun",
+    "comment": "冇 Watson 盒裝面紙巾 缺貨",
     "sentiment": "Negative",
-    "reported_at": "2024-11-27T13:23:29",
-    "created_at": "2025-07-28T06:46:07.288636",
-    "updated_at": "2025-07-28T06:46:07.288636",
-    "topics": [
-      "customer service",
-      "staff behavior",
-      "hostility"
-    ],
-    "keywords": [
-      "店員",
-      "眼神",
-      "敵意"
-    ]
+    "topics": ["Stock availability"],
+    "keywords": ["缺貨"],
+    "source": "watsons"
   }
-
-
-
+]
+ 
 ---
-
+ 
 ## Output format (only valid JSON object, no explanation):
 {
 "summary": "
 - Bullet point 1
 - Bullet point 2
 - Bullet point 3...
+",
+"impact_analysis_summary": "
+- Impact 1
+- Impact 2
+- Impact 3...
 ",
 "actions": [
 {
@@ -433,16 +394,16 @@ def _generate_actions_sync(
 "name": "<Unique Action Name>",
 "des": "",
 "prompt_for_subject_line": "<English writing prompt to generate the subject line, emphasizing urgency and key issue>",
-"prompt_for_email_body": "Generate a professional internal email in English addressed to the responsible department. The email must include: 1) A concise background section summarizing the customer feedback and identifying the nature of the issue (e.g., stock shortage, missing product variants, pricing discrepancies, service shortcomings, digital‑channel problems, store environment concerns, etc.). 2) Specific problem details: list affected products, variants or flavours, transaction channels, or service elements, quoting exact customer phrases or providing counts of similar complaints. 3) An brief analysis (in oint form) of the potential impact on sales, customer satisfaction, compliance, and brand reputation. 4) Clear, department‑specific recommended actions (restock, expand variant range, correct price tags, improve checkout flow, update app UI, staff retraining, etc.). 5) A polite closing requesting confirmation of action taken and a follow‑up update."
+"prompt_for_email_body": "Generate a professional internal email in English addressed to the responsible department. The email must include: 1) A concise background section summarizing the customer feedback and identifying the nature of the issue (e.g., stock shortage, missing product variants, pricing discrepancies, service shortcomings, digital-channel problems, store environment concerns, etc.). 2) Specific problem details: list affected products, variants or flavours, transaction channels, or service elements, quoting exact customer phrases or providing counts of similar complaints. 3) A brief analysis (in point form) of the potential impact on sales, customer satisfaction, compliance, and brand reputation. 4) Clear, department-specific recommended actions (restock, expand variant range, correct price tags, improve checkout flow, update app UI, staff retraining, etc.). 5) A polite closing requesting confirmation of action taken and a follow-up update."
 }
 /* More actions as needed */
 ]
 }
-
+ 
 ---
-
+ 
 ## Rules for generating actions:
-
+ 
 - Analyze all comments to identify concrete operational issues.
 - Group similar issues and generate one action per unique problem (e.g. repeated out-of-stock items).
 - Assign actions to the appropriate department:
@@ -460,15 +421,17 @@ def _generate_actions_sync(
   - Problem description
   - Complaint examples/counts in details
   - Recommended actions
-
+  - Impact Analysis (department-specific, within the email body)
+ 
 ---
-
+ 
 ## Internal thinking steps (invisible):
-
+ 
 - Analyze each comment carefully.
 - Identify key issues, affected products, and departments.
 - Consolidate similar problems to avoid duplicated actions.
-- Structure output strictly as JSON without explanations or thought process."""
+- Structure output strictly as JSON without explanations or thought process.
+"""
 
     user_prompt = f"""Data:
 {json.dumps(survey_data, indent=4)}"""
@@ -715,6 +678,7 @@ Chain‑of‑thought guidance:
         max_tokens=GENERATE_STRATEGY_MAX_TOKENS,
     )
     response_content = response.choices[0].message.content
+    print(response_content)
     if response_content is None:
         raise Exception("Failed to generate strategy")
     return response_content, response.usage.model_dump()
