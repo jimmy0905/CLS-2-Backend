@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, func, or_, select
 from models.District import District
 from models.Source import Source
 from models.Survey import Survey
@@ -26,6 +26,7 @@ from utils.llm import (
     extract_sentiment,
 )
 from utils.security import get_current_user
+from fastapi_pagination import Page, paginate
 
 
 router = APIRouter(
@@ -57,6 +58,7 @@ class StoreResponse(BaseModel):
     source: SourceResponse
     region: RegionResponse
 
+
 class DepartmentResponse(BaseModel):
     id: int
     name: str
@@ -76,17 +78,39 @@ class SurveyResponse(BaseModel):
     topics: List[str]
     keywords: List[str]
 
+
 @router.get("")
 async def get_surveys(
     filter_params: FilterRequest = Depends(get_filter_params),
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=100),
     db: Session = Depends(get_db),
-) -> List[SurveyResponse]:
+) -> Page[SurveyResponse]:
     filter_dict = filter_params.model_dump()
     filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
-
-    # Execute the query
-    surveys = filtered_query.all()
-    return [SurveyResponse.model_validate(survey.to_dict()) for survey in surveys]
+    
+    # Apply ordering
+    ordered_query = filtered_query.order_by(Survey.reported_at.desc())
+    
+    # Calculate total count
+    total = ordered_query.count()
+    
+    # Apply pagination
+    offset = (page - 1) * size
+    surveys = ordered_query.offset(offset).limit(size).all()
+    
+    # Convert to response models
+    survey_responses = [SurveyResponse.model_validate(survey.to_dict()) for survey in surveys]
+    
+    # Create pagination response
+    from fastapi_pagination import Params
+    params = Params(page=page, size=size)
+    
+    return Page.create(
+        items=survey_responses,
+        total=total,
+        params=params
+    )
 
 
 class CreateSurveyRequest(BaseModel):
@@ -218,6 +242,7 @@ async def create_survey(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/{survey_id}")
 async def get_survey(survey_id: int, db: Session = Depends(get_db)) -> SurveyResponse:

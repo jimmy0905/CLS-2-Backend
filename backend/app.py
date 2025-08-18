@@ -18,7 +18,7 @@ from routers import (
     users,
 )
 import os
-from config import PATH_TO_UPLOAD_FOLDER
+from fastapi_pagination import add_pagination
 
 app = FastAPI(
     title="CLS Connex",
@@ -36,7 +36,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
+add_pagination(app)  # important! add pagination to your app
 @app.on_event("startup")
 async def startup_event():
     check_tables_exist()
