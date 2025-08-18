@@ -82,11 +82,19 @@ async def process_upload_task(file_path, db, upload_task_id):
             continue
         # Check if the reported_at is a valid date
         try:
-            # Convert pandas Timestamp to string first if needed
+            # Handle different datetime types from pandas
             if isinstance(reported_at, pd.Timestamp):
-                reported_at = reported_at.strftime("%Y-%m-%d %H:%M:%S")
-            reported_at = datetime.strptime(reported_at, "%Y-%m-%d %H:%M:%S")
-        except ValueError:
+                reported_at = reported_at.to_pydatetime()
+            elif isinstance(reported_at, datetime):
+                # Already a datetime object, no conversion needed
+                pass
+            elif isinstance(reported_at, str):
+                # Parse string to datetime
+                reported_at = datetime.strptime(reported_at, "%Y-%m-%d %H:%M:%S")
+            else:
+                # Try to convert other types to datetime
+                reported_at = pd.to_datetime(reported_at).to_pydatetime()
+        except (ValueError, TypeError):
             # Create an error for the upload task
             error = UploadTaskError(
                 upload_task_id=upload_task_id,
