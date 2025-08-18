@@ -47,7 +47,17 @@ async def get_stores(db: Session = Depends(get_db)) -> List[StoreResponse]:
         .options(joinedload(Store.district), joinedload(Store.source))
         .all()
     )
-    return stores
+    return [
+        StoreResponse(
+            id=store.id,
+            name=store.name,
+            district=DistrictResponse(id=store.district_id, name=store.district.name),
+            source=SourceResponse(id=store.source_id, name=store.source.name),
+            region=RegionResponse(id=store.region_id, name=store.region.name),
+            is_active=store.is_active,
+        )
+        for store in stores
+    ]
 
 
 @router.get("/{store_id}")
@@ -60,7 +70,14 @@ async def get_store(store_id: int, db: Session = Depends(get_db)) -> StoreRespon
     )
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
-    return store
+    return StoreResponse(
+        id=store.id,
+        name=store.name,
+        district=DistrictResponse(id=store.district_id, name=store.district.name),
+        source=SourceResponse(id=store.source_id, name=store.source.name),
+        region=RegionResponse(id=store.region_id, name=store.region.name),
+        is_active=store.is_active,
+    )
 
 
 class CreateStoreRequest(BaseModel):
@@ -199,6 +216,7 @@ async def create_store(
         district=DistrictResponse(id=store.district_id, name=store.district.name),
         source=SourceResponse(id=store.source_id, name=store.source.name),
         region=RegionResponse(id=store.region_id, name=store.region.name),
+        is_active=store.is_active,
     )
 
 
@@ -248,7 +266,14 @@ async def update_store(
         store.is_active = update_store_request.is_active
     db.commit()
     db.refresh(store)
-    return store
+    return StoreResponse(
+        id=store.id,
+        name=store.name,
+        district=DistrictResponse(id=store.district_id, name=store.district.name),
+        source=SourceResponse(id=store.source_id, name=store.source.name),
+        region=RegionResponse(id=store.region_id, name=store.region.name),
+        is_active=store.is_active,
+    )
 
 
 @router.delete("/{store_id}")

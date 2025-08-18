@@ -15,10 +15,10 @@ services:
     networks:
       - connex_network
     volumes:
-      - upload_tasks:/app/upload_tasks
+      - wtcmy_upload_tasks:/app/upload_tasks
 
 volumes:
-  upload_tasks:
+  wtcmy_upload_tasks:
     driver: local
 
 networks:
