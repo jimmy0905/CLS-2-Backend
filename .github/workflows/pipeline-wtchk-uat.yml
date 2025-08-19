@@ -23,11 +23,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Extract project version
-        id: extract_version
-        run: |
-          echo "VERSION=$(jq -r '.version' package.json)" >> $GITHUB_OUTPUT
-
       - name: Login to DockerHub
         uses: docker/login-action@v3
         with:
@@ -38,10 +33,10 @@ jobs:
         run: |
           docker build . \
             --pull \
-            -t ${{ env.DOCKERHUB_IMAGE_NAME }}:${{ steps.extract_version.outputs.VERSION }} \
+            -t ${{ env.DOCKERHUB_IMAGE_NAME }}:${{ steps.timestamp.outputs.TIMESTAMP }} \
             -t ${{ env.DOCKERHUB_IMAGE_NAME }}:uat-latest
 
       - name: Push to DockerHub
         run: |
-          docker push ${{ env.DOCKERHUB_IMAGE_NAME }}:${{ steps.extract_version.outputs.VERSION }}
+          docker push ${{ env.DOCKERHUB_IMAGE_NAME }}:${{ steps.timestamp.outputs.TIMESTAMP }}
           docker push ${{ env.DOCKERHUB_IMAGE_NAME }}:uat-latest
