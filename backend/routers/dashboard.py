@@ -11,7 +11,7 @@ from models.District import District
 from models.Region import Region
 from models.Source import Source
 from models.SurveyTopics import SurveyTopics
-from models.db_config import get_db
+from utils.database import get_db
 from pydantic import BaseModel
 from utils.conditionFilter import (
     build_optimized_query,

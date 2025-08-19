@@ -1,4 +1,3 @@
-from models.db_config import Base, engine, get_db
 from models.User import User
 from models.Survey import Survey
 from models.SurveyTopics import SurveyTopics
@@ -16,9 +15,6 @@ from models.UploadTask import UploadTask
 from models.UploadTaskError import UploadTaskError
 
 __all__ = [
-    "Base",
-    "engine",
-    "get_db",
     "User",
     "Survey",
     "SurveyTopics",

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from models.db_config import get_db
+from utils.database import get_db
 from models.User import User
 from utils.security import get_current_user
 from sqlalchemy.orm import Session

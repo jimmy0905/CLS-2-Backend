@@ -1,4 +1,4 @@
-from models.db_config import Base
+from utils.database import Base
 from sqlalchemy import Column, ForeignKey, DateTime, CHAR, Text, Integer, event
 from datetime import datetime
 import uuid
