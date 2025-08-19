@@ -1,4 +1,4 @@
-from models.db_config import Base
+from utils.database import Base
 from sqlalchemy import Column, Integer, ForeignKey, Text, JSON, DateTime, CHAR
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func

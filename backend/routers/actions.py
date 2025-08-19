@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from models.Survey import Survey
 from utils.conditionFilter import build_optimized_query
-from models.db_config import get_db
+from utils.database import get_db
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import Optional

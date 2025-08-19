@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
-from models.db_config import get_db
+from utils.database import get_db
 from models.Store import Store
 from models.District import District
 from models.Source import Source

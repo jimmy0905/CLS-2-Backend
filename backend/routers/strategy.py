@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
-from models.db_config import get_db
+from utils.database import get_db
 from models.User import User
 from utils.conditionFilter import build_survey_query, build_optimized_query
 from utils.security import get_current_user

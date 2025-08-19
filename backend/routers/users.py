@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from models.User import User
-from models.db_config import get_db
+from utils.database import get_db
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional

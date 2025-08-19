@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Index
 from sqlalchemy.orm import relationship
-from models.db_config import Base
+from utils.database import Base
 
 
 class Region(Base):

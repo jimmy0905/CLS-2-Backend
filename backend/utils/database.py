@@ -1,7 +1,20 @@
-from sqlalchemy import text
-from models.db_config import Base, engine, get_db
-from models.User import User
+from sqlalchemy import create_engine, MetaData, text
+from sqlalchemy.orm import sessionmaker, declarative_base
 from utils.logger import logger
+from config import SQLALCHEMY_DATABASE_URI
+
+engine = create_engine(SQLALCHEMY_DATABASE_URI)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+metadata = MetaData()
+Base = declarative_base(metadata=metadata)
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 def init_db():
@@ -9,6 +22,7 @@ def init_db():
     logger.info("Database tables created")
     db = next(get_db())
     # Create a default user
+    from models.User import User
     user = User(
         username="admin",
         role="admin",

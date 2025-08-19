@@ -10,7 +10,7 @@ from models.SurveyTopics import SurveyTopics
 from models.SurveyKeywords import SurveyKeywords
 from models.Store import Store
 from models.Department import Department
-from models.db_config import get_db
+from utils.database import get_db
 from pydantic import BaseModel, Field
 from typing import Literal, List, Optional
 from datetime import datetime

@@ -1,4 +1,4 @@
-from models.db_config import Base
+from utils.database import Base
 from sqlalchemy import Column, Integer, String, Index
 from sqlalchemy.orm import relationship
 

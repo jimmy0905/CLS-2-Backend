@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from models.database import check_tables_exist
+from utils.database import check_tables_exist
 import uvicorn
 from routers import (
     auth,
@@ -36,7 +36,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-add_pagination(app)  # important! add pagination to your app
+add_pagination(app) 
 @app.on_event("startup")
 async def startup_event():
     check_tables_exist()
