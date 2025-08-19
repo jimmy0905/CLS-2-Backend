@@ -31,10 +31,10 @@ jobs:
 
       - name: Build image
         run: |
-          docker build . \
+          docker build ./backend \
             --pull \
-            -t ${{ env.DOCKERHUB_IMAGE_NAME }}:uat-latest
+            -t ${{ env.DOCKERHUB_IMAGE_NAME }}:latest
 
       - name: Push to DockerHub
         run: |
-          docker push ${{ env.DOCKERHUB_IMAGE_NAME }}:uat-latest
+          docker push ${{ env.DOCKERHUB_IMAGE_NAME }}:latest
