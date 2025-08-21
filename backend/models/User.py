@@ -1,4 +1,4 @@
-from models.db_config import Base
+from utils.database import Base
 from sqlalchemy import CHAR, Column, DateTime, String, Boolean
 from datetime import datetime
 import uuid

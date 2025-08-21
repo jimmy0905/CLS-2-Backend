@@ -678,7 +678,6 @@ Chain‑of‑thought guidance:
         max_tokens=GENERATE_STRATEGY_MAX_TOKENS,
     )
     response_content = response.choices[0].message.content
-    print(response_content)
     if response_content is None:
         raise Exception("Failed to generate strategy")
     return response_content, response.usage.model_dump()

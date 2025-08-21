@@ -2,7 +2,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
 from utils.backgrounTaskHandler import process_upload_task
 from config import PATH_TO_UPLOAD_FOLDER
-from models.db_config import get_db
+from utils.database import get_db
 from sqlalchemy.orm import Session
 import pandas as pd
 from models.UploadTask import UploadTask

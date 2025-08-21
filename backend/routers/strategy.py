@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
-from models.db_config import get_db
+from utils.database import get_db
 from models.User import User
 from utils.conditionFilter import build_survey_query, build_optimized_query
 from utils.security import get_current_user
@@ -13,120 +13,13 @@ from sqlalchemy import or_, func, case
 from models.District import District
 from models.Region import Region
 from models.Source import Source
+from utils.conditionFilter import FilterRequest, get_filter_params
 
 router = APIRouter(
     prefix="/strategy",
     tags=["strategy"],
     dependencies=[Depends(get_current_user)],
 )
-
-
-class FilterRequest(BaseModel):
-    store_ids: List[int] = []
-    store_names: List[str] = []
-    department_ids: List[int] = []
-    department_names: List[str] = []
-    district_ids: List[int] = []
-    district_names: List[str] = []
-    region_ids: List[int] = []
-    region_names: List[str] = []
-    source_ids: List[int] = []
-    source_names: List[str] = []
-    topics: List[str] = []
-    from_date: Optional[str] = ""
-    to_date: Optional[str] = ""
-    sentiments: List[str] = []
-
-
-def get_filter_params(
-    store_ids: List[int] = Query(
-        default=[],
-        description="The store ids to filter by, separated by |",
-    ),
-    store_names: List[str] = Query(
-        default=[],
-        description="The store names to filter by",
-    ),
-    department_ids: List[int] = Query(
-        default=[],
-        description="The department ids to filter by",
-    ),
-    department_names: List[str] = Query(
-        default=[],
-        description="The department names to filter by",
-    ),
-    district_ids: List[int] = Query(
-        default=[],
-        description="The district ids to filter by",
-    ),
-    district_names: List[str] = Query(
-        default=[],
-        description="The district names to filter by",
-    ),
-    source_ids: List[int] = Query(
-        default=[],
-        description="The source ids to filter by",
-    ),
-    source_names: List[str] = Query(
-        default=[],
-        description="The source names to filter by",
-    ),
-    topics: List[str] = Query(
-        default=[],
-        description="The topics to filter by",
-    ),
-    from_date: str = Query(
-        default="",
-        description="The start date to filter by, in the format YYYY-MM-DD",
-    ),
-    to_date: str = Query(
-        default="",
-        description="The end date to filter by, in the format YYYY-MM-DD",
-    ),
-    sentiments: List[str] = Query(
-        default=[],
-        description="The sentiments to filter by",
-    ),
-) -> FilterRequest:
-    # store_ids and store_names cannot be used together
-    if store_ids and store_names:
-        raise HTTPException(
-            status_code=400,
-            detail="store_ids and store_names cannot be used together",
-        )
-    # department_ids and department_names cannot be used together
-    if department_ids and department_names:
-        raise HTTPException(
-            status_code=400,
-            detail="department_ids and department_names cannot be used together",
-        )
-    # district_ids and district_names cannot be used together
-    if district_ids and district_names:
-        raise HTTPException(
-            status_code=400,
-            detail="district_ids and district_names cannot be used together",
-        )
-    # source_ids and source_names cannot be used together
-    if source_ids and source_names:
-        raise HTTPException(
-            status_code=400,
-            detail="source_ids and source_names cannot be used together",
-        )
-
-    return FilterRequest(
-        store_ids=store_ids,
-        store_names=store_names,
-        department_ids=department_ids,
-        department_names=department_names,
-        district_ids=district_ids,
-        district_names=district_names,
-        source_ids=source_ids,
-        source_names=source_names,
-        topics=topics,
-        from_date=from_date,
-        to_date=to_date,
-        sentiments=sentiments,
-    )
 
 
 class DistrictResponse(BaseModel):
@@ -262,14 +155,14 @@ class StrategyByStoreIdsRequest(BaseModel):
 async def get_strategy_for_store_by_ids(
     request: StrategyByStoreIdsRequest,
     db: Session = Depends(get_db),
-):
+) -> str:
     filter_dict = {
         "store_ids": request.store_ids,
         "sentiments": ["Positive"],
     }
     filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
     surveys = filtered_query.all()
-    strategy = await generate_strategy(surveys)
+    strategy, _ = await generate_strategy(surveys)
     return strategy
 
 
@@ -346,12 +239,12 @@ class StrategyByRegionIdsRequest(BaseModel):
 async def get_strategy_for_region_by_ids(
     request: StrategyByRegionIdsRequest,
     db: Session = Depends(get_db),
-):
+) -> str:
     filter_dict = {
         "region_ids": request.region_ids,
         "sentiments": ["Positive"],
     }
     filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
     surveys = filtered_query.all()
-    strategy = await generate_strategy(surveys)
+    strategy, _ = await generate_strategy(surveys)
     return strategy

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from models.Survey import Survey
 from utils.conditionFilter import build_optimized_query
-from models.db_config import get_db
+from utils.database import get_db
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -19,6 +19,7 @@ from models.User import User
 from models.Action import Action as ActionDatabaseModel
 from models.GeneratedEmail import GeneratedEmail
 from models.EmailRecord import EmailRecord
+from sqlalchemy import func
 
 router = APIRouter(
     prefix="/actions",
@@ -127,19 +128,12 @@ async def get_actions(
     filtered_query, _ = build_optimized_query(db, filter_dict)
 
     # Execute the query
-    surveys = filtered_query.all()
+    surveys = filtered_query.order_by(func.length(Survey.comment).desc()).limit(500).all()
 
     # Check the length of the surveys
     if len(surveys) == 0:
         raise HTTPException(status_code=404, detail="No surveys found")
 
-    LIMIT = 100
-    # Check if the length of the surveys is greater than 10
-    if len(surveys) > LIMIT:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Too many surveys found, please filter the data, there are {len(surveys)} surveys found. Max is {LIMIT}.",
-        )
     actions, _ = await generate_actions(surveys)
     survey_data = [
         SurveyResponse.model_validate(survey.to_dict()) for survey in surveys
