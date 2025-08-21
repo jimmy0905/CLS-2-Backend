@@ -90,7 +90,7 @@ async def get_surveys(
     filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
     
     # Apply ordering
-    ordered_query = filtered_query.order_by(Survey.id.asc())
+    ordered_query = filtered_query.order_by(Survey.reported_at.desc())
     
     # Calculate total count
     total = ordered_query.count()
