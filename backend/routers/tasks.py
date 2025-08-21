@@ -111,7 +111,7 @@ class UploadTaskResponse(BaseModel):
 
 @router.get("/upload_tasks/{upload_task_id}")
 async def get_upload_task(
-    upload_task_id: int, db: Session = Depends(get_db)
+    upload_task_id: str, db: Session = Depends(get_db)
 ) -> UploadTaskResponse:
     upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
     if not upload_task:
