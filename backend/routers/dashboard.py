@@ -5,6 +5,7 @@ from models.Survey import Survey
 from models.Topic import Topic
 from models.Keyword import Keyword
 from models.SurveyKeywords import SurveyKeywords
+from models.SurveyDepartments import SurveyDepartments
 from models.Store import Store
 from models.Department import Department
 from models.District import District
@@ -28,6 +29,7 @@ router = APIRouter(
     dependencies=[Depends(get_db), Depends(get_current_user)],
 )
 
+
 class DepartmentDistributionResponse(BaseModel):
     department: str
     neutral_count: int
@@ -49,7 +51,10 @@ async def get_department_distribution(
     # Add department join if not already present
     if "department" not in sentiment_joins:
         sentiment_query = sentiment_query.join(
-            Department, Survey.department_id == Department.id
+            SurveyDepartments, Survey.id == SurveyDepartments.survey_id
+        )
+        sentiment_query = sentiment_query.join(
+            Department, SurveyDepartments.department_id == Department.id
         )
 
     sentiment_results = build_sentiment_aggregation_query(
@@ -64,7 +69,10 @@ async def get_department_distribution(
     # Always add department join for total counts since we need to group by department
     if "department" not in total_joins:
         total_query = total_query.join(
-            Department, Survey.department_id == Department.id
+            SurveyDepartments, Survey.id == SurveyDepartments.survey_id
+        )
+        total_query = total_query.join(
+            Department, SurveyDepartments.department_id == Department.id
         )
 
     total_results = (
@@ -121,7 +129,9 @@ async def get_keyword_analysis(
 
     # Check if keyword joins are already present, if not add them
     if "keyword" not in joined_tables:
-        base_query = base_query.join(SurveyKeywords, Survey.id == SurveyKeywords.survey_id)
+        base_query = base_query.join(
+            SurveyKeywords, Survey.id == SurveyKeywords.survey_id
+        )
         base_query = base_query.join(Keyword, SurveyKeywords.keyword_id == Keyword.id)
 
     # Single optimized query for keyword analysis

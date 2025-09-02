@@ -1,6 +1,7 @@
 from models.User import User
 from models.Survey import Survey
 from models.SurveyTopics import SurveyTopics
+from models.SurveyDepartments import SurveyDepartments
 from models.SurveyKeywords import SurveyKeywords
 from models.Topic import Topic
 from models.Keyword import Keyword
@@ -18,6 +19,7 @@ __all__ = [
     "User",
     "Survey",
     "SurveyTopics",
+    "SurveyDepartments",
     "SurveyKeywords",
     "Topic",
     "Keyword",

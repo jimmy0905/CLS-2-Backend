@@ -10,7 +10,13 @@ class Department(Base):
     name = Column(String(100), unique=True)
 
     # Relationships
-    surveys = relationship("Survey", back_populates="department")
+    survey_departments = relationship("SurveyDepartments", back_populates="department")
+    surveys = relationship(
+        "Survey",
+        secondary="survey_departments",
+        back_populates="departments",
+        viewonly=True,
+    )
 
     # Indexes for filtered columns
     __table_args__ = (Index("idx_department_name", name),)

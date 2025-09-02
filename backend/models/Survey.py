@@ -11,7 +11,6 @@ from sqlalchemy import (
     ForeignKey,
     Float,
 )
-from datetime import datetime
 import enum
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -29,12 +28,9 @@ class Survey(Base):
     id = Column(Integer, primary_key=True)
     # Foreign keys
     store_id = Column(Integer, ForeignKey("stores.id"))
-    department_id = Column(Integer, ForeignKey("departments.id"))
     # Columns
     comment = Column(Text)
     sentiment = Column(Enum(Sentiment, name="sentiment_enum"))
-    cls_score = Column(Float, nullable=True)
-    wish_list = Column(Text, nullable=True)
     reported_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
     created_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
     updated_at = Column(
@@ -44,7 +40,6 @@ class Survey(Base):
 
     # Relationships
     store = relationship("Store", back_populates="surveys", overlaps="source")
-    department = relationship("Department", back_populates="surveys")
     district = relationship(
         "District", secondary="stores", back_populates="surveys", viewonly=True
     )
@@ -69,7 +64,13 @@ class Survey(Base):
     keywords = relationship(
         "Keyword", secondary="survey_keywords", back_populates="surveys", viewonly=True
     )
-
+    survey_departments = relationship("SurveyDepartments", back_populates="survey")
+    departments = relationship(
+        "Department",
+        secondary="survey_departments",
+        back_populates="surveys",
+        viewonly=True,
+    )
     # Indexes for filtered columns
     __table_args__ = (
         Index("idx_survey_reported_at", reported_at),
@@ -100,21 +101,33 @@ class Survey(Base):
                 if self.store
                 else None
             ),
-            "department": (
+            "departments": [
                 {
-                    "id": self.department.id,
-                    "name": self.department.name,
+                    "department_id": survey_department.department_id,
+                    "name": survey_department.department.name,
+                    "sentiment": survey_department.sentiment,
                 }
-                if self.department
-                else None
-            ),
-            "topics": [topic.topic for topic in self.topics],
-            "keywords": [keyword.keyword for keyword in self.keywords],
+                for survey_department in self.survey_departments
+            ],
+            "topics": [
+                {
+                    "topic_id": survey_topic.topic_id,
+                    "topic": survey_topic.topic.topic,
+                    "sentiment": survey_topic.sentiment,
+                }
+                for survey_topic in self.survey_topics
+            ],
+            "keywords": [
+                {
+                    "keyword_id": survey_keyword.keyword_id,
+                    "keyword": survey_keyword.keyword.keyword,
+                    "sentiment": survey_keyword.sentiment,
+                }
+                for survey_keyword in self.survey_keywords
+            ],
             # Columns
             "comment": self.comment,
             "sentiment": self.sentiment,
-            "cls_score": self.cls_score,
-            "wish_list": self.wish_list,
             "reported_at": (
                 self.reported_at.isoformat() if self.reported_at is not None else None
             ),

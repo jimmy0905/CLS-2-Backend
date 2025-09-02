@@ -6,6 +6,7 @@ from models.District import District
 from models.Source import Source
 from models.SurveyTopics import SurveyTopics
 from models.SurveyKeywords import SurveyKeywords
+from models.SurveyDepartments import SurveyDepartments
 from models.Keyword import Keyword
 from models.Region import Region
 from sqlalchemy import and_
@@ -33,6 +34,10 @@ def build_survey_filter_conditions(filter_dict):
     # Sentiment filter
     if filter_dict.get("sentiments"):
         conditions.append(Survey.sentiment.in_(filter_dict["sentiments"]))
+
+    # id filter
+    if filter_dict.get("ids"):
+        conditions.append(Survey.id.in_(filter_dict["ids"]))
 
     return conditions
 
@@ -138,7 +143,8 @@ def build_survey_query(query: Query, filter_dict) -> Query:
 
     # Join Department if department filters are applied
     if department_conditions:
-        query = query.join(Department, Survey.department_id == Department.id)
+        query = query.join(SurveyDepartments, Survey.id == SurveyDepartments.survey_id)
+        query = query.join(Department, SurveyDepartments.department_id == Department.id)
         joins_added.add("department")
 
     # Join District through Store if district filters are applied
@@ -173,7 +179,7 @@ def build_survey_query(query: Query, filter_dict) -> Query:
         joinedload(Survey.survey_topics).joinedload(SurveyTopics.topic),
         joinedload(Survey.survey_keywords).joinedload(SurveyKeywords.keyword),
         joinedload(Survey.store),
-        joinedload(Survey.department),
+        joinedload(Survey.survey_departments).joinedload(SurveyDepartments.department),
         joinedload(Survey.district),
         joinedload(Survey.source),
         joinedload(Survey.region),
@@ -260,7 +266,8 @@ def build_optimized_query(
         joined_tables.add("store")
 
     if department_conditions:
-        query = query.join(Department, Survey.department_id == Department.id)
+        query = query.join(SurveyDepartments, Survey.id == SurveyDepartments.survey_id)
+        query = query.join(Department, SurveyDepartments.department_id == Department.id)
         joined_tables.add("department")
 
     if district_conditions and "store" in joined_tables:

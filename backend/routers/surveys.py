@@ -8,6 +8,7 @@ from models.Topic import Topic
 from models.Keyword import Keyword
 from models.SurveyTopics import SurveyTopics
 from models.SurveyKeywords import SurveyKeywords
+from models.SurveyDepartments import SurveyDepartments
 from models.Store import Store
 from models.Department import Department
 from utils.database import get_db
@@ -27,6 +28,9 @@ from utils.llm import (
 )
 from utils.security import get_current_user
 from fastapi_pagination import Page, paginate
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(
@@ -59,24 +63,35 @@ class StoreResponse(BaseModel):
     region: RegionResponse
 
 
-class DepartmentResponse(BaseModel):
-    id: int
+class DepartmentWithSentimentResponse(BaseModel):
+    department_id: int
     name: str
+    sentiment: str
+
+
+class KeywordWithSentimentResponse(BaseModel):
+    keyword_id: int
+    keyword: str
+    sentiment: str
+
+
+class TopicWithSentimentResponse(BaseModel):
+    topic_id: int
+    topic: str
+    sentiment: str
 
 
 class SurveyResponse(BaseModel):
     id: int
     store: StoreResponse
-    department: DepartmentResponse
+    departments: List[DepartmentWithSentimentResponse]
+    topics: List[TopicWithSentimentResponse]
+    keywords: List[KeywordWithSentimentResponse]
     comment: str
     sentiment: str
-    cls_score: Optional[float] = None
-    wish_list: Optional[str] = None
     reported_at: datetime
     created_at: datetime
     updated_at: datetime
-    topics: List[str]
-    keywords: List[str]
 
 
 @router.get("")
@@ -88,41 +103,52 @@ async def get_surveys(
 ) -> Page[SurveyResponse]:
     filter_dict = filter_params.model_dump()
     filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
-    
+
     # Apply ordering
     ordered_query = filtered_query.order_by(Survey.reported_at.desc())
-    
+
     # Calculate total count
     total = ordered_query.count()
-    
+
     # Apply pagination
     offset = (page - 1) * size
     surveys = ordered_query.offset(offset).limit(size).all()
-    
+
     # Convert to response models
-    survey_responses = [SurveyResponse.model_validate(survey.to_dict()) for survey in surveys]
-    
+    survey_responses = [
+        SurveyResponse.model_validate(survey.to_dict()) for survey in surveys
+    ]
+
     # Create pagination response
     from fastapi_pagination import Params
+
     params = Params(page=page, size=size)
-    
-    return Page.create(
-        items=survey_responses,
-        total=total,
-        params=params
-    )
+
+    return Page.create(items=survey_responses, total=total, params=params)
+
+
+class CreateSurveyDepartmentRequest(BaseModel):
+    name: str
+    sentiment: Literal["Positive", "Negative", "Neutral"] = "Neutral"
+
+
+class CreateSurveyTopicRequest(BaseModel):
+    topic: str
+    sentiment: Literal["Positive", "Negative", "Neutral"] = "Neutral"
+
+
+class CreateSurveyKeywordRequest(BaseModel):
+    keyword: str
+    sentiment: Literal["Positive", "Negative", "Neutral"] = "Neutral"
 
 
 class CreateSurveyRequest(BaseModel):
     store_id: int
-    department_id: Optional[int] = None
-    department_name: Optional[str] = None
+    departments: List[CreateSurveyDepartmentRequest]
     comment: str
     sentiment: Literal["Positive", "Negative", "Neutral"]
-    cls_score: Optional[float] = None
-    wish_list: Optional[str] = None
-    topics: List[str] = Field(default_factory=list)
-    keywords: List[str] = Field(default_factory=list)
+    topics: List[CreateSurveyTopicRequest]
+    keywords: List[CreateSurveyKeywordRequest]
     reported_at: datetime = Field(default_factory=datetime.now)
 
 
@@ -132,113 +158,71 @@ async def create_survey(
     db: Session = Depends(get_db),
 ):
     try:
-        # department_id and department_name cannot be provided together
-        if (
-            survey_request.department_id is not None
-            and survey_request.department_name is not None
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail="Department id and name cannot be provided together",
-            )
-        # if department_id is not provided, check if department_name exists
-        if (
-            survey_request.department_id is None
-            and survey_request.department_name is not None
-        ):
-            department = (
-                db.query(Department)
-                .filter(Department.name == survey_request.department_name)
-                .first()
-            )
-            if not department:
-                raise HTTPException(status_code=404, detail="Department not found")
-            survey_request.department_id = department.id
         # Check if store exists
         store = db.query(Store).filter(Store.id == survey_request.store_id).first()
         if not store:
             raise HTTPException(status_code=404, detail="Store not found")
-        # Create the survey first without relationships
+        # Check if departments exist
+        departments = (
+            db.query(Department)
+            .filter(
+                Department.name.in_([dept.name for dept in survey_request.departments])
+            )
+            .all()
+        )
+        if not departments:
+            raise HTTPException(status_code=404, detail="Departments not found")
+
+        # Create survey without departments, topics, and keywords relationships
         survey = Survey(
             store_id=survey_request.store_id,
-            department_id=survey_request.department_id,
             comment=survey_request.comment,
             sentiment=survey_request.sentiment,
             reported_at=survey_request.reported_at,
-            cls_score=survey_request.cls_score,
-            wish_list=survey_request.wish_list,
         )
         db.add(survey)
         db.flush()
-
-        new_topics = []
-        topic_associations = []
-
-        for topic_str in survey_request.topics:
-            existing_topic = db.query(Topic).filter(Topic.topic == topic_str).first()
-            if existing_topic:
-                topic = existing_topic
-            else:
-                topic = Topic(topic=topic_str)
-                new_topics.append(topic)
+        # Add departments, topics, and keywords relationships
+        for department in departments:
+            survey_department = SurveyDepartments(
+                survey_id=survey.id,
+                department_id=department.id,
+                sentiment=survey_request.sentiment,
+            )
+            db.add(survey_department)
+        for request_topic in survey_request.topics:
+            topic = db.query(Topic).filter(Topic.topic == request_topic.topic).first()
+            # Create topic if it doesn't exist
+            if not topic:
+                topic = Topic(topic=request_topic.topic)
                 db.add(topic)
-
-        if new_topics:
-            db.flush()
-
-        # Create all topic associations
-        for topic_str in survey_request.topics:
-            existing_topic = db.query(Topic).filter(Topic.topic == topic_str).first()
-            topic = (
-                existing_topic
-                if existing_topic
-                else next(t for t in new_topics if t.topic == topic_str)
+                db.flush()
+            survey_topic = SurveyTopics(
+                survey_id=survey.id,
+                topic_id=topic.id,
+                sentiment=request_topic.sentiment,
             )
-            topic_associations.append(
-                SurveyTopics(survey_id=survey.id, topic_id=topic.id)
-            )
-
-        if topic_associations:
-            db.bulk_save_objects(topic_associations)
-
-        new_keywords = []
-        keyword_associations = []
-
-        for keyword_str in survey_request.keywords:
-            existing_keyword = (
-                db.query(Keyword).filter(Keyword.keyword == keyword_str).first()
-            )
-            if existing_keyword:
-                keyword = existing_keyword
-            else:
-                keyword = Keyword(keyword=keyword_str)
-                new_keywords.append(keyword)
-                db.add(keyword)
-
-        if new_keywords:
-            db.flush()
-
-        # Create all keyword associations
-        for keyword_str in survey_request.keywords:
-            existing_keyword = (
-                db.query(Keyword).filter(Keyword.keyword == keyword_str).first()
-            )
+            db.add(survey_topic)
+        for request_keyword in survey_request.keywords:
             keyword = (
-                existing_keyword
-                if existing_keyword
-                else next(k for k in new_keywords if k.keyword == keyword_str)
+                db.query(Keyword)
+                .filter(Keyword.keyword == request_keyword.keyword)
+                .first()
             )
-            keyword_associations.append(
-                SurveyKeywords(survey_id=survey.id, keyword_id=keyword.id)
+            # Create keyword if it doesn't exist
+            if not keyword:
+                keyword = Keyword(keyword=request_keyword.keyword)
+                db.add(keyword)
+                db.flush()
+            survey_keyword = SurveyKeywords(
+                survey_id=survey.id,
+                keyword_id=keyword.id,
+                sentiment=request_keyword.sentiment,
             )
-
-        if keyword_associations:
-            db.bulk_save_objects(keyword_associations)
-
+            db.add(survey_keyword)
         db.commit()
-        return {
-            "id": survey.id,
-        }
+        db.refresh(survey)
+        return survey.to_dict()
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -246,19 +230,9 @@ async def create_survey(
 
 @router.get("/{survey_id}")
 async def get_survey(survey_id: int, db: Session = Depends(get_db)) -> SurveyResponse:
-    survey = (
-        db.query(Survey)
-        .options(
-            joinedload(Survey.survey_topics).joinedload(SurveyTopics.topic),
-            joinedload(Survey.survey_keywords).joinedload(SurveyKeywords.keyword),
-            joinedload(Survey.store),
-            joinedload(Survey.department),
-            joinedload(Survey.district),
-            joinedload(Survey.source),
-        )
-        .filter(Survey.id == survey_id)
-        .first()
-    )
+    filter_dict = {"ids": [survey_id]}
+    query = build_survey_query(db.query(Survey).distinct(), filter_dict)
+    survey = query.first()
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
     return SurveyResponse.model_validate(survey.to_dict())

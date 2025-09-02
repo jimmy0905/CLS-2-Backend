@@ -1,6 +1,13 @@
 from utils.database import Base
-from sqlalchemy import Column, Integer, ForeignKey
+from sqlalchemy import Column, Integer, ForeignKey, Enum
 from sqlalchemy.orm import relationship
+import enum
+
+
+class Sentiment(str, enum.Enum):
+    POSITIVE = "Positive"
+    NEGATIVE = "Negative"
+    NEUTRAL = "Neutral"
 
 
 class SurveyKeywords(Base):
@@ -9,6 +16,7 @@ class SurveyKeywords(Base):
     id = Column(Integer, primary_key=True)
     survey_id = Column(Integer, ForeignKey("surveys.id"))
     keyword_id = Column(Integer, ForeignKey("keywords.id"))
+    sentiment = Column(Enum(Sentiment, name="sentiment_enum"), nullable=False)
 
     # Add relationships with proper back_populates
     survey = relationship("Survey", back_populates="survey_keywords")
@@ -17,6 +25,6 @@ class SurveyKeywords(Base):
     def to_dict(self):
         return {
             "id": self.id,
-            "survey_id": self.survey_id,
-            "keyword_id": self.keyword_id,
+            "keyword": self.keyword.to_dict(),
+            "sentiment": self.sentiment,
         }
