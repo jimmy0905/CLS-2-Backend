@@ -1,30 +1,28 @@
 from utils.database import Base
-from sqlalchemy import Column, Integer, ForeignKey, Enum
+from sqlalchemy import Column, Integer, ForeignKey, Enum    
 from sqlalchemy.orm import relationship
 import enum
-
 
 class Sentiment(str, enum.Enum):
     POSITIVE = "positive"
     NEGATIVE = "negative"
     NEUTRAL = "neutral"
 
-
-class SurveyKeywords(Base):
-    __tablename__ = "survey_keywords"
+class SurveyDepartments(Base):
+    __tablename__ = "survey_departments"
 
     id = Column(Integer, primary_key=True)
     survey_id = Column(Integer, ForeignKey("surveys.id"))
-    keyword_id = Column(Integer, ForeignKey("keywords.id"))
+    department_id = Column(Integer, ForeignKey("departments.id"))
     sentiment = Column(Enum(Sentiment, name="sentiment_enum"), nullable=False)
 
-    # Add relationships with proper back_populates
-    survey = relationship("Survey", back_populates="survey_keywords")
-    keyword = relationship("Keyword", back_populates="survey_keywords")
+    # Relationships
+    survey = relationship("Survey", back_populates="survey_departments")
+    department = relationship("Department", back_populates="survey_departments")
 
     def to_dict(self):
         return {
             "id": self.id,
-            "keyword": self.keyword.to_dict(),
+            "department": self.department.to_dict(),
             "sentiment": self.sentiment,
         }

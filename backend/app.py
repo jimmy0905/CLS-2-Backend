@@ -36,7 +36,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-add_pagination(app) 
+add_pagination(app)
+
+
 @app.on_event("startup")
 async def startup_event():
     check_tables_exist()
@@ -62,8 +64,5 @@ app.include_router(tasks.router)
 app.include_router(users.router)
 
 
-
-
-
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8002)
