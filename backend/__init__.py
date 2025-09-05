@@ -1,3 +1,3 @@
-from logger import logger
+from proxy import proxies
 
-__all__ = ["logger"]
+__all__ = ["proxies"]

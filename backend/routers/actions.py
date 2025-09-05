@@ -5,12 +5,13 @@ from utils.database import get_db
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import Optional
-from utils.llm import (
+from utils.llm.models import (
     Action,
-    generate_actions,
-    generate_email as generate_email_llm,
     EmailData,
+    EmailResponse,
 )
+from utils.llm.generate_actions import generate_actions
+from utils.llm.generate_email import generate_email
 from datetime import datetime
 from utils.smtp import send_email as send_email_utils
 from utils.security import get_current_user
@@ -127,8 +128,14 @@ async def get_actions(
     filter_dict = action_filter_request.model_dump()
     filtered_query, _ = build_optimized_query(db, filter_dict)
 
+    # convert sentiments to lowercase
+    filter_dict["sentiments"] = [
+        sentiment.lower() for sentiment in filter_dict["sentiments"]
+    ]
     # Execute the query
-    surveys = filtered_query.order_by(func.length(Survey.comment).desc()).limit(500).all()
+    surveys = (
+        filtered_query.order_by(func.length(Survey.comment).desc()).limit(500).all()
+    )
 
     # Check the length of the surveys
     if len(surveys) == 0:
@@ -166,7 +173,7 @@ class EmailResponse(BaseModel):
 
 
 @router.post("/generate-email")
-async def generate_email(
+async def generate_email_route(
     email_request: EmailRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -181,7 +188,7 @@ async def generate_email(
         survey_data=survey_data_dicts,
     )
 
-    llm_response, _ = await generate_email_llm(email_data)
+    llm_response, _ = await generate_email(email_data)
     generated_email = GeneratedEmail(
         user_id=current_user.id,
         input_data=email_data.model_dump(mode="json"),
