@@ -22,9 +22,7 @@ from utils.conditionFilter import (
 )
 from utils.llm import (
     extract_keywords,
-    extract_topics,
-    extract_department,
-    extract_sentiment,
+    extract_total,
 )
 from utils.security import get_current_user
 from fastapi_pagination import Page, paginate
@@ -129,24 +127,24 @@ async def get_surveys(
 
 class CreateSurveyDepartmentRequest(BaseModel):
     name: str
-    sentiment: Literal["Positive", "Negative", "Neutral"] = "Neutral"
+    sentiment: Literal["positive", "negative", "neutral"] = "neutral"
 
 
 class CreateSurveyTopicRequest(BaseModel):
     topic: str
-    sentiment: Literal["Positive", "Negative", "Neutral"] = "Neutral"
+    sentiment: Literal["positive", "negative", "neutral"] = "neutral"
 
 
 class CreateSurveyKeywordRequest(BaseModel):
     keyword: str
-    sentiment: Literal["Positive", "Negative", "Neutral"] = "Neutral"
+    sentiment: Literal["positive", "negative", "neutral"] = "neutral"
 
 
 class CreateSurveyRequest(BaseModel):
     store_id: int
     departments: List[CreateSurveyDepartmentRequest]
     comment: str
-    sentiment: Literal["Positive", "Negative", "Neutral"]
+    sentiment: Literal["positive", "negative", "neutral"] = "neutral"
     topics: List[CreateSurveyTopicRequest]
     keywords: List[CreateSurveyKeywordRequest]
     reported_at: datetime = Field(default_factory=datetime.now)
@@ -250,25 +248,26 @@ async def extract_keywords_route(
     return keywords, usage
 
 
-@router.post("/extract-topics")
-async def extract_topics_route(
+class ExtractedTopicResponse(BaseModel):
+    name: str
+    sentiment: str
+
+
+class ExtractedDepartmentResponse(BaseModel):
+    name: str
+    sentiment: str
+
+
+class TotalResponse(BaseModel):
+    topics: list[ExtractedTopicResponse]
+    departments: list[ExtractedDepartmentResponse]
+    overall_sentiment: str
+    cannot_classified: bool
+
+
+@router.post("/extract-total")
+async def extract_total_route(
     request: ExtractRequest,
-) -> tuple[List[str], dict]:
-    topics, usage = await extract_topics(request.comment)
-    return topics, usage
-
-
-@router.post("/extract-department")
-async def extract_department_route(
-    request: ExtractRequest,
-) -> tuple[str, dict]:
-    department, usage = await extract_department(request.comment)
-    return department, usage
-
-
-@router.post("/extract-sentiment")
-async def extract_sentiment_route(
-    request: ExtractRequest,
-) -> tuple[str, dict]:
-    sentiment, usage = await extract_sentiment(request.comment)
-    return sentiment, usage
+) -> tuple[TotalResponse, dict]:
+    total, usage = await extract_total(request.comment)
+    return total, usage

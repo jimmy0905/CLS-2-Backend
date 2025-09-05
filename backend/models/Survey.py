@@ -17,9 +17,9 @@ from sqlalchemy.sql import func
 
 
 class Sentiment(str, enum.Enum):
-    POSITIVE = "Positive"
-    NEGATIVE = "Negative"
-    NEUTRAL = "Neutral"
+    POSITIVE = "positive"
+    NEGATIVE = "negative"
+    NEUTRAL = "neutral"
 
 
 class Survey(Base):

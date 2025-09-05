@@ -25,12 +25,12 @@ async def upload_tasks(
     file: Annotated[UploadFile, File()],
     db: Session = Depends(get_db),
 ):
-    # Check if the file is a Excel file
+    # Check if the file is a CSV file
     if (
         file.content_type
-        != "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        != "text/csv"
     ):
-        raise HTTPException(status_code=400, detail="File must be an Excel file")
+        raise HTTPException(status_code=400, detail="File must be a CSV file")
     # Save the file first
     try:
 
@@ -44,9 +44,9 @@ async def upload_tasks(
             f.write(contents)
 
         # Validate the saved file
-        df = pd.read_excel(file_path)
-        # Check if the file has the required columns (store_id, comment, reported_at)
-        required_columns = ["store_id", "comment", "reported_at"]
+        df = pd.read_csv(file_path)
+        # Check if the file has the required columns (store_key, submitdate, answer)
+        required_columns = ["store_key", "submitdate", "answer"]
         if not all(col in df.columns for col in required_columns):
             os.remove(file_path)  # Clean up invalid file
             raise HTTPException(
@@ -158,7 +158,7 @@ async def get_upload_tasks(db: Session = Depends(get_db)) -> list[UploadTaskResp
 
 @router.get("/download/example")
 async def download_example_task(db: Session = Depends(get_db)):
-    return FileResponse(os.path.join(PATH_TO_UPLOAD_FOLDER, "example.xlsx"))
+    return FileResponse(os.path.join(PATH_TO_UPLOAD_FOLDER, "example.csv"))
 
 
 @router.get("/download/{upload_task_id}")

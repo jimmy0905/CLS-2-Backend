@@ -4,9 +4,9 @@ from sqlalchemy.orm import relationship
 import enum
 
 class Sentiment(str, enum.Enum):
-    POSITIVE = "Positive"
-    NEGATIVE = "Negative"
-    NEUTRAL = "Neutral"
+    POSITIVE = "positive"
+    NEGATIVE = "negative"
+    NEUTRAL = "neutral"
 
 class SurveyDepartments(Base):
     __tablename__ = "survey_departments"

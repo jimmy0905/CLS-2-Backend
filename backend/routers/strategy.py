@@ -72,13 +72,13 @@ async def get_top_k_performance_stores(
         sentiment_query.with_entities(
             Store.id.label("store_id"),
             Store.name.label("store_name"),
-            func.count(case((Survey.sentiment == "Neutral", Survey.id))).label(
+            func.count(case((Survey.sentiment == "neutral", Survey.id))).label(
                 "neutral_count"
             ),
-            func.count(case((Survey.sentiment == "Positive", Survey.id))).label(
+            func.count(case((Survey.sentiment == "positive", Survey.id))).label(
                 "positive_count"
             ),
-            func.count(case((Survey.sentiment == "Negative", Survey.id))).label(
+            func.count(case((Survey.sentiment == "negative", Survey.id))).label(
                 "negative_count"
             ),
         )
@@ -193,13 +193,13 @@ async def get_top_k_performance_regions(
         sentiment_query.with_entities(
             Region.id.label("region_id"),
             Region.name.label("region_name"),
-            func.count(case((Survey.sentiment == "Neutral", Survey.id))).label(
+            func.count(case((Survey.sentiment == "neutral", Survey.id))).label(
                 "neutral_count"
             ),
-            func.count(case((Survey.sentiment == "Positive", Survey.id))).label(
+            func.count(case((Survey.sentiment == "positive", Survey.id))).label(
                 "positive_count"
             ),
-            func.count(case((Survey.sentiment == "Negative", Survey.id))).label(
+            func.count(case((Survey.sentiment == "negative", Survey.id))).label(
                 "negative_count"
             ),
         )
