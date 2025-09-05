@@ -21,7 +21,6 @@ from utils.conditionFilter import (
     get_filter_params,
 )
 from utils.llm import (
-    extract_keywords,
     extract_total,
 )
 from utils.security import get_current_user
@@ -240,27 +239,25 @@ class ExtractRequest(BaseModel):
     comment: str
 
 
-@router.post("/extract-keywords")
-async def extract_keywords_route(
-    request: ExtractRequest,
-) -> tuple[List[str], dict]:
-    keywords, usage = await extract_keywords(request.comment)
-    return keywords, usage
-
-
 class ExtractedTopicResponse(BaseModel):
-    name: str
+    text: str
     sentiment: str
 
 
 class ExtractedDepartmentResponse(BaseModel):
-    name: str
+    text: str
+    sentiment: str
+
+
+class ExtractedKeywordResponse(BaseModel):
+    text: str
     sentiment: str
 
 
 class TotalResponse(BaseModel):
     topics: list[ExtractedTopicResponse]
     departments: list[ExtractedDepartmentResponse]
+    keywords: list[ExtractedKeywordResponse]
     overall_sentiment: str
     cannot_classified: bool
 
@@ -270,4 +267,5 @@ async def extract_total_route(
     request: ExtractRequest,
 ) -> tuple[TotalResponse, dict]:
     total, usage = await extract_total(request.comment)
+    print(total)
     return total, usage

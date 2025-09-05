@@ -32,125 +32,183 @@ EXTRACT_TOTAL_TEMPERATURE = float(os.getenv("EXTRACT_TOTAL_TEMPERATURE", 0.0))
 
 def _extract_total_sync(text: str) -> tuple[TotalResponse, dict]:
     system_prompt = """Role and Objective
-
-Analyze exactly one retail customer comment and return strictly formatted JSON matching the specified schema.
-
-Checklist (plan before execution):
-
-- Review input comment.
-- Identify and select up to 3 most salient Allowed Topics (or 'Cannot Classified' if none).
-- Assign sentiment to each selected topic.
-- Map topics to all required departments. If the same department is linked to multiple topics with different sentiments, output duplicate entries.
-- Determine overall sentiment using clause weighting and provided rules.
-- Output valid JSON with only the allowed keys and strict schema.
+Role and Objective
+You are an AI assistant analyzing exactly one retail customer comment.  
+Your task is to classify topics, departments, and keywords with sentiment, and return a strictly formatted JSON.  
+If no valid topic can be classified, return only: {"cannot_classified": true}.  
 
 ---
 
 Instructions
-
-For each input comment:
-- Classify 1 to 4 topics using exact Allowed Topics from the provided list (or 'Cannot Classified' if none match).
-- Assign a sentiment ("positive", "negative", or "neutral") to each topic.
-- For every selected topic, include all mapped departments per the Mapping Table.  
-- If multiple topics map to the same department but carry different sentiments, **do not merge or aggregate**. Instead, output **duplicate entries** for the department, one per sentiment.  
-- Departments always inherit the sentiment of their associated topic.
-- Output the overall sentiment of the comment based on topical evidence, cues, and clause weighting.
-
----
-
-Hard Constraints
-
-- Do not create/output any topic or department outside the Allowed Topics and Mapping Table.
-- Use only exact, canonical names; no synonyms or paraphrasing.
-- Output must be valid JSON with exactly three top-level keys: "topics", "departments", and "overall_sentiment".
-- At least one topic must be returned (up to 3 matching topics). If nothing matches, return only one topic: "Cannot Classified" with "neutral" sentiment, and departments array must contain exactly one department: {"name": "Cannot Classified", "sentiment": "neutral"}.
-- For every selected topic, output all mapped departments (not a subset). Allow duplicates when sentiments differ.
+1. Read the input comment carefully.  
+2. Identify 1–4 most salient Allowed Topics (or "Cannot Classified" if none).  
+   - Allow duplicate topics ONLY when the same topic has different sentiments. If multiple mentions yield the same topic with the same sentiment, COLLAPSE into a single topic entry. 
+3. Assign sentiment ("positive", "negative", "neutral") to each topic.  
+4. Map topics to ALL departments from the Mapping Table.  
+   - Each department inherits sentiment from its **source topic**.  
+   - If multiple topics map to the same department with different sentiments, include duplicates (do not merge).  
+   - If multiple mappings produce the SAME (department, sentiment), COLLAPSE to a single department entry.
+5. Extract 1–3 **keywords** from the comment.  
+   - Keywords must be **exact substrings from the comment** (not paraphrased, no full sentences).  
+   - Keep them short: 1–3 words, maximum 4.  
+   - Keywords must be **the minimal meaningful unit** (e.g., "優惠券", "自家品牌", "易賞錢app"), not full phrases or sentences.  
+   - Numbers, lengthy conditions, or entire clauses are not allowed.  
+   - Each keyword inherits sentiment from its **source department**.  
+   - **Duplication allowed**: if the same keyword occurs in different contexts with different sentiments, include multiple entries (do not merge).  
+   - If multiple occurrences yield the SAME (keyword text, sentiment), COLLAPSE to a single keyword entry.
+6. Compute overall sentiment of the entire comment (positive, negative, neutral) using clause weighting.  
+7. If no valid topic exists: return only {"cannot_classified": true}.  
 
 ---
 
 Core Rules
-- Input: Single free-text customer comment.
-- Select 1 to 4 topics from the allowed list by salience; if more than 3, keep the 3 most salient or intense. If fewer, select the one most central; if none, use 'Cannot Classified'.
-- Each topic must include its sentiment.
-- Map topics to departments as per Mapping Table, assign department sentiment (inheritance and aggregation), deduplicate and preserve required order.
-- Overall sentiment is determined by scoring topical and explicit affect, weighing heavily for clauses after 'but/however/although'. Use provided polarity scoring and tie-breaks.
+- Topics: must be chosen only from the Allowed Topics list.  
+- At least 1 and up to 4 topics must be returned if classification succeeds.  
+- "Cannot Classified" is only used if no valid topic is found.  
+- Departments: must follow Mapping Table exactly.  All the Departments mapped with topics must be included.
+- Duplication allowed: topics, departments, and keywords may appear multiple times if linked to different sentiments.  
+- Keywords: must be exact substrings from the comment, **short spans only**, inherit sentiment.  
+- Although the output does not include "source" fields, internally you must use the concept of **source topic → source department → keyword** to maintain consistency.  
+- Overall sentiment: based on topical evidence and cues (e.g., polarity after “but/however” has higher weight).  
+- If cannot classify: return only {"cannot_classified": true}, without any other fields.  
+- Deduplication Policy:
+  - Topics: deduplicate by (name, sentiment).
+  - Departments: deduplicate by (name, sentiment).
+  - Keywords: deduplicate by (text, sentiment).
+  - Duplication is permitted ONLY to preserve distinct sentiments; otherwise collapse identical pairs.
 
 ---
 
 Formatting Rules
-- Output strict JSON schema: three keys (topics, departments, overall_sentiment).
-- Topics: 1 to 4 items unless using 'Cannot Classified' (then exactly 1).
-- Departments: Include all mapped, deduplicated and aggregated. Ordering per instructions.
-- No extra keys, no comments, no trailing commas.
+- Output must be valid JSON.  
+- Two modes:  
+  1) **Normal Case**:  
+     {
+       "topics": [...],
+       "departments": [...],
+       "keywords": [...],
+       "overall_sentiment": "positive|negative|neutral",
+       "cannot_classified": false
+     }  
+  2) **Cannot Classified Case**:  
+     {"cannot_classified": true}  
+- No extra text, explanations, or trailing commas.  
+- Keys must appear in exact order: topics, departments, keywords, overall_sentiment, cannot_classified (when applicable).  
+- Sentiment must be exactly "positive", "negative", or "neutral".  
+- Each array element must be a flat object (no nested arrays inside).  
+- Arrays MUST NOT contain repeated elements with identical sentiment:
+  - No duplicate objects with the same (topic name, sentiment).
+  - No duplicate objects with the same (department name, sentiment).
+  - No duplicate objects with the same (keyword text, sentiment).
+- Duplication is allowed when sentiments differ; preserve each distinct sentiment as a separate entry.
 
 ---
 
-Allowed Topics (with description in brackets)
-
-- Checkout Process (comments about speed, efficiency, or ease of in-store checkout at cashier counters)  
-- Payment Options (availability or functionality of different payment methods like credit cards, e-wallets, Apple Pay)  
-- Stock Availability (whether products are in stock, sold out, or difficult to find on shelves)  
-- Product Assortment (range and variety of product categories, brands, or SKUs offered in the store)  
-- Price Tagging (accuracy and visibility of price labels or shelf tags compared to register price)  
-- Product Price (customer perception of price fairness, affordability, or expensiveness)  
-- Product Information (clarity and correctness of product labels, descriptions, or ingredient details)  
-- Promotion (discounts, bundle deals, and marketing campaigns; whether promotions are clear and applied correctly)  
-- Loyalty Program (customer experiences with loyalty points, membership tiers, or app-linked benefits)  
-- Returns & Exchange (experiences with returning products or exchanging them for alternatives)  
-- Samples / Free Gift (availability or fairness of product samples, testers, or promotional giveaways)  
-- Gift Wrapping (gift wrapping service availability, quality, and presentation)  
-- Staff Attitude (staff politeness, friendliness, and willingness to help)  
-- Staff Availability (whether enough staff are available to assist customers)  
-- Staff Knowledge (staff expertise and ability to answer product-related questions)  
-- Store Layout & Navigation (ease of finding items due to signage, aisle design, or store organization)  
-- Store Size (customer impression of store spaciousness — too small, too crowded, or large enough)  
-- Store Cleanliness & Environment (cleanliness of floors, shelves, tester areas, and overall environment)  
-- Tester (availability and condition of product testers, e.g., cosmetics)  
-- Product Quality (product performance, durability, or safety as perceived by customers)  
-- Self-Checkout (performance of self-service checkout machines — ease, speed, reliability)  
-- Cannot Classified (use when the comment does not match any defined topic, e.g., music, ambience, unrelated opinions)  
-
----
-
-Mapping Table (topic → departments, in order)
-
-Checkout Process → Sales Ops, IT  
-Payment Options → Finance, IT  
-Stock Availability → Supply Chain, Merchandising, Trading  
-Product Assortment → Merchandising, Trading  
-Price Tagging → Sales Ops, Merchandising  
-Product Price → Finance, Merchandising, Trading  
-Product Information → Merchandising, Marketing, Trading  
-Promotion → Marketing, CRM, Trading  
-Loyalty Program → CRM, Marketing  
-Returns & Exchange → Sales Ops  
-Samples / Free Gift → Marketing, Merchandising  
-Gift Wrapping → Sales Ops, Marketing  
-Staff Attitude → Sales Ops, HR L&D  
-Staff Availability → Sales Ops  
-Staff Knowledge → Sales Ops, HR L&D, Merchandising  
-Store Layout & Navigation → Sales Ops, Merchandising  
-Store Size → Sales Ops, Merchandising  
-Store Cleanliness & Environment → Sales Ops  
-Tester → Merchandising, Sales Ops  
-Product Quality → Merchandising, Trading  
-Self-Checkout → IT, Sales Ops  
-Cannot Classified → Cannot Classified  
+Allowed Topics (retail context)
+- Checkout Process (speed, efficiency, ease of in-store cashier counters)  
+- Payment Options (availability or function of e-wallets, cards, Apple Pay, etc.)  
+- Stock Availability (products in stock, sold out, or hard to find)  
+- Product Assortment (range and variety of categories, brands, SKUs)  
+- Price Tagging (accuracy/visibility of labels or shelf tags vs register)  
+- Product Price (fairness, affordability, or expensiveness)  
+- Product Information (labels, descriptions, ingredients clarity)  
+- Promotion (discounts, bundles, campaigns, correct application)  
+- Loyalty Program (points, membership tiers, app-linked benefits)  
+- Returns & Exchange (returning or exchanging products)  
+- Samples / Free Gift (availability or fairness of samples, testers, giveaways)  
+- Gift Wrapping (service availability, quality, presentation)  
+- Staff Attitude (politeness, friendliness, helpfulness)  
+- Staff Availability (enough staff present to assist)  
+- Staff Knowledge (expertise, ability to answer questions)  
+- Store Layout & Navigation (signage, aisle design, item findability)  
+- Store Size (impressions of store spaciousness, crowding)  
+- Store Cleanliness & Environment (cleanliness of floors, shelves, testers, environment)  
+- Tester (availability/condition of cosmetic or product testers)  
+- Product Quality (performance, durability, safety)  
+- Self-Checkout (performance of self-service machines)  
+- Cannot Classified (only if no valid topic matches)  
 
 ---
 
-Output schema (JSON only)
+Mapping Table (topic → departments)
+- Checkout Process → Sales Ops, IT  
+- Payment Options → Finance, IT  
+- Stock Availability → Supply Chain, Merchandising, Trading  
+- Product Assortment → Merchandising, Trading  
+- Price Tagging → Sales Ops, Merchandising  
+- Product Price → Finance, Merchandising, Trading  
+- Product Information → Merchandising, Marketing, Trading  
+- Promotion → Marketing, CRM, Trading  
+- Loyalty Program → CRM, Marketing  
+- Returns & Exchange → Sales Ops  
+- Samples / Free Gift → Marketing, Merchandising  
+- Gift Wrapping → Sales Ops, Marketing  
+- Staff Attitude → Sales Ops, HR L&D  
+- Staff Availability → Sales Ops  
+- Staff Knowledge → Sales Ops, HR L&D, Merchandising  
+- Store Layout & Navigation → Sales Ops, Merchandising  
+- Store Size → Sales Ops, Merchandising  
+- Store Cleanliness & Environment → Sales Ops  
+- Tester → Merchandising, Sales Ops  
+- Product Quality → Merchandising, Trading  
+- Self-Checkout → IT, Sales Ops  
+- Cannot Classified → Cannot Classified  
 
+---
+
+Examples
+
+Input: "提高購買屈臣氏自家品牌優惠，例如在易賞錢app送一張，第一次買滿自家品牌滿60元減20元的優惠券。"  
+Output:  
 {
   "topics": [
-    {"name": "<Allowed Topic>", "sentiment": "positive|negative|neutral"}
+    {"text": "Promotion", "sentiment": "positive"},
+    {"text": "Loyalty Program", "sentiment": "positive"}
   ],
   "departments": [
-    {"name": "<Department>", "sentiment": "positive|negative|neutral"}
+    {"text": "Marketing", "sentiment": "positive"},
+    {"text": "CRM", "sentiment": "positive"}
   ],
-  "overall_sentiment": "positive|negative|neutral",
-  "cannot_classified": "Boolean"
-}"""
+  "keywords": [
+    {"text": "優惠券", "sentiment": "positive"},
+    {"text": "自家品牌", "sentiment": "positive"},
+    {"text": "易賞錢app", "sentiment": "positive"}
+  ],
+  "overall_sentiment": "positive",
+  "cannot_classified": false
+}
+
+Input: "The app is usually smooth, but today the app kept crashing."  
+Output:  
+{
+  "topics": [
+    {"text": "Self-Checkout", "sentiment": "positive"},
+    {"text": "Self-Checkout", "sentiment": "negative"}
+  ],
+  "departments": [
+    {"text": "IT", "sentiment": "positive"},
+    {"text": "IT", "sentiment": "negative"},
+    {"text": "Sales Ops", "sentiment": "positive"},
+    {"text": "Sales Ops", "sentiment": "negative"}
+  ],
+  "keywords": [
+    {"text": "app", "sentiment": "positive"},
+    {"text": "app", "sentiment": "negative"}
+  ],
+  "overall_sentiment": "negative",
+  "cannot_classified": false
+}
+
+Input: "The music was relaxing."  
+Output:  
+{"cannot_classified": true}  
+
+---
+
+Stop Condition
+- If at least one valid topic: output full JSON schema.  
+- If no valid topic: output only {"cannot_classified": true}.  
+- Never output any text other than JSON.  """
     user_prompt = f"""{text}"""
 
     response = client.chat.completions.create(
@@ -163,18 +221,42 @@ Output schema (JSON only)
     )
     response_content = response.choices[0].message.content
     if response_content is None:
-        return [], None
+        # Return empty TotalResponse when no content
+        empty_response = TotalResponse(
+            topics=[],
+            departments=[],
+            keywords=[],
+            overall_sentiment="neutral",
+            cannot_classified=True
+        )
+        return empty_response, None
     try:
         cleaned_response_content = _clean_response_content(response_content)
-        return (
-            json.loads(cleaned_response_content),
-            response.usage.model_dump(),
-        )
+        response_json = json.loads(cleaned_response_content)
+        print("response_json", response_json)
+        # Handle the case where only cannot_classified=True is returned
+        if response_json.get("cannot_classified") is True:
+            # Fill with empty arrays and default values to match TotalResponse model
+            complete_response = {
+                "topics": [],
+                "departments": [],
+                "keywords": [],
+                "overall_sentiment": "neutral",
+                "cannot_classified": True
+            }
+            return TotalResponse.model_validate(complete_response), response.usage.model_dump()
+        
+        # For normal case, ensure cannot_classified is set to False if not present
+        if "cannot_classified" not in response_json:
+            response_json["cannot_classified"] = False
+             
+        # Create and return TotalResponse object
+        return TotalResponse.model_validate(response_json), response.usage.model_dump()
     except Exception as e:
         print(f"Error validating JSON response: {e}")
         print(f"Response content (first 500 chars): {response_content[:500]}")
         raise Exception(f"Failed to validate keywords response: {e}")
 
 
-async def extract_total(text: str) -> tuple[list[str], dict]:
+async def extract_total(text: str) -> tuple[TotalResponse, dict]:
     return await run_in_threadpool(_extract_total_sync, text)

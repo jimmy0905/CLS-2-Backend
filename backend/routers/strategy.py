@@ -160,8 +160,10 @@ async def get_strategy_for_store_by_ids(
         "store_ids": request.store_ids,
         "sentiments": ["Positive"],
     }
-    filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
-    surveys = filtered_query.all()
+    filtered_query, _ = build_optimized_query(db, filter_dict)
+    surveys = (
+        filtered_query.order_by(func.length(Survey.comment).desc()).limit(30).all()
+    )
     strategy, _ = await generate_strategy(surveys)
     return strategy
 
@@ -244,7 +246,9 @@ async def get_strategy_for_region_by_ids(
         "region_ids": request.region_ids,
         "sentiments": ["Positive"],
     }
-    filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
-    surveys = filtered_query.all()
+    filtered_query, _ = build_optimized_query(db, filter_dict)
+    surveys = (
+        filtered_query.order_by(func.length(Survey.comment).desc()).limit(30).all()
+    )
     strategy, _ = await generate_strategy(surveys)
     return strategy

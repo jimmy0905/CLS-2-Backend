@@ -10,7 +10,6 @@ from models.SurveyTopics import SurveyTopics
 from models.SurveyKeywords import SurveyKeywords
 from models.SurveyDepartments import SurveyDepartments
 from datetime import datetime
-from utils.llm.extract_keywords import extract_keywords
 from utils.llm.extract_total import extract_total
 from utils.logger import logger
 import dateutil.parser
@@ -118,7 +117,6 @@ async def process_upload_task(file_path, db, upload_task_id):
 
     # Read the file from csv file
     df = pd.read_csv(file_path)
-    total_rows = len(df)
 
     for index, row in df.iterrows():
         store_id = row["store_key"]  # store_key == store_id
@@ -207,41 +205,17 @@ async def process_upload_task(file_path, db, upload_task_id):
             continue
 
         reported_at = parsed_date
-        # Keywords
-        try:
-            keywords, usage = await extract_keywords(comment)
-            logger.debug(
-                f"Row {index + 1}: Token usage - completion: {usage['completion_tokens']}, prompt: {usage['prompt_tokens']}, total: {usage['total_tokens']}"
-            )
-
-            upload_task = (
-                db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
-            )
-            upload_task.completion_tokens += usage["completion_tokens"]
-            upload_task.prompt_tokens += usage["prompt_tokens"]
-            upload_task.total_tokens += usage["total_tokens"]
-            upload_task.cached_tokens += usage["prompt_tokens_details"]["cached_tokens"]
-            db.commit()
-            db.refresh(upload_task)
-        except Exception as e:
-            logger.error(f"Row {index + 1}: Failed to extract keywords. Error: {e}")
-            # Create an error for the upload task
-            error = UploadTaskError(
-                upload_task_id=upload_task_id,
-                input_store_id=store_id,
-                input_comment=comment,
-                input_reported_at=reported_at,
-                error_message=f"Error conducting AI Analysis for keywords: {e}",
-            )
-            db.add(error)
-            db.commit()
-            continue
-        # Topic (Survey sentiment, topics, departments)
+        # Topic (Survey sentiment, topics, departments, keywords)
         try:
             total, usage = await extract_total(comment)
-
-            # if total["cannot_classified"] is True, then skip the row
-            if total["cannot_classified"]:
+            # Add usage to the upload task
+            upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
+            upload_task.completion_tokens += usage.get("completion_tokens", 0)
+            upload_task.prompt_tokens += usage.get("prompt_tokens", 0)
+            upload_task.total_tokens += usage.get("total_tokens", 0)
+            db.commit()
+            # if total.cannot_classified is True, then skip the row
+            if total.cannot_classified:
                 error = UploadTaskError(
                     upload_task_id=upload_task_id,
                     input_store_id=store_id,
@@ -268,9 +242,10 @@ async def process_upload_task(file_path, db, upload_task_id):
             db.add(error)
             db.commit()
             continue
-        total_topics = total["topics"]
-        total_departments = total["departments"]
-        total_sentiment = total["overall_sentiment"]
+        total_topics = total.topics
+        total_departments = total.departments
+        total_sentiment = total.overall_sentiment
+        total_keywords = total.keywords
 
         # Create a new survey
         survey = Survey(
@@ -287,61 +262,71 @@ async def process_upload_task(file_path, db, upload_task_id):
         )
 
         # Add keywords
-        for keyword_text in keywords:
+        for keyword_obj in total_keywords:
             # Get or create keyword
-            keyword = db.query(Keyword).filter(Keyword.keyword == keyword_text).first()
+            keyword = db.query(Keyword).filter(Keyword.keyword == keyword_obj.text).first()
             if not keyword:
-                logger.debug(f"Row {index + 1}: Creating new keyword: {keyword_text}")
-                keyword = Keyword(keyword=keyword_text)
+                logger.debug(f"Row {index + 1}: Creating new keyword: {keyword_obj.text}")
+                keyword = Keyword(keyword=keyword_obj.text)
                 db.add(keyword)
                 db.commit()
                 db.refresh(keyword)
             else:
-                logger.debug(f"Row {index + 1}: Using existing keyword: {keyword_text}")
+                logger.debug(f"Row {index + 1}: Using existing keyword: {keyword_obj.text}")
 
             # Create survey-keyword relationship
-            survey_keyword = SurveyKeywords(survey_id=survey.id, keyword_id=keyword.id)
+            survey_keyword = SurveyKeywords(
+                survey_id=survey.id, 
+                keyword_id=keyword.id,
+                sentiment=keyword_obj.sentiment
+            )
             db.add(survey_keyword)
 
         # Add topics
-        for topic_text in total_topics:
+        for topic_obj in total_topics:
             # Get or create topic
-            topic = db.query(Topic).filter(Topic.topic == topic_text).first()
+            topic = db.query(Topic).filter(Topic.topic == topic_obj.text).first()
             if not topic:
-                logger.debug(f"Row {index + 1}: Creating new topic: {topic_text}")
-                topic = Topic(topic=topic_text)
+                logger.debug(f"Row {index + 1}: Creating new topic: {topic_obj.text}")
+                topic = Topic(topic=topic_obj.text)
                 db.add(topic)
                 db.commit()
                 db.refresh(topic)
             else:
-                logger.debug(f"Row {index + 1}: Using existing topic: {topic_text}")
+                logger.debug(f"Row {index + 1}: Using existing topic: {topic_obj.text}")
 
             # Create survey-topic relationship
-            survey_topic = SurveyTopics(survey_id=survey.id, topic_id=topic.id)
+            survey_topic = SurveyTopics(
+                survey_id=survey.id, 
+                topic_id=topic.id,
+                sentiment=topic_obj.sentiment
+            )
             db.add(survey_topic)
 
         # Add departments
-        for department_text in total_departments:
+        for department_obj in total_departments:
             # Get or create department
             department = (
-                db.query(Department).filter(Department.name == department_text).first()
+                db.query(Department).filter(Department.name == department_obj.text).first()
             )
             if not department:
                 logger.debug(
-                    f"Row {index + 1}: Creating new department: {department_text}"
+                    f"Row {index + 1}: Creating new department: {department_obj.text}"
                 )
-                department = Department(name=department_text)
+                department = Department(name=department_obj.text)
                 db.add(department)
                 db.commit()
                 db.refresh(department)
             else:
                 logger.debug(
-                    f"Row {index + 1}: Using existing department: {department_text}"
+                    f"Row {index + 1}: Using existing department: {department_obj.text}"
                 )
 
             # Create survey-department relationship
             survey_department = SurveyDepartments(
-                survey_id=survey.id, department_id=department.id
+                survey_id=survey.id, 
+                department_id=department.id,
+                sentiment=department_obj.sentiment
             )
             db.add(survey_department)
 
