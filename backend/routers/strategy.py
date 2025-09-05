@@ -6,7 +6,10 @@ from utils.conditionFilter import build_survey_query, build_optimized_query
 from utils.security import get_current_user
 from models.Survey import Survey
 from typing import List, Optional
-from utils.llm import generate_strategy
+from utils.llm.generate_strategy import (
+    generate_store_strategy,
+    generate_region_strategy,
+)
 from pydantic import BaseModel, Field
 from models.Store import Store
 from sqlalchemy import or_, func, case
@@ -158,13 +161,13 @@ async def get_strategy_for_store_by_ids(
 ) -> str:
     filter_dict = {
         "store_ids": request.store_ids,
-        "sentiments": ["Positive"],
+        "sentiments": ["positive"],
     }
     filtered_query, _ = build_optimized_query(db, filter_dict)
     surveys = (
         filtered_query.order_by(func.length(Survey.comment).desc()).limit(30).all()
     )
-    strategy, _ = await generate_strategy(surveys)
+    strategy, _ = await generate_store_strategy(surveys)
     return strategy
 
 
@@ -244,11 +247,11 @@ async def get_strategy_for_region_by_ids(
 ) -> str:
     filter_dict = {
         "region_ids": request.region_ids,
-        "sentiments": ["Positive"],
+        "sentiments": ["positive"],
     }
     filtered_query, _ = build_optimized_query(db, filter_dict)
     surveys = (
         filtered_query.order_by(func.length(Survey.comment).desc()).limit(30).all()
     )
-    strategy, _ = await generate_strategy(surveys)
+    strategy, _ = await generate_region_strategy(surveys)
     return strategy

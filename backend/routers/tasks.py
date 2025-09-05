@@ -2,16 +2,18 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
 from utils.backgrounTaskHandler import process_upload_task
 from config import PATH_TO_UPLOAD_FOLDER
-from utils.database import get_db
+from utils.database import get_db, SessionLocal
 from sqlalchemy.orm import Session
 import pandas as pd
 from models.UploadTask import UploadTask
 import os
 from datetime import datetime
-import asyncio
 from pydantic import BaseModel
 from fastapi.responses import FileResponse
 from utils.security import get_current_user
+from utils.logger import logger
+import threading
+import asyncio
 
 router = APIRouter(
     prefix="/tasks",
@@ -19,6 +21,48 @@ router = APIRouter(
     dependencies=[Depends(get_db), Depends(get_current_user)],
 )
 
+
+def background_process_upload_task(file_path: str, upload_task_id: str):
+    """
+    Background task wrapper that runs in a separate thread.
+    This ensures the background task doesn't block the API response.
+    """
+    async def async_process():
+        db = SessionLocal()
+        try:
+            logger.info(f"Background task started for upload_task_id {upload_task_id}")
+            # Update status to "processing" when background task starts
+            upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
+            if upload_task:
+                upload_task.status = "processing"
+                db.commit()
+            
+            # Process the upload task with multi-threading
+            await process_upload_task(file_path, db, upload_task_id)
+            
+        except Exception as e:
+            # Log error and update task status
+            logger.error(f"Background task failed for upload_task_id {upload_task_id}: {e}")
+            
+            # Update task status to failed
+            upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
+            if upload_task:
+                upload_task.status = "failed"
+                db.commit()
+        finally:
+            logger.info(f"Background task completed for upload_task_id {upload_task_id}")
+            db.close()
+    
+    # Run the async function in its own event loop in a separate thread
+    def run_in_thread():
+        try:
+            asyncio.run(async_process())
+        except Exception as e:
+            logger.error(f"Thread execution failed for upload_task_id {upload_task_id}: {e}")
+    
+    # Start the processing in a daemon thread
+    thread = threading.Thread(target=run_in_thread, daemon=True)
+    thread.start()
 
 @router.post("/upload_tasks")
 async def upload_tasks(
@@ -77,8 +121,13 @@ async def upload_tasks(
     db.add(upload_task)
     db.commit()
     db.refresh(upload_task)
+    
     # Create a background task to process the upload task
-    asyncio.create_task(process_upload_task(file_path, db, upload_task.id))
+    # This will run independently in a separate thread and not block the API response
+    logger.info(f"Starting background thread for upload_task_id {upload_task.id}")
+    background_process_upload_task(file_path, upload_task.id)
+    logger.info(f"Background thread started for upload_task_id {upload_task.id}")
+    
     return upload_task
 
 

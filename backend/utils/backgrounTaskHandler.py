@@ -13,7 +13,15 @@ from datetime import datetime
 from utils.llm.extract_total import extract_total
 from utils.logger import logger
 import dateutil.parser
-from typing import Union, Optional
+from typing import Union, Optional, List, Dict, Any
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+import asyncio
+import time
+from functools import partial
+from sqlalchemy.orm import sessionmaker
+from utils.database import engine
+from config import MAX_WORKER_THREADS
 
 
 def parse_flexible_date(
@@ -113,15 +121,49 @@ def parse_flexible_date(
         return None
 
 
-async def process_upload_task(file_path, db, upload_task_id):
+# Thread-safe session factory
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-    # Read the file from csv file
-    df = pd.read_csv(file_path)
+# Thread-local storage for database sessions
+thread_local_data = threading.local()
 
-    for index, row in df.iterrows():
+# Global locks for thread-safe statistics tracking
+stats_lock = threading.Lock()
+progress_lock = threading.Lock()
+
+def get_thread_db_session():
+    """Get a thread-local database session"""
+    if not hasattr(thread_local_data, 'session'):
+        thread_local_data.session = SessionLocal()
+    return thread_local_data.session
+
+def close_thread_db_session():
+    """Close the thread-local database session"""
+    if hasattr(thread_local_data, 'session'):
+        thread_local_data.session.close()
+        delattr(thread_local_data, 'session')
+
+def process_single_row(row_data: Dict[str, Any], upload_task_id: int) -> Dict[str, Any]:
+    """
+    Process a single row in a separate thread.
+    Updates statistics directly with thread-safe locks.
+    Returns a dictionary with processing results.
+    """
+    try:
+        db = get_thread_db_session()
+        index = row_data['index']
+        row = row_data['row']
+        
+        result = {
+            'index': index,
+            'success': False,
+            'error': None
+        }
+        
         store_id = row["store_key"]  # store_key == store_id
         comment = row["answer"]  # comment == answer
         reported_at = row["submitdate"]  # reported_at == submitdate
+        
         # Check if the store_id (store_key) is valid
         # Check if the store_id is empty
         if not store_id:
@@ -136,7 +178,8 @@ async def process_upload_task(file_path, db, upload_task_id):
             )
             db.add(error)
             db.commit()
-            continue
+            result['error'] = "Store ID is required"
+            return result
         # Check if the store_id is in the database
         store = db.query(Store).filter(Store.id == int(store_id)).first()
         if not store:
@@ -153,7 +196,8 @@ async def process_upload_task(file_path, db, upload_task_id):
             )
             db.add(error)
             db.commit()
-            continue
+            result['error'] = "Store ID is not valid"
+            return result
 
         # Check if the comment is valid
         # Check if the comment is empty
@@ -169,7 +213,8 @@ async def process_upload_task(file_path, db, upload_task_id):
             )
             db.add(error)
             db.commit()
-            continue
+            result['error'] = "Comment is required"
+            return result
         # Check if the reported_at is valid
         # Check if the reported_at is empty
         if not reported_at:
@@ -184,7 +229,8 @@ async def process_upload_task(file_path, db, upload_task_id):
             )
             db.add(error)
             db.commit()
-            continue
+            result['error'] = "Reported at is required"
+            return result
         # Check if the reported_at is a valid date using flexible parsing
         parsed_date = parse_flexible_date(reported_at, index + 1)
 
@@ -202,18 +248,26 @@ async def process_upload_task(file_path, db, upload_task_id):
             )
             db.add(error)
             db.commit()
-            continue
+            result['error'] = f"Could not parse date format: {reported_at}"
+            return result
 
         reported_at = parsed_date
         # Topic (Survey sentiment, topics, departments, keywords)
         try:
-            total, usage = await extract_total(comment)
-            # Add usage to the upload task
-            upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
-            upload_task.completion_tokens += usage.get("completion_tokens", 0)
-            upload_task.prompt_tokens += usage.get("prompt_tokens", 0)
-            upload_task.total_tokens += usage.get("total_tokens", 0)
-            db.commit()
+            # Use synchronous extract_total in thread pool
+            from utils.llm.extract_total import _extract_total_sync
+            total, usage = _extract_total_sync(comment)
+            
+            # Update usage statistics atomically
+            if usage:
+                with stats_lock:
+                    upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
+                    if upload_task:
+                        upload_task.completion_tokens += usage.get("completion_tokens", 0)
+                        upload_task.prompt_tokens += usage.get("prompt_tokens", 0)
+                        upload_task.total_tokens += usage.get("total_tokens", 0)
+                        db.commit()
+            
             # if total.cannot_classified is True, then skip the row
             if total.cannot_classified:
                 error = UploadTaskError(
@@ -225,7 +279,8 @@ async def process_upload_task(file_path, db, upload_task_id):
                 )
                 db.add(error)
                 db.commit()
-                continue
+                result['error'] = "Cannot classified in AI Analysis"
+                return result
 
         except Exception as e:
             logger.error(
@@ -241,7 +296,8 @@ async def process_upload_task(file_path, db, upload_task_id):
             )
             db.add(error)
             db.commit()
-            continue
+            result['error'] = f"Error conducting AI Analysis for topics: {e}"
+            return result
         total_topics = total.topics
         total_departments = total.departments
         total_sentiment = total.overall_sentiment
@@ -331,13 +387,98 @@ async def process_upload_task(file_path, db, upload_task_id):
             db.add(survey_department)
 
         db.commit()
-        upload_task = (
-            db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
-        )
-        upload_task.processed_rows += 1
-        db.commit()
+        
+        # Update processed rows count atomically
+        with progress_lock:
+            upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
+            if upload_task:
+                upload_task.processed_rows += 1
+                processed_count = upload_task.processed_rows
+                total_rows = upload_task.total_rows
+                db.commit()
+                
+                # Log progress every 10 processed items or at completion
+                if (processed_count % 10 == 0) or (processed_count == total_rows):
+                    logger.info(f"Processed {processed_count}/{total_rows} rows")
+        
+        result['success'] = True
+        logger.debug(f"Row {index + 1}: Successfully processed survey with ID: {survey.id}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Row {index + 1}: Unexpected error during processing: {e}")
+        result['error'] = f"Unexpected error: {e}"
+        return result
+    finally:
+        close_thread_db_session()
 
-    # Update the upload task status
+
+async def process_upload_task(file_path, db, upload_task_id):
+    """
+    Process upload task with multi-threading support.
+    Uses ThreadPoolExecutor to process multiple rows concurrently.
+    """
+    # Read the file from csv file
+    df = pd.read_csv(file_path)
+    
+    # Prepare row data for processing
+    row_data_list = []
+    for index, row in df.iterrows():
+        row_data_list.append({
+            'index': index,
+            'row': row
+        })
+    
+    # Configure thread pool size - adjust based on your system capabilities
+    # Consider API rate limits and database connection pool size
+    max_workers = min(MAX_WORKER_THREADS, len(row_data_list))
+    
+    logger.info(f"Processing {len(row_data_list)} rows with {max_workers} worker threads")
+    
+    # Track processing time
+    start_time = time.time()
+    
+    # Process rows in parallel using ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all tasks
+        future_to_row = {
+            executor.submit(process_single_row, row_data, upload_task_id): row_data['index']
+            for row_data in row_data_list
+        }
+        
+        # Wait for all tasks to complete
+        completed_tasks = 0
+        failed_tasks = 0
+        
+        for future in as_completed(future_to_row):
+            row_index = future_to_row[future]
+            try:
+                result = future.result()
+                if result.get('success'):
+                    completed_tasks += 1
+                else:
+                    failed_tasks += 1
+                    
+            except Exception as e:
+                failed_tasks += 1
+                logger.error(f"Error processing row {row_index + 1}: {e}")
+    
+    # Update final task status
     upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
-    upload_task.status = "completed"
-    db.commit()
+    if upload_task:
+        upload_task.status = "completed"
+        db.commit()
+    
+    # Calculate and log performance metrics
+    end_time = time.time()
+    processing_time = end_time - start_time
+    rows_per_second = len(row_data_list) / processing_time if processing_time > 0 else 0
+    
+    # Get final statistics from database
+    final_upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
+    final_processed_count = final_upload_task.processed_rows if final_upload_task else 0
+        
+    logger.info(f"Upload task {upload_task_id} completed in {processing_time:.2f} seconds.")
+    logger.info(f"Processed {final_processed_count}/{len(row_data_list)} rows successfully.")
+    logger.info(f"Failed tasks: {failed_tasks}, Completed tasks: {completed_tasks}")
+    logger.info(f"Processing rate: {rows_per_second:.2f} rows/second with {max_workers} threads.")

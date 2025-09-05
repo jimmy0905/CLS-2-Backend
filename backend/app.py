@@ -36,7 +36,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-add_pagination(app) 
+add_pagination(app)
+
+
 @app.on_event("startup")
 async def startup_event():
     check_tables_exist()
@@ -60,9 +62,6 @@ app.include_router(userBehavoiorLogs.router)
 app.include_router(regions.router)
 app.include_router(tasks.router)
 app.include_router(users.router)
-
-
-
 
 
 if __name__ == "__main__":
