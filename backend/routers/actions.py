@@ -144,6 +144,10 @@ async def get_actions(
             status_code=400,
             detail="source_ids and source_names cannot be used together",
         )
+    # lowercase the sentiments
+    action_filter_request.sentiments = [
+        sentiment.lower() for sentiment in action_filter_request.sentiments
+    ]
     filter_dict = action_filter_request.model_dump()
     filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
 
