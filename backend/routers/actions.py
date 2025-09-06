@@ -52,6 +52,11 @@ class DistrictResponse(BaseModel):
     name: str
 
 
+class RegionResponse(BaseModel):
+    id: int
+    name: str
+
+
 class SourceResponse(BaseModel):
     id: int
     name: str
@@ -62,24 +67,38 @@ class StoreResponse(BaseModel):
     name: str
     district: DistrictResponse
     source: SourceResponse
+    region: RegionResponse
 
 
-class DepartmentResponse(BaseModel):
-    id: int
+class DepartmentWithSentimentResponse(BaseModel):
+    department_id: int
     name: str
+    sentiment: str
+
+
+class KeywordWithSentimentResponse(BaseModel):
+    keyword_id: int
+    keyword: str
+    sentiment: str
+
+
+class TopicWithSentimentResponse(BaseModel):
+    topic_id: int
+    topic: str
+    sentiment: str
 
 
 class SurveyResponse(BaseModel):
     id: int
     store: StoreResponse
-    department: DepartmentResponse
+    departments: List[DepartmentWithSentimentResponse]
+    topics: List[TopicWithSentimentResponse]
+    keywords: List[KeywordWithSentimentResponse]
     comment: str
     sentiment: str
     reported_at: datetime
     created_at: datetime
     updated_at: datetime
-    topics: List[str]
-    keywords: List[str]
 
 
 class GetActionsResponse(BaseModel):
