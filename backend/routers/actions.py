@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from models.Survey import Survey
-from utils.conditionFilter import build_optimized_query
+from utils.conditionFilter import build_survey_query
 from utils.database import get_db
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
@@ -145,7 +145,7 @@ async def get_actions(
             detail="source_ids and source_names cannot be used together",
         )
     filter_dict = action_filter_request.model_dump()
-    filtered_query, _ = build_optimized_query(db, filter_dict)
+    filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
 
     # convert sentiments to lowercase
     filter_dict["sentiments"] = [
