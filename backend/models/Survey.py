@@ -138,3 +138,33 @@ class Survey(Base):
                 self.updated_at.isoformat() if self.updated_at is not None else None
             ),
         }
+
+    def to_csv(self):
+        return {
+            "id": self.id,
+            "store_id": self.store.id,
+            "store_name": self.store.name,
+            "district_name": self.store.district.name,
+            "region_name": self.store.region.name,
+            "source_name": self.store.source.name,
+            "comment": self.comment,
+            "sentiment": self.sentiment,
+            "reported_at": self.reported_at,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            # department1 (positive), department2 (negative), department3 (neutral)
+            "departments": [
+                f"{survey_department.department.name} ({survey_department.sentiment})"
+                for survey_department in self.survey_departments
+            ],
+            # topic1 (positive), topic2 (negative), topic3 (neutral)
+            "topics": [
+                f"{survey_topic.topic.topic} ({survey_topic.sentiment})"
+                for survey_topic in self.survey_topics
+            ],
+            # keyword1 (positive), keyword2 (negative), keyword3 (neutral)
+            "keywords": [
+                f"{survey_keyword.keyword.keyword} ({survey_keyword.sentiment})"
+                for survey_keyword in self.survey_keywords
+            ],
+        }

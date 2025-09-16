@@ -25,6 +25,7 @@ from utils.llm import (
 )
 from utils.security import get_current_user
 from fastapi_pagination import Page, paginate
+from fastapi.responses import StreamingResponse
 import logging
 
 logger = logging.getLogger(__name__)
@@ -147,6 +148,78 @@ class CreateSurveyRequest(BaseModel):
     topics: List[CreateSurveyTopicRequest]
     keywords: List[CreateSurveyKeywordRequest]
     reported_at: datetime = Field(default_factory=datetime.now)
+
+
+@router.get("/download")
+async def download_surveys(
+    filter_params: FilterRequest = Depends(get_filter_params),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    filter_dict = filter_params.model_dump()
+    filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
+
+    def format_csv_value(value):
+        if value is None:
+            return ""
+        elif isinstance(value, list):
+            return "; ".join(str(item) for item in value)
+        elif isinstance(value, datetime):
+            return value.isoformat()
+        else:
+            return str(value)
+
+    def generate_csv_rows():
+        # Yield CSV headers first
+        headers = [
+            "id",
+            "store_id",
+            "store_name",
+            "district_name",
+            "region_name",
+            "source_name",
+            "departments",
+            "topics",
+            "keywords",
+            "comment",
+            "sentiment",
+            "reported_at",
+            "created_at",
+            "updated_at",
+        ]
+        yield ",".join(headers) + "\n"
+        
+        # Stream surveys in batches using ID as offset
+        batch_size = 100
+        last_id = 0
+        
+        while True:
+            # Get surveys with ID greater than last_id, ordered by ID
+            surveys = (
+                filtered_query
+                .filter(Survey.id > last_id)
+                .order_by(Survey.id)
+                .limit(batch_size)
+                .all()
+            )
+            
+            if not surveys:
+                break
+                
+            # Process each survey and yield CSV row
+            for survey in surveys:
+                csv_row = survey.to_csv()
+                row_values = [format_csv_value(csv_row[header]) for header in headers]
+                csv_row_str = ",".join(f'"{value}"' for value in row_values) + "\n"
+                yield csv_row_str
+                
+                # Update last_id for next batch
+                last_id = survey.id
+
+    return StreamingResponse(
+        generate_csv_rows(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=surveys.csv"}
+    )
 
 
 @router.post("/")
