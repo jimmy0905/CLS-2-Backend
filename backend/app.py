@@ -16,6 +16,9 @@ from routers import (
     regions,
     tasks,
     users,
+    channels,
+    delivery_services,
+    topics,
 )
 import os
 from fastapi_pagination import add_pagination
@@ -62,7 +65,10 @@ app.include_router(userBehavoiorLogs.router)
 app.include_router(regions.router)
 app.include_router(tasks.router)
 app.include_router(users.router)
+app.include_router(channels.router)
+app.include_router(delivery_services.router)
+app.include_router(topics.router)
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8002)

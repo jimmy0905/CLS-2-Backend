@@ -32,6 +32,10 @@ router = APIRouter(
 class ActionFilterRequest(BaseModel):
     store_ids: List[int] = []
     store_names: List[str] = []
+    channel_ids: List[int] = []
+    channel_names: List[str] = []
+    delivery_service_ids: List[int] = []
+    delivery_service_names: List[str] = []
     department_ids: List[int] = []
     department_names: List[str] = []
     district_ids: List[int] = []
@@ -70,6 +74,16 @@ class StoreResponse(BaseModel):
     region: RegionResponse
 
 
+class ChannelResponse(BaseModel):
+    id: int
+    name: str
+
+
+class DeliveryServiceResponse(BaseModel):
+    id: int
+    name: str
+
+
 class DepartmentWithSentimentResponse(BaseModel):
     department_id: int
     name: str
@@ -91,6 +105,8 @@ class TopicWithSentimentResponse(BaseModel):
 class SurveyResponse(BaseModel):
     id: int
     store: StoreResponse
+    channel: ChannelResponse
+    delivery_service: DeliveryServiceResponse
     departments: List[DepartmentWithSentimentResponse]
     topics: List[TopicWithSentimentResponse]
     keywords: List[KeywordWithSentimentResponse]
