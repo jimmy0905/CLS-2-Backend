@@ -176,4 +176,8 @@ class Survey(Base):
                 f"{survey_keyword.keyword.keyword} ({survey_keyword.sentiment})"
                 for survey_keyword in self.survey_keywords
             ],
+            "channel": self.channel.name if self.channel else None,
+            "delivery_service": (
+                self.delivery_service.name if self.delivery_service else None
+            ),
         }
