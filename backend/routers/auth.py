@@ -19,6 +19,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 AZURE_REDIRECT_URI = os.getenv("AZURE_REDIRECT_URI")
 FRONTEND_URL = os.getenv("FRONTEND_URL")
 
+
 @router.get("/azure/login")
 async def azure_login(request: Request):
     return await oauth.azure.authorize_redirect(request, AZURE_REDIRECT_URI)
@@ -28,7 +29,7 @@ async def azure_login(request: Request):
 async def azure_callback(request: Request, db: Session = Depends(get_db)):
     try:
         print("Azure callback")
-        # Get token from Azure AD
+        # Get token from Azure AD (proxy configuration is handled in OAuth client creation)
         token_response = await oauth.azure.authorize_access_token(request)
         access_token = token_response.get("access_token")
         print(access_token)
@@ -56,7 +57,7 @@ async def azure_callback(request: Request, db: Session = Depends(get_db)):
         # Create your application's JWT token
         app_access_token = create_access_token(
             data={
-                "sub": user.id,
+                "sub": str(user.id),  # Ensure user.id is converted to string
                 "oauth_provider": user.oauth_provider,
                 "oauth_id": user.oauth_id,
                 "role": user.role,
@@ -96,7 +97,7 @@ async def token(
     # Generate access token after successful login
     access_token = create_access_token(
         data={
-            "sub": user.id,
+            "sub": str(user.id),  # Ensure user.id is converted to string
             "role": user.role,
             "oauth_provider": user.oauth_provider,
             "oauth_id": user.oauth_id,
@@ -140,7 +141,7 @@ async def renew_token(
         )
     access_token = create_access_token(
         data={
-            "sub": user.id,
+            "sub": str(user.id),  # Ensure user.id is converted to string
             "oauth_provider": user.oauth_provider,
             "oauth_id": user.oauth_id,
             "role": user.role,
