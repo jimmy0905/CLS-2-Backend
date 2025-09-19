@@ -88,7 +88,13 @@ async def verify_azure_token(token: str) -> Dict[str, Any]:
         jwks_url = f"https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys"
 
         # Fetch the JWKS
-        response = requests.get(jwks_url)
+        response = requests.get(
+            jwks_url,
+            proxies={
+                "http": os.getenv("ASW_PROXY_URL"),
+                "https": os.getenv("ASW_PROXY_URL"),
+            },
+        )
         response.raise_for_status()
         jwks = response.json()
 
@@ -111,6 +117,7 @@ async def verify_azure_token(token: str) -> Dict[str, Any]:
         raise HTTPException(
             status_code=401, detail=f"Token verification failed: {str(e)}"
         )
+
 
 def extract_user_claims(token_data: Dict[str, Any]) -> Dict[str, str]:
     """
