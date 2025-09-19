@@ -301,6 +301,8 @@ async def download_surveys(
             "topics",
             "keywords",
             "comment",
+            "channel",
+            "delivery_service",
             "sentiment",
             "reported_at",
             "created_at",
