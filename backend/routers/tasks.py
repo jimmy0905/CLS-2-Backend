@@ -88,7 +88,7 @@ async def upload_tasks(
             f.write(contents)
 
         # Validate the saved file
-        df = pd.read_csv(file_path)
+        df = pd.read_csv(file_path, encoding="utf-8", sep=",", encoding_errors="ignore")
         # Check if the file has the required columns (store_key, submitdate, answer)
         required_columns = ["store_key", "submitdate", "answer"]
         if not all(col in df.columns for col in required_columns):
@@ -106,7 +106,7 @@ async def upload_tasks(
         # Clean up if file was created
         if "file_path" in locals() and os.path.exists(file_path):
             os.remove(file_path)
-        raise HTTPException(status_code=400, detail=f"Invalid Excel file: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Invalid CSV file: {str(e)}")
 
     # File has been validated and saved successfully
 

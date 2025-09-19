@@ -2,14 +2,12 @@ from utils.database import Base
 from sqlalchemy import (
     Column,
     DateTime,
-    String,
     Text,
     Integer,
     Boolean,
     Enum,
     Index,
     ForeignKey,
-    Float,
 )
 import enum
 from sqlalchemy.orm import relationship
@@ -27,7 +25,11 @@ class Survey(Base):
 
     id = Column(Integer, primary_key=True)
     # Foreign keys
-    store_id = Column(Integer, ForeignKey("stores.id"))
+    store_id = Column(Integer, ForeignKey("stores.id"), nullable=False)
+    channel_id = Column(Integer, ForeignKey("channels.id"), nullable=True)
+    delivery_service_id = Column(
+        Integer, ForeignKey("delivery_services.id"), nullable=True
+    )
     # Columns
     comment = Column(Text)
     sentiment = Column(Enum(Sentiment, name="sentiment_enum"))
@@ -71,6 +73,8 @@ class Survey(Base):
         back_populates="surveys",
         viewonly=True,
     )
+    channel = relationship("Channel", back_populates="surveys")
+    delivery_service = relationship("DeliveryService", back_populates="surveys")
     # Indexes for filtered columns
     __table_args__ = (
         Index("idx_survey_reported_at", reported_at),
@@ -101,6 +105,11 @@ class Survey(Base):
                 if self.store
                 else None
             ),
+            "channel": self.channel.to_dict() if self.channel else None,
+            "delivery_service": (
+                self.delivery_service.to_dict() if self.delivery_service else None
+            ),
+            # Relationships
             "departments": [
                 {
                     "department_id": survey_department.department_id,

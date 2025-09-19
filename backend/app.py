@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from utils.database import check_tables_exist
 import uvicorn
 from routers import (
@@ -16,6 +17,9 @@ from routers import (
     regions,
     tasks,
     users,
+    channels,
+    delivery_services,
+    topics,
 )
 import os
 from fastapi_pagination import add_pagination
@@ -34,6 +38,12 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Add session middleware for OAuth state management
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("SESSION_SECRET_KEY", "fallback-session-secret-key-change-in-production")
 )
 
 add_pagination(app)
@@ -62,7 +72,10 @@ app.include_router(userBehavoiorLogs.router)
 app.include_router(regions.router)
 app.include_router(tasks.router)
 app.include_router(users.router)
+app.include_router(channels.router)
+app.include_router(delivery_services.router)
+app.include_router(topics.router)
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8002)

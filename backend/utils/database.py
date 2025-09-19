@@ -1,9 +1,17 @@
-from sqlalchemy import create_engine, MetaData, text
+from sqlalchemy import create_engine, MetaData, text, event
 from sqlalchemy.orm import sessionmaker, declarative_base
 from utils.logger import logger
 from config import SQLALCHEMY_DATABASE_URI
+import os
 
-engine = create_engine(SQLALCHEMY_DATABASE_URI)
+# Get timezone from environment variable
+timezone = os.getenv("DATABASE_TIMEZONE", "UTC")
+
+# Create engine with timezone configuration
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URI,
+    connect_args={"options": f"-c timezone={timezone}"}
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 metadata = MetaData()
 Base = declarative_base(metadata=metadata)
@@ -18,11 +26,13 @@ def get_db():
 
 
 def init_db():
+    # Timezone is automatically set for all connections via the event listener
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables created")
     db = next(get_db())
     # Create a default user
     from models.User import User
+
     user = User(
         username="admin",
         role="admin",

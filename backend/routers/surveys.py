@@ -11,6 +11,8 @@ from models.SurveyKeywords import SurveyKeywords
 from models.SurveyDepartments import SurveyDepartments
 from models.Store import Store
 from models.Department import Department
+from models.Channel import Channel
+from models.DeliveryService import DeliveryService
 from utils.database import get_db
 from pydantic import BaseModel, Field
 from typing import Literal, List, Optional
@@ -61,6 +63,16 @@ class StoreResponse(BaseModel):
     region: RegionResponse
 
 
+class ChannelResponse(BaseModel):
+    id: int
+    name: str
+
+
+class DeliveryServiceResponse(BaseModel):
+    id: int
+    name: str
+
+
 class DepartmentWithSentimentResponse(BaseModel):
     department_id: int
     name: str
@@ -82,6 +94,8 @@ class TopicWithSentimentResponse(BaseModel):
 class SurveyResponse(BaseModel):
     id: int
     store: StoreResponse
+    channel: Optional[ChannelResponse]
+    delivery_service: Optional[DeliveryServiceResponse]
     departments: List[DepartmentWithSentimentResponse]
     topics: List[TopicWithSentimentResponse]
     keywords: List[KeywordWithSentimentResponse]
@@ -142,6 +156,8 @@ class CreateSurveyKeywordRequest(BaseModel):
 
 class CreateSurveyRequest(BaseModel):
     store_id: int
+    channel: Optional[str] = None
+    delivery_service: Optional[str] = None
     departments: List[CreateSurveyDepartmentRequest]
     comment: str
     sentiment: Literal["positive", "negative", "neutral"] = "neutral"
@@ -150,105 +166,61 @@ class CreateSurveyRequest(BaseModel):
     reported_at: datetime = Field(default_factory=datetime.now)
 
 
-@router.get("/download")
-async def download_surveys(
-    filter_params: FilterRequest = Depends(get_filter_params),
-    db: Session = Depends(get_db),
-) -> StreamingResponse:
-    filter_dict = filter_params.model_dump()
-    filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
-
-    def format_csv_value(value):
-        if value is None:
-            return ""
-        elif isinstance(value, list):
-            return "; ".join(str(item) for item in value)
-        elif isinstance(value, datetime):
-            return value.isoformat()
-        else:
-            return str(value)
-
-    def generate_csv_rows():
-        # Yield CSV headers first
-        headers = [
-            "id",
-            "store_id",
-            "store_name",
-            "district_name",
-            "region_name",
-            "source_name",
-            "departments",
-            "topics",
-            "keywords",
-            "comment",
-            "sentiment",
-            "reported_at",
-            "created_at",
-            "updated_at",
-        ]
-        yield ",".join(headers) + "\n"
-        
-        # Stream surveys in batches using ID as offset
-        batch_size = 100
-        last_id = 0
-        
-        while True:
-            # Get surveys with ID greater than last_id, ordered by ID
-            surveys = (
-                filtered_query
-                .filter(Survey.id > last_id)
-                .order_by(Survey.id)
-                .limit(batch_size)
-                .all()
-            )
-            
-            if not surveys:
-                break
-                
-            # Process each survey and yield CSV row
-            for survey in surveys:
-                csv_row = survey.to_csv()
-                row_values = [format_csv_value(csv_row[header]) for header in headers]
-                csv_row_str = ",".join(f'"{value}"' for value in row_values) + "\n"
-                yield csv_row_str
-                
-                # Update last_id for next batch
-                last_id = survey.id
-
-    return StreamingResponse(
-        generate_csv_rows(),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=surveys.csv"}
-    )
-
-
 @router.post("/")
 async def create_survey(
     survey_request: CreateSurveyRequest,
     db: Session = Depends(get_db),
 ):
-    try:
-        # Check if store exists
-        store = db.query(Store).filter(Store.id == survey_request.store_id).first()
-        if not store:
-            raise HTTPException(status_code=404, detail="Store not found")
-        # Check if departments exist
-        departments = (
-            db.query(Department)
-            .filter(
-                Department.name.in_([dept.name for dept in survey_request.departments])
-            )
-            .all()
-        )
-        if not departments:
-            raise HTTPException(status_code=404, detail="Departments not found")
 
+    # Check if store exists
+    store = db.query(Store).filter(Store.id == survey_request.store_id).first()
+    if not store:
+        raise HTTPException(status_code=404, detail="Store not found")
+    # Check if departments exist
+    departments = (
+        db.query(Department)
+        .filter(Department.name.in_([dept.name for dept in survey_request.departments]))
+        .all()
+    )
+    if not departments:
+        raise HTTPException(status_code=404, detail="Departments not found")
+    # Check if topics exist
+    topics = (
+        db.query(Topic)
+        .filter(Topic.topic.in_([topic.topic for topic in survey_request.topics]))
+        .all()
+    )
+    if not topics:
+        raise HTTPException(status_code=404, detail="Topics not found")
+    # Initialize channel and delivery_service to None
+    channel = None
+    delivery_service = None
+
+    # If channel is provided, check if channel exists
+    if survey_request.channel:
+        channel = (
+            db.query(Channel).filter(Channel.name == survey_request.channel).first()
+        )
+        if not channel:
+            raise HTTPException(status_code=404, detail="Channel not found")
+    # If delivery service is provided, check if delivery service exists
+    if survey_request.delivery_service:
+        delivery_service = (
+            db.query(DeliveryService)
+            .filter(DeliveryService.name == survey_request.delivery_service)
+            .first()
+        )
+        if not delivery_service:
+            raise HTTPException(status_code=404, detail="Delivery service not found")
+    try:
         # Create survey without departments, topics, and keywords relationships
         survey = Survey(
             store_id=survey_request.store_id,
             comment=survey_request.comment,
             sentiment=survey_request.sentiment,
             reported_at=survey_request.reported_at,
+            channel_id=channel.id if channel else None,
+            delivery_service_id=delivery_service.id if delivery_service else None,
         )
         db.add(survey)
         db.flush()
@@ -296,6 +268,77 @@ async def create_survey(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/download")
+async def download_surveys(
+    filter_params: FilterRequest = Depends(get_filter_params),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    filter_dict = filter_params.model_dump()
+    filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
+
+    def format_csv_value(value):
+        if value is None:
+            return ""
+        elif isinstance(value, list):
+            return "; ".join(str(item) for item in value)
+        elif isinstance(value, datetime):
+            return value.isoformat()
+        else:
+            return str(value)
+
+    def generate_csv_rows():
+        # Yield CSV headers first
+        headers = [
+            "id",
+            "store_id",
+            "store_name",
+            "district_name",
+            "region_name",
+            "source_name",
+            "departments",
+            "topics",
+            "keywords",
+            "comment",
+            "sentiment",
+            "reported_at",
+            "created_at",
+            "updated_at",
+        ]
+        yield ",".join(headers) + "\n"
+
+        # Stream surveys in batches using ID as offset
+        batch_size = 100
+        last_id = 0
+
+        while True:
+            # Get surveys with ID greater than last_id, ordered by ID
+            surveys = (
+                filtered_query.filter(Survey.id > last_id)
+                .order_by(Survey.id)
+                .limit(batch_size)
+                .all()
+            )
+
+            if not surveys:
+                break
+
+            # Process each survey and yield CSV row
+            for survey in surveys:
+                csv_row = survey.to_csv()
+                row_values = [format_csv_value(csv_row[header]) for header in headers]
+                csv_row_str = ",".join(f'"{value}"' for value in row_values) + "\n"
+                yield csv_row_str
+
+                # Update last_id for next batch
+                last_id = survey.id
+
+    return StreamingResponse(
+        generate_csv_rows(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=surveys.csv"},
+    )
 
 
 @router.get("/{survey_id}")
