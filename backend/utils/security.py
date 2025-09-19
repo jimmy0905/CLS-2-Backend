@@ -95,6 +95,7 @@ async def verify_azure_token(token: str) -> Dict[str, Any]:
                 "https": os.getenv("ASW_PROXY_URL"),
             },
         )
+        print(response.json())
         response.raise_for_status()
         jwks = response.json()
         print(jwks)
