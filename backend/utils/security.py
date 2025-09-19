@@ -86,7 +86,7 @@ async def verify_azure_token(token: str) -> Dict[str, Any]:
         # Get Azure AD public keys for token verification
         tenant_id = os.getenv("AZURE_TENANT_ID")
         jwks_url = f"https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys"
-
+        print(jwks_url)
         # Fetch the JWKS
         response = requests.get(
             jwks_url,
@@ -95,6 +95,7 @@ async def verify_azure_token(token: str) -> Dict[str, Any]:
                 "https": os.getenv("ASW_PROXY_URL"),
             },
         )
+        print(response.json())
         response.raise_for_status()
         jwks = response.json()
         print(jwks)
