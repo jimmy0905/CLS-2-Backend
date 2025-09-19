@@ -13,6 +13,7 @@ import uuid
 from dotenv import load_dotenv
 from authlib.integrations.starlette_client import OAuth
 from authlib.jose import jwt as authlib_jwt
+import httpx
 
 
 load_dotenv()
@@ -26,31 +27,38 @@ oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl=os.getenv("FASTAPI_ROOT_PATH", "/") + "/auth/token"
 )
 
-# Configure proxy settings if available
-proxy_url = os.getenv("ASW_PROXY_URL")
-proxy_config = {}
-if proxy_url:
-    proxy_config = {
-        "proxies": {
-            "http": proxy_url,
-            "https": proxy_url,
-        }
-    }
+# Configure OAuth with proxy support
+def create_oauth_client():
+    """Create OAuth client with proxy configuration if needed"""
+    proxy_url = os.getenv("ASW_PROXY_URL")
+    
+    if proxy_url:
+        # Create httpx client with proxy configuration
+        httpx_client = httpx.AsyncClient(
+            proxies={
+                "http://": proxy_url,
+                "https://": proxy_url,
+            },
+            timeout=30.0
+        )
+        oauth_client = OAuth(httpx_client=httpx_client)
+    else:
+        oauth_client = OAuth()
+    
+    oauth_client.register(
+        name="azure",
+        client_id=os.getenv("AZURE_CLIENT_ID"),
+        client_secret=os.getenv("AZURE_CLIENT_SECRET"),
+        authorize_url=f'https://login.microsoftonline.com/{os.getenv("AZURE_TENANT_ID")}/oauth2/v2.0/authorize',
+        access_token_url=f'https://login.microsoftonline.com/{os.getenv("AZURE_TENANT_ID")}/oauth2/v2.0/token',
+        jwks_uri=f'https://login.microsoftonline.com/{os.getenv("AZURE_TENANT_ID")}/discovery/v2.0/keys',
+        client_kwargs={
+            "scope": "openid email profile https://graph.microsoft.com/User.Read",
+        },
+    )
+    return oauth_client
 
-oauth = OAuth()
-
-oauth.register(
-    name="azure",
-    client_id=os.getenv("AZURE_CLIENT_ID"),
-    client_secret=os.getenv("AZURE_CLIENT_SECRET"),
-    authorize_url=f'https://login.microsoftonline.com/{os.getenv("AZURE_TENANT_ID")}/oauth2/v2.0/authorize',
-    access_token_url=f'https://login.microsoftonline.com/{os.getenv("AZURE_TENANT_ID")}/oauth2/v2.0/token',
-    jwks_uri=f'https://login.microsoftonline.com/{os.getenv("AZURE_TENANT_ID")}/discovery/v2.0/keys',
-    client_kwargs={
-        "scope": "openid email profile https://graph.microsoft.com/User.Read",
-        **proxy_config  # Merge proxy configuration if available
-    },
-)
+oauth = create_oauth_client()
 
 
 async def get_current_user(
@@ -154,9 +162,19 @@ async def create_or_update_user_from_azure(
     """
     Create or update a user in the database based on Azure AD data
     """
+    print(f"Azure user data received: {azure_user_data}")
+    
     email = azure_user_data.get("email") or azure_user_data.get("userPrincipalName", "")
-    azure_id = azure_user_data.get("id") or azure_user_data.get("oid", "")
+    azure_id = azure_user_data.get("user_id") or azure_user_data.get("oid", "")
+    
+    if not email or not azure_id:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Missing required user data. Email: {bool(email)}, Azure ID: {bool(azure_id)}"
+        )
 
+    print(f"Looking for user with azure_id: {azure_id}")
+    
     # Check if user already exists by oauth_provider and oauth_id
     user = (
         db.query(User)
@@ -165,6 +183,7 @@ async def create_or_update_user_from_azure(
     )
 
     if not user:
+        print(f"Creating new user with email: {email}, azure_id: {azure_id}")
         # Create new user
         user = User(
             oauth_provider="azure",
@@ -175,5 +194,8 @@ async def create_or_update_user_from_azure(
         db.add(user)
         db.commit()
         db.refresh(user)
+        print(f"Created user with ID: {user.id}")
+    else:
+        print(f"Found existing user with ID: {user.id}")
 
     return user
