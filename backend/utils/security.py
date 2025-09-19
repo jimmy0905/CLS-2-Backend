@@ -26,6 +26,17 @@ oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl=os.getenv("FASTAPI_ROOT_PATH", "/") + "/auth/token"
 )
 
+# Configure proxy settings if available
+proxy_url = os.getenv("ASW_PROXY_URL")
+proxy_config = {}
+if proxy_url:
+    proxy_config = {
+        "proxies": {
+            "http": proxy_url,
+            "https": proxy_url,
+        }
+    }
+
 oauth = OAuth()
 
 oauth.register(
@@ -36,7 +47,8 @@ oauth.register(
     access_token_url=f'https://login.microsoftonline.com/{os.getenv("AZURE_TENANT_ID")}/oauth2/v2.0/token',
     jwks_uri=f'https://login.microsoftonline.com/{os.getenv("AZURE_TENANT_ID")}/discovery/v2.0/keys',
     client_kwargs={
-        "scope": "openid email profile https://graph.microsoft.com/User.Read"
+        "scope": "openid email profile https://graph.microsoft.com/User.Read",
+        **proxy_config  # Merge proxy configuration if available
     },
 )
 
