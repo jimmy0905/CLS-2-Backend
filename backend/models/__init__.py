@@ -14,6 +14,8 @@ from models.GeneratedEmail import GeneratedEmail
 from models.EmailRecord import EmailRecord
 from models.UploadTask import UploadTask
 from models.UploadTaskError import UploadTaskError
+from models.Channel import Channel
+from models.DeliveryService import DeliveryService
 
 __all__ = [
     "User",
@@ -32,4 +34,6 @@ __all__ = [
     "EmailRecord",
     "UploadTask",
     "UploadTaskError",
+    "Channel",
+    "DeliveryService",
 ]

@@ -9,6 +9,8 @@ from models.SurveyKeywords import SurveyKeywords
 from models.SurveyDepartments import SurveyDepartments
 from models.Keyword import Keyword
 from models.Region import Region
+from models.Channel import Channel
+from models.DeliveryService import DeliveryService
 from sqlalchemy import and_
 from sqlalchemy.orm import joinedload
 from sqlalchemy.orm import Query
@@ -128,6 +130,8 @@ def build_survey_query(query: Query, filter_dict) -> Query:
     topic_conditions = build_topic_filter_conditions(filter_dict)
     region_conditions = build_region_filter_conditions(filter_dict)
     keyword_conditions = build_keyword_filter_conditions(filter_dict)
+    channel_conditions = build_channel_filter_conditions(filter_dict)
+    delivery_service_conditions = build_delivery_service_filter_conditions(filter_dict)
     # Add joins only when filtering is needed to avoid cartesian products
     joins_added = set()
 
@@ -174,6 +178,16 @@ def build_survey_query(query: Query, filter_dict) -> Query:
         query = query.join(Keyword, SurveyKeywords.keyword_id == Keyword.id)
         joins_added.add("keyword")
 
+    # Join Channel through Survey if channel filters are applied
+    if channel_conditions:
+        query = query.join(Channel, Survey.channel_id == Channel.id)
+        joins_added.add("channel")
+
+    # Join DeliveryService through Survey if delivery service filters are applied
+    if delivery_service_conditions:
+        query = query.join(DeliveryService, Survey.delivery_service_id == DeliveryService.id)
+        joins_added.add("delivery_service")
+
     # Optimize loading of relationships
     query = query.options(
         joinedload(Survey.survey_topics).joinedload(SurveyTopics.topic),
@@ -195,6 +209,8 @@ def build_survey_query(query: Query, filter_dict) -> Query:
         topic_conditions,
         region_conditions,
         keyword_conditions,
+        channel_conditions,
+        delivery_service_conditions,
     )
     if filter_conditions is not None:
         query = query.filter(filter_conditions)
@@ -230,6 +246,32 @@ def build_region_filter_conditions(filter_dict):
     return conditions
 
 
+def build_channel_filter_conditions(filter_dict):
+    """Build filter conditions for channel-related queries that include channel filtering"""
+    conditions = []
+    # Channel filter
+    if filter_dict.get("channel_ids"):
+        conditions.append(Channel.id.in_(filter_dict["channel_ids"]))
+
+    if filter_dict.get("channel_names"):
+        conditions.append(Channel.name.in_(filter_dict["channel_names"]))
+
+    return conditions
+
+
+def build_delivery_service_filter_conditions(filter_dict):
+    """Build filter conditions for delivery service-related queries that include delivery service filtering"""
+    conditions = []
+    # Delivery service filter
+    if filter_dict.get("delivery_service_ids"):
+        conditions.append(DeliveryService.id.in_(filter_dict["delivery_service_ids"]))
+
+    if filter_dict.get("delivery_service_names"):
+        conditions.append(DeliveryService.name.in_(filter_dict["delivery_service_names"]))
+
+    return conditions
+
+
 def build_optimized_query(
     db: Session, filter_dict: dict, exclude_filters: List[str] = None
 ):
@@ -248,6 +290,8 @@ def build_optimized_query(
     topic_conditions = build_topic_filter_conditions(working_filter)
     keyword_conditions = build_keyword_filter_conditions(working_filter)
     region_conditions = build_region_filter_conditions(working_filter)
+    channel_conditions = build_channel_filter_conditions(working_filter)
+    delivery_service_conditions = build_delivery_service_filter_conditions(working_filter)
 
     # Start with base query
     query = db.query(Survey)
@@ -292,6 +336,14 @@ def build_optimized_query(
         query = query.join(Keyword, SurveyKeywords.keyword_id == Keyword.id)
         joined_tables.add("keyword")
 
+    if channel_conditions:
+        query = query.join(Channel, Survey.channel_id == Channel.id)
+        joined_tables.add("channel")
+
+    if delivery_service_conditions:
+        query = query.join(DeliveryService, Survey.delivery_service_id == DeliveryService.id)
+        joined_tables.add("delivery_service")
+
     # Apply filters
     filter_conditions = merge_filter_conditions(
         survey_conditions,
@@ -302,6 +354,8 @@ def build_optimized_query(
         topic_conditions,
         region_conditions,
         keyword_conditions,
+        channel_conditions,
+        delivery_service_conditions,
     )
 
     if filter_conditions is not None:
@@ -385,6 +439,10 @@ class FilterRequest(BaseModel):
     region_names: List[str] = []
     source_ids: List[int] = []
     source_names: List[str] = []
+    channel_ids: List[int] = []
+    channel_names: List[str] = []
+    delivery_service_ids: List[int] = []
+    delivery_service_names: List[str] = []
     topics: List[str] = []
     keywords: List[str] = []
     from_date: Optional[str] = ""
@@ -432,6 +490,22 @@ def get_filter_params(
     source_names: List[str] = Query(
         default=[],
         description="The source names to filter by",
+    ),
+    channel_ids: List[int] = Query(
+        default=[],
+        description="The channel ids to filter by",
+    ),
+    channel_names: List[str] = Query(
+        default=[],
+        description="The channel names to filter by",
+    ),
+    delivery_service_ids: List[int] = Query(
+        default=[],
+        description="The delivery service ids to filter by",
+    ),
+    delivery_service_names: List[str] = Query(
+        default=[],
+        description="The delivery service names to filter by",
     ),
     topics: List[str] = Query(
         default=[],
@@ -484,6 +558,18 @@ def get_filter_params(
             status_code=400,
             detail="source_ids and source_names cannot be used together",
         )
+    # channel_ids and channel_names cannot be used together
+    if channel_ids and channel_names:
+        raise HTTPException(
+            status_code=400,
+            detail="channel_ids and channel_names cannot be used together",
+        )
+    # delivery_service_ids and delivery_service_names cannot be used together
+    if delivery_service_ids and delivery_service_names:
+        raise HTTPException(
+            status_code=400,
+            detail="delivery_service_ids and delivery_service_names cannot be used together",
+        )
 
     return FilterRequest(
         store_ids=store_ids,
@@ -496,6 +582,10 @@ def get_filter_params(
         region_names=region_names,
         source_ids=source_ids,
         source_names=source_names,
+        channel_ids=channel_ids,
+        channel_names=channel_names,
+        delivery_service_ids=delivery_service_ids,
+        delivery_service_names=delivery_service_names,
         topics=topics,
         keywords=keywords,
         from_date=from_date,

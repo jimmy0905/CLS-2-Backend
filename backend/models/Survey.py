@@ -2,14 +2,12 @@ from utils.database import Base
 from sqlalchemy import (
     Column,
     DateTime,
-    String,
     Text,
     Integer,
     Boolean,
     Enum,
     Index,
     ForeignKey,
-    Float,
 )
 import enum
 from sqlalchemy.orm import relationship
@@ -27,7 +25,11 @@ class Survey(Base):
 
     id = Column(Integer, primary_key=True)
     # Foreign keys
-    store_id = Column(Integer, ForeignKey("stores.id"))
+    store_id = Column(Integer, ForeignKey("stores.id"), nullable=False)
+    channel_id = Column(Integer, ForeignKey("channels.id"), nullable=True)
+    delivery_service_id = Column(
+        Integer, ForeignKey("delivery_services.id"), nullable=True
+    )
     # Columns
     comment = Column(Text)
     sentiment = Column(Enum(Sentiment, name="sentiment_enum"))
@@ -71,6 +73,8 @@ class Survey(Base):
         back_populates="surveys",
         viewonly=True,
     )
+    channel = relationship("Channel", back_populates="surveys")
+    delivery_service = relationship("DeliveryService", back_populates="surveys")
     # Indexes for filtered columns
     __table_args__ = (
         Index("idx_survey_reported_at", reported_at),
@@ -101,6 +105,11 @@ class Survey(Base):
                 if self.store
                 else None
             ),
+            "channel": self.channel.to_dict() if self.channel else None,
+            "delivery_service": (
+                self.delivery_service.to_dict() if self.delivery_service else None
+            ),
+            # Relationships
             "departments": [
                 {
                     "department_id": survey_department.department_id,
@@ -137,4 +146,34 @@ class Survey(Base):
             "updated_at": (
                 self.updated_at.isoformat() if self.updated_at is not None else None
             ),
+        }
+
+    def to_csv(self):
+        return {
+            "id": self.id,
+            "store_id": self.store.id,
+            "store_name": self.store.name,
+            "district_name": self.store.district.name,
+            "region_name": self.store.region.name,
+            "source_name": self.store.source.name,
+            "comment": self.comment,
+            "sentiment": self.sentiment,
+            "reported_at": self.reported_at,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            # department1 (positive), department2 (negative), department3 (neutral)
+            "departments": [
+                f"{survey_department.department.name} ({survey_department.sentiment})"
+                for survey_department in self.survey_departments
+            ],
+            # topic1 (positive), topic2 (negative), topic3 (neutral)
+            "topics": [
+                f"{survey_topic.topic.topic} ({survey_topic.sentiment})"
+                for survey_topic in self.survey_topics
+            ],
+            # keyword1 (positive), keyword2 (negative), keyword3 (neutral)
+            "keywords": [
+                f"{survey_keyword.keyword.keyword} ({survey_keyword.sentiment})"
+                for survey_keyword in self.survey_keywords
+            ],
         }
