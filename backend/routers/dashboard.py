@@ -12,6 +12,8 @@ from models.District import District
 from models.Region import Region
 from models.Source import Source
 from models.SurveyTopics import SurveyTopics
+from models.Channel import Channel
+from models.DeliveryService import DeliveryService
 from utils.database import get_db
 from pydantic import BaseModel
 from utils.conditionFilter import (
@@ -598,3 +600,98 @@ async def get_region_distribution(
         )
 
     return region_distribution
+
+
+class ChannelAndDeliveryServiceDistributionResponse(BaseModel):
+    channel: str
+    delivery_service: str
+    neutral_count: int
+    positive_count: int
+    negative_count: int
+    total_count_for_option: int
+
+
+@router.get("/channel-and-delivery-service-distribution")
+async def get_channel_and_delivery_service_distribution(
+    filter_params: FilterRequest = Depends(get_filter_params),
+    db: Session = Depends(get_db),
+) -> List[ChannelAndDeliveryServiceDistributionResponse]:
+    filter_dict = filter_params.model_dump()
+
+    # Get all channels and delivery services
+    all_channels = db.query(Channel).all()
+    all_delivery_services = db.query(DeliveryService).all()
+
+    # Single query to get sentiment counts with channel and delivery service filter
+    sentiment_query, sentiment_joins = build_optimized_query(db, filter_dict)
+
+    # Add necessary joins if not already present
+    if "channel" not in sentiment_joins:
+        sentiment_query = sentiment_query.join(Channel, Survey.channel_id == Channel.id)
+    if "delivery_service" not in sentiment_joins:
+        sentiment_query = sentiment_query.join(
+            DeliveryService, Survey.delivery_service_id == DeliveryService.id
+        )
+
+    sentiment_results = build_Survey_sentiment_aggregation_query(
+        sentiment_query,
+        Channel.name.label("channel"),
+        DeliveryService.name.label("delivery_service"),
+    ).all()
+
+    # Total count query: Apply ALL filters EXCEPT channel and delivery service filters, but group by channel and delivery service
+    total_query, total_joins = build_optimized_query(
+        db,
+        filter_dict,
+        exclude_filters=[
+            "channel_ids",
+            "channel_names",
+            "delivery_service_ids",
+            "delivery_service_names",
+        ],
+    )
+
+    # Always add necessary joins for total counts since we need to group by channel and delivery service
+    if "channel" not in total_joins:
+        total_query = total_query.join(Channel, Survey.channel_id == Channel.id)
+    if "delivery_service" not in total_joins:
+        total_query = total_query.join(
+            DeliveryService, Survey.delivery_service_id == DeliveryService.id
+        )
+
+    total_results = (
+        total_query.with_entities(
+            Channel.name.label("channel"),
+            DeliveryService.name.label("delivery_service"),
+            func.count(Survey.id).label("total_count"),
+        )
+        .group_by(Channel.id, Channel.name, DeliveryService.id, DeliveryService.name)
+        .all()
+    )
+
+    # Combine results
+    sentiment_dict = {(row.channel, row.delivery_service): row for row in sentiment_results}
+    total_dict = {(row.channel, row.delivery_service): row.total_count for row in total_results}
+
+    # Generate all possible combinations
+    channel_and_delivery_service_distribution = []
+    for channel in all_channels:
+        for delivery_service in all_delivery_services:
+            channel_name = channel.name
+            delivery_service_name = delivery_service.name
+            
+            sentiment_row = sentiment_dict.get((channel_name, delivery_service_name))
+            total_count = total_dict.get((channel_name, delivery_service_name), 0)
+            
+            channel_and_delivery_service_distribution.append(
+                ChannelAndDeliveryServiceDistributionResponse(
+                    channel=channel_name,
+                    delivery_service=delivery_service_name,
+                    neutral_count=sentiment_row.neutral_count if sentiment_row else 0,
+                    positive_count=sentiment_row.positive_count if sentiment_row else 0,
+                    negative_count=sentiment_row.negative_count if sentiment_row else 0,
+                    total_count_for_option=total_count,
+                )
+            )
+
+    return channel_and_delivery_service_distribution

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from models.Survey import Survey
-from utils.conditionFilter import build_optimized_query
+from utils.conditionFilter import build_survey_query
 from utils.database import get_db
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
@@ -32,6 +32,10 @@ router = APIRouter(
 class ActionFilterRequest(BaseModel):
     store_ids: List[int] = []
     store_names: List[str] = []
+    channel_ids: List[int] = []
+    channel_names: List[str] = []
+    delivery_service_ids: List[int] = []
+    delivery_service_names: List[str] = []
     department_ids: List[int] = []
     department_names: List[str] = []
     district_ids: List[int] = []
@@ -52,6 +56,11 @@ class DistrictResponse(BaseModel):
     name: str
 
 
+class RegionResponse(BaseModel):
+    id: int
+    name: str
+
+
 class SourceResponse(BaseModel):
     id: int
     name: str
@@ -62,24 +71,50 @@ class StoreResponse(BaseModel):
     name: str
     district: DistrictResponse
     source: SourceResponse
+    region: RegionResponse
 
 
-class DepartmentResponse(BaseModel):
+class ChannelResponse(BaseModel):
     id: int
     name: str
+
+
+class DeliveryServiceResponse(BaseModel):
+    id: int
+    name: str
+
+
+class DepartmentWithSentimentResponse(BaseModel):
+    department_id: int
+    name: str
+    sentiment: str
+
+
+class KeywordWithSentimentResponse(BaseModel):
+    keyword_id: int
+    keyword: str
+    sentiment: str
+
+
+class TopicWithSentimentResponse(BaseModel):
+    topic_id: int
+    topic: str
+    sentiment: str
 
 
 class SurveyResponse(BaseModel):
     id: int
     store: StoreResponse
-    department: DepartmentResponse
+    channel: ChannelResponse
+    delivery_service: DeliveryServiceResponse
+    departments: List[DepartmentWithSentimentResponse]
+    topics: List[TopicWithSentimentResponse]
+    keywords: List[KeywordWithSentimentResponse]
     comment: str
     sentiment: str
     reported_at: datetime
     created_at: datetime
     updated_at: datetime
-    topics: List[str]
-    keywords: List[str]
 
 
 class GetActionsResponse(BaseModel):
@@ -125,8 +160,12 @@ async def get_actions(
             status_code=400,
             detail="source_ids and source_names cannot be used together",
         )
+    # lowercase the sentiments
+    action_filter_request.sentiments = [
+        sentiment.lower() for sentiment in action_filter_request.sentiments
+    ]
     filter_dict = action_filter_request.model_dump()
-    filtered_query, _ = build_optimized_query(db, filter_dict)
+    filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
 
     # convert sentiments to lowercase
     filter_dict["sentiments"] = [
