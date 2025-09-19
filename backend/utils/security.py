@@ -27,37 +27,36 @@ oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl=os.getenv("FASTAPI_ROOT_PATH", "/") + "/auth/token"
 )
 
-# Configure OAuth with proxy support
-def create_oauth_client():
-    """Create OAuth client with proxy configuration if needed"""
+# Configure OAuth with proxy support using environment variables
+def setup_proxy_environment():
+    """Set up proxy environment variables if ASW_PROXY_URL is configured"""
     proxy_url = os.getenv("ASW_PROXY_URL")
-    
     if proxy_url:
-        # Create httpx transport with proxy configuration (httpx 0.28.0+ syntax)
-        transport = httpx.AsyncHTTPTransport(proxy=proxy_url)
-        # Create httpx client with proxy transport
-        httpx_client = httpx.AsyncClient(
-            transport=transport,
-            timeout=30.0
-        )
-        oauth_client = OAuth(httpx_client=httpx_client)
-    else:
-        oauth_client = OAuth()
-    
-    oauth_client.register(
-        name="azure",
-        client_id=os.getenv("AZURE_CLIENT_ID"),
-        client_secret=os.getenv("AZURE_CLIENT_SECRET"),
-        authorize_url=f'https://login.microsoftonline.com/{os.getenv("AZURE_TENANT_ID")}/oauth2/v2.0/authorize',
-        access_token_url=f'https://login.microsoftonline.com/{os.getenv("AZURE_TENANT_ID")}/oauth2/v2.0/token',
-        jwks_uri=f'https://login.microsoftonline.com/{os.getenv("AZURE_TENANT_ID")}/discovery/v2.0/keys',
-        client_kwargs={
-            "scope": "openid email profile https://graph.microsoft.com/User.Read",
-        },
-    )
-    return oauth_client
+        # Set environment variables for proxy configuration
+        # These will be used by underlying HTTP libraries
+        os.environ["HTTP_PROXY"] = proxy_url
+        os.environ["HTTPS_PROXY"] = proxy_url
+        os.environ["http_proxy"] = proxy_url
+        os.environ["https_proxy"] = proxy_url
+        print(f"Proxy configured: {proxy_url}")
 
-oauth = create_oauth_client()
+# Set up proxy environment variables
+setup_proxy_environment()
+
+# Create OAuth client
+oauth = OAuth()
+
+oauth.register(
+    name="azure",
+    client_id=os.getenv("AZURE_CLIENT_ID"),
+    client_secret=os.getenv("AZURE_CLIENT_SECRET"),
+    authorize_url=f'https://login.microsoftonline.com/{os.getenv("AZURE_TENANT_ID")}/oauth2/v2.0/authorize',
+    access_token_url=f'https://login.microsoftonline.com/{os.getenv("AZURE_TENANT_ID")}/oauth2/v2.0/token',
+    jwks_uri=f'https://login.microsoftonline.com/{os.getenv("AZURE_TENANT_ID")}/discovery/v2.0/keys',
+    client_kwargs={
+        "scope": "openid email profile https://graph.microsoft.com/User.Read",
+    },
+)
 
 
 async def get_current_user(
