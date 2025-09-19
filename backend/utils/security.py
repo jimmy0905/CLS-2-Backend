@@ -33,12 +33,11 @@ def create_oauth_client():
     proxy_url = os.getenv("ASW_PROXY_URL")
     
     if proxy_url:
-        # Create httpx client with proxy configuration
+        # Create httpx transport with proxy configuration (httpx 0.28.0+ syntax)
+        transport = httpx.AsyncHTTPTransport(proxy=proxy_url)
+        # Create httpx client with proxy transport
         httpx_client = httpx.AsyncClient(
-            proxies={
-                "http://": proxy_url,
-                "https://": proxy_url,
-            },
+            transport=transport,
             timeout=30.0
         )
         oauth_client = OAuth(httpx_client=httpx_client)
