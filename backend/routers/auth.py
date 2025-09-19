@@ -27,10 +27,13 @@ async def azure_login(request: Request):
 @router.get("/azure/callback")
 async def azure_callback(request: Request, db: Session = Depends(get_db)):
     try:
+        print("Azure callback")
         # Get token from Azure AD
         token_response = await oauth.azure.authorize_access_token(request)
         access_token = token_response.get("access_token")
+        print(access_token)
         id_token = token_response.get("id_token")
+        print(id_token)
         if not access_token:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
