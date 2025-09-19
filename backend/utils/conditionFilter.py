@@ -130,6 +130,8 @@ def build_survey_query(query: Query, filter_dict) -> Query:
     topic_conditions = build_topic_filter_conditions(filter_dict)
     region_conditions = build_region_filter_conditions(filter_dict)
     keyword_conditions = build_keyword_filter_conditions(filter_dict)
+    channel_conditions = build_channel_filter_conditions(filter_dict)
+    delivery_service_conditions = build_delivery_service_filter_conditions(filter_dict)
     # Add joins only when filtering is needed to avoid cartesian products
     joins_added = set()
 
@@ -176,6 +178,16 @@ def build_survey_query(query: Query, filter_dict) -> Query:
         query = query.join(Keyword, SurveyKeywords.keyword_id == Keyword.id)
         joins_added.add("keyword")
 
+    # Join Channel through Survey if channel filters are applied
+    if channel_conditions:
+        query = query.join(Channel, Survey.channel_id == Channel.id)
+        joins_added.add("channel")
+
+    # Join DeliveryService through Survey if delivery service filters are applied
+    if delivery_service_conditions:
+        query = query.join(DeliveryService, Survey.delivery_service_id == DeliveryService.id)
+        joins_added.add("delivery_service")
+
     # Optimize loading of relationships
     query = query.options(
         joinedload(Survey.survey_topics).joinedload(SurveyTopics.topic),
@@ -197,6 +209,8 @@ def build_survey_query(query: Query, filter_dict) -> Query:
         topic_conditions,
         region_conditions,
         keyword_conditions,
+        channel_conditions,
+        delivery_service_conditions,
     )
     if filter_conditions is not None:
         query = query.filter(filter_conditions)
