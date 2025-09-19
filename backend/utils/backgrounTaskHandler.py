@@ -9,6 +9,8 @@ from models.Keyword import Keyword
 from models.SurveyTopics import SurveyTopics
 from models.SurveyKeywords import SurveyKeywords
 from models.SurveyDepartments import SurveyDepartments
+from models.Channel import Channel
+from models.DeliveryService import DeliveryService
 from datetime import datetime
 from utils.llm.extract_total import extract_total
 from utils.logger import logger
@@ -164,9 +166,15 @@ def process_single_row(
 
         result = {"index": index, "success": False, "error": None}
 
-        store_id = row["store_key"]  # store_key == store_id
-        comment = row["answer"]  # comment == answer
-        reported_at = row["submitdate"]  # reported_at == submitdate
+        # Handle NaN values for critical fields
+        store_id = row["store_key"] if pd.notna(row["store_key"]) else None
+        comment = row["answer"] if pd.notna(row["answer"]) else None
+        reported_at = row["submitdate"] if pd.notna(row["submitdate"]) else None
+        
+        # Handle NaN values for channel and delivery_mode
+        channel_name = row["channel"] if pd.notna(row["channel"]) else None
+        delivery_service_name = row["delivery_mode"] if pd.notna(row["delivery_mode"]) else None
+
 
         # Check if the store_id (store_key) is valid
         # Check if the store_id is empty
@@ -256,6 +264,26 @@ def process_single_row(
             return result
 
         reported_at = parsed_date
+        
+        # Check if the channel_name is not empty and not None, then get the channel_id
+        if channel_name is not None and str(channel_name).strip():
+            channel = db.query(Channel).filter(Channel.name == channel_name).first()
+            if not channel:
+                logger.warning(f"Row {index + 1}: Channel {channel_name} not found in database, skipping row")
+                return result
+            channel_id = channel.id
+        else:
+            channel_id = None
+        # Check if the delivery_service_name is not empty and not None, then get the delivery_service_id
+        if delivery_service_name is not None and str(delivery_service_name).strip():
+            delivery_service = db.query(DeliveryService).filter(DeliveryService.name == delivery_service_name).first()
+            if not delivery_service:
+                logger.warning(f"Row {index + 1}: Delivery service {delivery_service_name} not found in database, skipping row")
+                return result
+            delivery_service_id = delivery_service.id
+        else:
+            delivery_service_id = None
+            
         # Topic (Survey sentiment, topics, departments, keywords)
         try:
             # Use synchronous extract_total in thread pool
@@ -356,6 +384,8 @@ def process_single_row(
             comment=comment,
             reported_at=reported_at,
             sentiment=total_sentiment,
+            channel_id=channel_id,
+            delivery_service_id=delivery_service_id,
         )
         db.add(survey)
         db.commit()
@@ -482,7 +512,7 @@ async def process_upload_task(file_path, db, upload_task_id):
     available_departments = [department.name for department in departments]
 
     # Read the file from csv file
-    df = pd.read_csv(file_path)
+    df = pd.read_csv(file_path, encoding="utf-8", sep=",", encoding_errors="ignore")
 
     # Prepare row data for processing
     row_data_list = []
