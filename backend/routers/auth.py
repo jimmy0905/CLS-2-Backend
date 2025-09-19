@@ -29,7 +29,7 @@ async def azure_login(request: Request):
 async def azure_callback(request: Request, db: Session = Depends(get_db)):
     try:
         print("Azure callback")
-        # Get token from Azure AD (proxy configuration is handled in OAuth client creation)
+        # Get token from Azure AD (proxy configuration is handled via environment variables)
         token_response = await oauth.azure.authorize_access_token(request)
         access_token = token_response.get("access_token")
         print(access_token)
