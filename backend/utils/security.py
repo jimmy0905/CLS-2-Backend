@@ -97,6 +97,7 @@ async def verify_azure_token(token: str) -> Dict[str, Any]:
         )
         response.raise_for_status()
         jwks = response.json()
+        print(jwks)
 
         # Verify and decode the token
         claims = authlib_jwt.decode(token, jwks)
