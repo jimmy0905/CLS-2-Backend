@@ -491,7 +491,7 @@ async def get_store_distribution(
     total_results = (
         total_query.with_entities(
             Store.id.label("store_id"),
-            
+            Store.name.label("store_name"),
             func.count(Survey.id).label("total_count"),
         )
         .group_by(Store.id, Store.name)
