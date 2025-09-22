@@ -51,77 +51,11 @@ class ActionFilterRequest(BaseModel):
     sentiments: List[str] = []
 
 
-class DistrictResponse(BaseModel):
-    id: int
-    name: str
-
-
-class RegionResponse(BaseModel):
-    id: int
-    name: str
-
-
-class SourceResponse(BaseModel):
-    id: int
-    name: str
-
-
-class StoreResponse(BaseModel):
-    id: int
-    name: str
-    district: DistrictResponse
-    source: SourceResponse
-    region: RegionResponse
-
-
-class ChannelResponse(BaseModel):
-    id: int
-    name: str
-
-
-class DeliveryServiceResponse(BaseModel):
-    id: int
-    name: str
-
-
-class DepartmentWithSentimentResponse(BaseModel):
-    department_id: int
-    name: str
-    sentiment: str
-
-
-class KeywordWithSentimentResponse(BaseModel):
-    keyword_id: int
-    keyword: str
-    sentiment: str
-
-
-class TopicWithSentimentResponse(BaseModel):
-    topic_id: int
-    topic: str
-    sentiment: str
-
-
-class SurveyResponse(BaseModel):
-    id: int
-    store: StoreResponse
-    channel: ChannelResponse
-    delivery_service: DeliveryServiceResponse
-    departments: List[DepartmentWithSentimentResponse]
-    topics: List[TopicWithSentimentResponse]
-    keywords: List[KeywordWithSentimentResponse]
-    comment: str
-    sentiment: str
-    reported_at: datetime
-    created_at: datetime
-    updated_at: datetime
-
-
 class GetActionsResponse(BaseModel):
     summary: str
     impact_analysis_summary: str
     actions: list[Action]
-    survey_data: list[SurveyResponse]
+    survey_data: list[dict]
 
 
 @router.post("")
@@ -181,14 +115,11 @@ async def get_actions(
         raise HTTPException(status_code=404, detail="No surveys found")
 
     actions, _ = await generate_actions(surveys)
-    survey_data = [
-        SurveyResponse.model_validate(survey.to_dict()) for survey in surveys
-    ]
     action = ActionDatabaseModel(
         user_id=current_user.id,
         summary=actions.summary,
         actions_items=[action.model_dump(mode="json") for action in actions.actions],
-        survey_data=[survey.model_dump(mode="json") for survey in survey_data],
+        survey_data=[{"id": survey.id} for survey in surveys],
     )
     db.add(action)
     db.commit()
@@ -196,14 +127,14 @@ async def get_actions(
         summary=actions.summary,
         impact_analysis_summary=actions.impact_analysis_summary,
         actions=actions.actions,
-        survey_data=survey_data,
+        survey_data=[{"id": survey.id} for survey in surveys],
     )
 
 
 class EmailRequest(BaseModel):
     summary: str
     action: Action
-    survey_data: list[SurveyResponse]
+    survey_data: list[dict]
 
 
 class EmailResponse(BaseModel):
@@ -218,13 +149,10 @@ async def generate_email_route(
     db: Session = Depends(get_db),
 ) -> EmailResponse:
     # Convert EmailRequest to EmailData format
-    survey_data_dicts = [
-        survey.model_dump(mode="json") for survey in email_request.survey_data
-    ]
     email_data = EmailData(
         summary=email_request.summary,
         action=email_request.action,
-        survey_data=survey_data_dicts,
+        survey_data=[id for id in email_request.survey_data],
     )
 
     llm_response, _ = await generate_email(email_data)
