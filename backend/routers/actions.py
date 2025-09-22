@@ -113,14 +113,18 @@ async def get_actions(
     # Check the length of the surveys
     if len(surveys) == 0:
         raise HTTPException(status_code=404, detail="No surveys found")
-
+    # print the start time
+    print(f"Start time: {datetime.now()}")
     actions, _ = await generate_actions(surveys)
+    print(f"request time end: {datetime.now()}")
     action = ActionDatabaseModel(
         user_id=current_user.id,
         summary=actions.summary,
         actions_items=[action.model_dump(mode="json") for action in actions.actions],
         survey_data=[{"id": survey.id} for survey in surveys],
     )
+    # print the end time
+    print(f"End time: {datetime.now()}")
     db.add(action)
     db.commit()
     return GetActionsResponse(
