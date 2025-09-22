@@ -127,6 +127,7 @@ async def get_actions(
     print(f"End time: {datetime.now()}")
     db.add(action)
     db.commit()
+    print(f"After commit time: {datetime.now()}")
     return GetActionsResponse(
         summary=actions.summary,
         impact_analysis_summary=actions.impact_analysis_summary,
