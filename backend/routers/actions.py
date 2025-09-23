@@ -121,7 +121,7 @@ async def get_actions(
         user_id=current_user.id,
         summary=actions.summary,
         actions_items=[action.model_dump(mode="json") for action in actions.actions],
-        survey_data=[{"id": survey.id} for survey in surveys],
+        survey_data=[survey.to_dict() for survey in surveys],
     )
     # print the end time
     print(f"End time: {datetime.now()}")
@@ -132,7 +132,8 @@ async def get_actions(
         summary=actions.summary,
         impact_analysis_summary=actions.impact_analysis_summary,
         actions=actions.actions,
-        survey_data=[{"id": survey.id} for survey in surveys],
+        # survey_data=[{"id": survey.id} for survey in surveys],
+        survey_data=[],
     )
 
 
