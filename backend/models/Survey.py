@@ -138,13 +138,13 @@ class Survey(Base):
             "comment": self.comment,
             "sentiment": self.sentiment,
             "reported_at": (
-                self.reported_at.isoformat() if self.reported_at is not None else None
+                self.reported_at
             ),
             "created_at": (
-                self.created_at.isoformat() if self.created_at is not None else None
+                self.created_at
             ),
             "updated_at": (
-                self.updated_at.isoformat() if self.updated_at is not None else None
+                self.updated_at
             ),
         }
 

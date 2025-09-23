@@ -136,9 +136,14 @@ def process_single_row(
         comment = row["answer"] if pd.notna(row["answer"]) else None
         reported_at = row["submitdate"] if pd.notna(row["submitdate"]) else None
         
-        # Handle NaN values for channel and delivery_mode
-        channel_name = row["channel"] if pd.notna(row["channel"]) else None
-        delivery_service_name = row["delivery_mode"] if pd.notna(row["delivery_mode"]) else None
+        # Handle NaN values for channel and delivery_mode (optional fields)
+        channel_name = None
+        if "channel" in row and pd.notna(row["channel"]):
+            channel_name = row["channel"]
+            
+        delivery_service_name = None
+        if "delivery_mode" in row and pd.notna(row["delivery_mode"]):
+            delivery_service_name = row["delivery_mode"]
 
 
         # Check if the store_id (store_key) is valid
