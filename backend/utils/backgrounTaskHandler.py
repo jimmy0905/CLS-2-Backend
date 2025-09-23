@@ -145,6 +145,7 @@ def process_single_row(
         # Handle NaN values for critical fields
         store_id = row["store_key"] if pd.notna(row["store_key"]) else None
         comment = row["answer"] if pd.notna(row["answer"]) else None
+        reported_at = row["submitdate"] if pd.notna(row["submitdate"]) else None
         if not is_comment_valid(comment):
             logger.warning(f"Row {index + 1}: Comment is invalid, skipping row")
             # Create an error for the upload task
@@ -159,7 +160,6 @@ def process_single_row(
             db.commit()
             result["error"] = "Comment is invalid"
             return result
-        reported_at = row["submitdate"] if pd.notna(row["submitdate"]) else None
 
         # Handle NaN values for channel and delivery_mode (optional fields)
         channel_name = None
