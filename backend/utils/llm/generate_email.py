@@ -22,9 +22,9 @@ client = AzureOpenAI(
     ),
 )
 # Configs for generate email
-GENERATE_EMAILS_MODEL = os.getenv("GENERATE_EMAILS_MODEL", "gpt-4.1")
-GENERATE_EMAILS_TEMPERATURE = float(os.getenv("GENERATE_EMAILS_TEMPERATURE", 0.25))
-GENERATE_EMAILS_MAX_TOKENS = int(os.getenv("GENERATE_EMAILS_MAX_TOKENS", 10000))
+GENERATE_EMAILS_MODEL = os.getenv("GENERATE_EMAIL_MODEL", "gpt-4.1")
+GENERATE_EMAILS_TEMPERATURE = float(os.getenv("GENERATE_EMAIL_TEMPERATURE", 0.25))
+GENERATE_EMAILS_MAX_TOKENS = int(os.getenv("GENERATE_EMAIL_MAX_TOKENS", 10000))
 
 
 def _generate_email_sync(data: EmailData) -> tuple[EmailResponse, dict]:
