@@ -22,7 +22,7 @@ from utils.conditionFilter import (
     FilterRequest,
     get_filter_params,
 )
-from utils.llm import (
+from utils.llm.extract_total import (
     extract_total,
 )
 from utils.security import get_current_user
