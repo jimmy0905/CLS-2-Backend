@@ -30,15 +30,11 @@ def parse_flexible_date(
     date_input: Union[str, datetime, pd.Timestamp], row_number: int = None
 ) -> Optional[datetime]:
     """
-    Parse various date formats into a datetime object.
+    Parse date formats into a datetime object.
 
-    Supports:
-    - Standard formats: 'YYYY-MM-DD HH:MM:SS', 'YYYY-MM-DD'
-    - US formats: 'MM/DD/YY HH:MM', 'MM/DD/YYYY HH:MM'
-    - European formats: 'DD/MM/YY HH:MM', 'DD/MM/YYYY HH:MM'
-    - ISO formats: ISO 8601 formats
-    - Pandas Timestamp objects
-    - Python datetime objects
+    Only supports these specific formats:
+    - 'YYYY-MM-DD HH:MM:SS' (e.g., '2025-09-01 10:04:57')
+    - 'YYYY-MM-DDTHH:MM:SS.000Z' (e.g., '2025-09-01T10:04:57.000Z')
 
     Args:
         date_input: The date value to parse
@@ -64,32 +60,10 @@ def parse_flexible_date(
         # Convert to string for parsing
         date_str = str(date_input).strip()
 
-        # List of common date formats to try in order
+        # Only accept these two specific date formats
         date_formats = [
-            # Standard formats
-            "%Y-%m-%d %H:%M:%S",
-            "%Y-%m-%d %H:%M",
-            "%Y-%m-%d",
-            # US formats (MM/DD/YY, MM/DD/YYYY)
-            "%m/%d/%y %H:%M",
-            "%m/%d/%Y %H:%M",
-            "%m/%d/%y",
-            "%m/%d/%Y",
-            # European formats (DD/MM/YY, DD/MM/YYYY)
-            "%d/%m/%y %H:%M",
-            "%d/%m/%Y %H:%M",
-            "%d/%m/%y",
-            "%d/%m/%Y",
-            # Alternative separators
-            "%m-%d-%y %H:%M",
-            "%m-%d-%Y %H:%M",
-            "%d-%m-%y %H:%M",
-            "%d-%m-%Y %H:%M",
-            # ISO formats
-            "%Y-%m-%dT%H:%M:%S",
-            "%Y-%m-%dT%H:%M:%SZ",
-            "%Y-%m-%dT%H:%M:%S.%f",
-            "%Y-%m-%dT%H:%M:%S.%fZ",
+            "%Y-%m-%d %H:%M:%S",        # 2025-09-01 10:04:57
+            "%Y-%m-%dT%H:%M:%S.%fZ",    # 2025-09-01T10:04:57.000Z
         ]
 
         # Try each format
@@ -103,18 +77,9 @@ def parse_flexible_date(
                 )
                 continue
 
-        # If manual parsing fails, try dateutil parser (more flexible but slower)
-        try:
-            parsed_date = dateutil.parser.parse(date_str)
-            return parsed_date
-        except (ValueError, TypeError) as e:
-            logger.debug(
-                f"{row_context}dateutil parser also failed for '{date_str}': {e}"
-            )
-
         # If all parsing attempts fail
         logger.warning(
-            f"{row_context}Failed to parse date '{date_str}' with all available formats"
+            f"{row_context}Date '{date_str}' does not match required formats: 'YYYY-MM-DD HH:MM:SS' or 'YYYY-MM-DDTHH:MM:SS.000Z'"
         )
         return None
 

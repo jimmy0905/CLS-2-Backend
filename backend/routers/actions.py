@@ -52,6 +52,7 @@ class ActionFilterRequest(BaseModel):
 
 
 class GetActionsResponse(BaseModel):
+    id: int
     summary: str
     impact_analysis_summary: str
     actions: list[Action]
@@ -127,8 +128,10 @@ async def get_actions(
     print(f"End time: {datetime.now()}")
     db.add(action)
     db.commit()
+    db.refresh(action)
     print(f"After commit time: {datetime.now()}")
     return GetActionsResponse(
+        id=action.id,
         summary=actions.summary,
         impact_analysis_summary=actions.impact_analysis_summary,
         actions=actions.actions,
@@ -140,7 +143,7 @@ async def get_actions(
 class EmailRequest(BaseModel):
     summary: str
     action: Action
-    survey_data: list[dict]
+    action_id: int
 
 
 class EmailResponse(BaseModel):
@@ -154,11 +157,15 @@ async def generate_email_route(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> EmailResponse:
+
+    action = db.query(ActionDatabaseModel).filter(ActionDatabaseModel.id == email_request.action_id).first()
+    if action is None:
+        raise HTTPException(status_code=404, detail="Action not found")
     # Convert EmailRequest to EmailData format
     email_data = EmailData(
         summary=email_request.summary,
         action=email_request.action,
-        survey_data=[id for id in email_request.survey_data],
+        survey_data=[id for id in action.survey_data],
     )
 
     llm_response, _ = await generate_email(email_data)
