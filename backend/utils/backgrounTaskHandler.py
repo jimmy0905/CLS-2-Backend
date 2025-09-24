@@ -30,10 +30,31 @@ def is_comment_valid(comment: str) -> bool:
     """
     Check if the comment is valid.
     """
-    stop_words = ["", "na", "n/a", ".", "...", "-", "nan", "none", "null", "沒有"]
+    
+    # Handle None or empty comments
+    if not comment or pd.isna(comment):
+        return False
+    
+    # Convert to string and strip whitespace
+    comment_str = str(comment).strip()
+    
+    # Define stop words that indicate invalid comments
+    # These should match the comment exactly (case-insensitive) or be very similar
+    stop_words = ["na", "n/a", "nan", "none", "null"]
+    
+    # Check if comment is exactly one of the stop words
     for stop_word in stop_words:
-        if stop_word in comment.lower():
+        if comment_str.lower() == stop_word.lower():
             return False
+    
+    # Check for comments that are just punctuation or very short
+    if comment_str in [".", "...", "-", "沒有"]:
+        return False
+    
+    # Check if comment is just whitespace or special characters
+    if not comment_str or comment_str.isspace():
+        return False
+        
     return True
 
 
@@ -145,7 +166,8 @@ def process_single_row(
         # Handle NaN values for critical fields
         store_id = row["store_key"] if pd.notna(row["store_key"]) else None
         comment = row["answer"] if pd.notna(row["answer"]) else None
-        if not is_comment_valid(comment):
+        reported_at = row["submitdate"] if pd.notna(row["submitdate"]) else None
+        if is_comment_valid(comment) is False:
             logger.warning(f"Row {index + 1}: Comment is invalid, skipping row")
             # Create an error for the upload task
             error = UploadTaskError(
@@ -159,7 +181,6 @@ def process_single_row(
             db.commit()
             result["error"] = "Comment is invalid"
             return result
-        reported_at = row["submitdate"] if pd.notna(row["submitdate"]) else None
 
         # Handle NaN values for channel and delivery_mode (optional fields)
         channel_name = None
@@ -167,8 +188,8 @@ def process_single_row(
             channel_name = row["channel"]
 
         delivery_service_name = None
-        if "delivery_mode" in row and pd.notna(row["delivery_mode"]):
-            delivery_service_name = row["delivery_mode"]
+        if "delivery_mode_details" in row and pd.notna(row["delivery_mode_details"]):
+            delivery_service_name = row["delivery_mode_details"]
 
         # Check if the store_id (store_key) is valid
         # Check if the store_id is empty
