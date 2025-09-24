@@ -31,7 +31,8 @@ EXTRACT_TOTAL_TEMPERATURE = float(os.getenv("EXTRACT_TOTAL_TEMPERATURE", 0.0))
 
 
 def _extract_total_sync(text: str) -> tuple[TotalResponse, dict]:
-    system_prompt = """Role and Objective
+    system_prompt = """
+Role and Objective
 You are an AI assistant analyzing exactly one retail customer comment for online store.
 Your task is to classify topics, departments, and keywords with sentiment, and return a strictly formatted JSON.
 If no valid topic can be classified, return only: {"cannot_classified": true}.
@@ -190,7 +191,7 @@ Mapping Table (topic → departments):
 * Deliveryman Service → Supply Chain
 * Communication of Order Status → Supply Chain
 * Order Arrived at Promised Time → Supply Chain
-* Store Staff’s Service (click-and-collect/hybrid) → Supply Chain, Sales Ops, HR L\&D
+* Store Staff’s Service → Supply Chain, Sales Ops, HR L\&D
 * Cannot Classified → (Unassigned / Review case-by-case)
 
 (Note: Do NOT output any department outside the Departments List. If "Cannot Classified" is selected, return only {"cannot_classified": true}.)
