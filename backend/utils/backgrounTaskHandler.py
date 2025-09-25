@@ -26,6 +26,38 @@ from utils.database import engine
 from config import MAX_WORKER_THREADS
 
 
+def is_comment_valid(comment: str) -> bool:
+    """
+    Check if the comment is valid.
+    """
+    
+    # Handle None or empty comments
+    if not comment or pd.isna(comment):
+        return False
+    
+    # Convert to string and strip whitespace
+    comment_str = str(comment).strip()
+    
+    # Define stop words that indicate invalid comments
+    # These should match the comment exactly (case-insensitive) or be very similar
+    stop_words = ["na", "n/a", "nan", "none", "null"]
+    
+    # Check if comment is exactly one of the stop words
+    for stop_word in stop_words:
+        if comment_str.lower() == stop_word.lower():
+            return False
+    
+    # Check for comments that are just punctuation or very short
+    if comment_str in [".", "...", "-", "沒有"]:
+        return False
+    
+    # Check if comment is just whitespace or special characters
+    if not comment_str or comment_str.isspace():
+        return False
+        
+    return True
+
+
 def parse_flexible_date(
     date_input: Union[str, datetime, pd.Timestamp], row_number: int = None
 ) -> Optional[datetime]:
@@ -62,8 +94,8 @@ def parse_flexible_date(
 
         # Only accept these two specific date formats
         date_formats = [
-            "%Y-%m-%d %H:%M:%S",        # 2025-09-01 10:04:57
-            "%Y-%m-%dT%H:%M:%S.%fZ",    # 2025-09-01T10:04:57.000Z
+            "%Y-%m-%d %H:%M:%S",  # 2025-09-01 10:04:57
+            "%Y-%m-%dT%H:%M:%S.%fZ",  # 2025-09-01T10:04:57.000Z
         ]
 
         # Try each format
@@ -135,16 +167,29 @@ def process_single_row(
         store_id = row["store_key"] if pd.notna(row["store_key"]) else None
         comment = row["answer"] if pd.notna(row["answer"]) else None
         reported_at = row["submitdate"] if pd.notna(row["submitdate"]) else None
-        
+        if is_comment_valid(comment) is False:
+            logger.warning(f"Row {index + 1}: Comment is invalid, skipping row")
+            # Create an error for the upload task
+            error = UploadTaskError(
+                upload_task_id=upload_task_id,
+                input_store_id=store_id,
+                input_comment=comment,
+                input_reported_at=reported_at,
+                error_message="Comment is invalid",
+            )
+            db.add(error)
+            db.commit()
+            result["error"] = "Comment is invalid"
+            return result
+
         # Handle NaN values for channel and delivery_mode (optional fields)
         channel_name = None
         if "channel" in row and pd.notna(row["channel"]):
             channel_name = row["channel"]
-            
-        delivery_service_name = None
-        if "delivery_mode" in row and pd.notna(row["delivery_mode"]):
-            delivery_service_name = row["delivery_mode"]
 
+        delivery_service_name = None
+        if "delivery_mode_details" in row and pd.notna(row["delivery_mode_details"]):
+            delivery_service_name = row["delivery_mode_details"]
 
         # Check if the store_id (store_key) is valid
         # Check if the store_id is empty
@@ -234,26 +279,34 @@ def process_single_row(
             return result
 
         reported_at = parsed_date
-        
+
         # Check if the channel_name is not empty and not None, then get the channel_id
         if channel_name is not None and str(channel_name).strip():
             channel = db.query(Channel).filter(Channel.name == channel_name).first()
             if not channel:
-                logger.warning(f"Row {index + 1}: Channel {channel_name} not found in database, skipping row")
+                logger.warning(
+                    f"Row {index + 1}: Channel {channel_name} not found in database, skipping row"
+                )
                 return result
             channel_id = channel.id
         else:
             channel_id = None
         # Check if the delivery_service_name is not empty and not None, then get the delivery_service_id
         if delivery_service_name is not None and str(delivery_service_name).strip():
-            delivery_service = db.query(DeliveryService).filter(DeliveryService.name == delivery_service_name).first()
+            delivery_service = (
+                db.query(DeliveryService)
+                .filter(DeliveryService.name == delivery_service_name)
+                .first()
+            )
             if not delivery_service:
-                logger.warning(f"Row {index + 1}: Delivery service {delivery_service_name} not found in database, skipping row")
+                logger.warning(
+                    f"Row {index + 1}: Delivery service {delivery_service_name} not found in database, skipping row"
+                )
                 return result
             delivery_service_id = delivery_service.id
         else:
             delivery_service_id = None
-            
+
         # Topic (Survey sentiment, topics, departments, keywords)
         try:
             # Use synchronous extract_total in thread pool
