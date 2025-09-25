@@ -535,8 +535,16 @@ async def process_upload_task(file_path, db, upload_task_id):
     available_departments = [department.name for department in departments]
 
     # Read the file from csv file
-    df = pd.read_csv(file_path, encoding="utf-8", sep=",", encoding_errors="ignore")
-
+    df = pd.read_csv(
+                file_path,
+                encoding="utf-8",
+                sep=",",
+                encoding_errors="ignore",
+                on_bad_lines="warn",  # Warn about bad lines but continue
+                engine="python",  # Use Python engine for more flexible parsing
+                quotechar='"',
+                escapechar="\\",
+            )
     # Prepare row data for processing
     row_data_list = []
     for index, row in df.iterrows():
