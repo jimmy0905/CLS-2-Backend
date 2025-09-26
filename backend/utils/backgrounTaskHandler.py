@@ -12,7 +12,7 @@ from models.SurveyDepartments import SurveyDepartments
 from models.Channel import Channel
 from models.DeliveryService import DeliveryService
 from datetime import datetime
-from utils.llm.extract_total import extract_total, extract_total_retry
+from utils.llm.extract_total import extract_total, _extract_total_retry_sync
 from utils.logger import logger
 import dateutil.parser
 from typing import Union, Optional, List, Dict, Any
@@ -160,7 +160,7 @@ def process_single_row(
         db = get_thread_db_session()
         index = row_data["index"]
         row = row_data["row"]
-
+        have_to_retry = False
         result = {"index": index, "success": False, "error": None}
 
         # Handle NaN values for critical fields
@@ -330,64 +330,92 @@ def process_single_row(
                         upload_task.total_tokens += usage.get("total_tokens", 0)
                         db.commit()
 
-            # if total.cannot_classified is True, then skip the row
+            # if total.cannot_classified is True, set have_to_retry to True
             if total.cannot_classified:
-                # retry the extract_total_retry
-                logger.warning(
-                    f"Row {index + 1}: Cannot classified in AI Analysis, retrying..."
-                )
-                total, usage = extract_total_retry(comment)
-                if total.cannot_classified:
-                    logger.warning(
-                        f"Row {index + 1}: Cannot classified in AI Analysis after retrying"
-                    )
-                    error = UploadTaskError(
-                        upload_task_id=upload_task_id,
-                        input_store_id=store_id,
-                        input_comment=comment,
-                        input_reported_at=reported_at,
-                        error_message="Cannot classified in AI Analysis" + str(total),
-                    )
-                    db.add(error)
-                    db.commit()
-                    result["error"] = "Cannot classified in AI Analysis"
-                    return result
+                logger.warning(f"Row {index + 1}: Cannot classified in AI Analysis after first try, retrying...")
+                have_to_retry = True
             # Check if the topics are valid
             for topic in total.topics:
                 if topic.text not in available_topics:
-                    logger.warning(
-                        f"Row {index + 1}: Topic {topic.text} is not valid, skipping row"
-                    )
-                    # Create an error for the upload task
-                    error = UploadTaskError(
-                        upload_task_id=upload_task_id,
-                        input_store_id=store_id,
-                        input_comment=comment,
-                        input_reported_at=reported_at,
-                        error_message=f"Topic {topic.text} is not valid",
-                    )
-                    db.add(error)
-                    db.commit()
-                    result["error"] = f"Topic {topic.text} is not valid"
-                    return result
+                    logger.warning(f"Row {index + 1}: Topic {topic.text} is not valid after first try, retrying...")
+                    have_to_retry = True
             # Check if the departments are valid
             for department in total.departments:
                 if department.text not in available_departments:
+                    logger.warning(f"Row {index + 1}: Department {department.text} is not valid after first try, retrying...")
+                    have_to_retry = True
+
+            if have_to_retry:
+                total, usage = _extract_total_retry_sync(comment)
+                # Update usage statistics atomically
+                if usage:
+                    with stats_lock:
+                        upload_task = (
+                            db.query(UploadTask)
+                            .filter(UploadTask.id == upload_task_id)
+                            .first()
+                        )
+                        if upload_task:
+                            upload_task.completion_tokens += usage.get(
+                                "completion_tokens", 0
+                            )
+                            upload_task.prompt_tokens += usage.get("prompt_tokens", 0)
+                            upload_task.total_tokens += usage.get("total_tokens", 0)
+                            db.commit()
+                # Check if the total is classified, if not, skip the row
+                if total.cannot_classified:
                     logger.warning(
-                        f"Row {index + 1}: Department {department.text} is not valid, skipping row"
+                        f"Row {index + 1}: Cannot classified in AI Analysis after retrying, skipping row"
                     )
-                    # Create an error for the upload task
                     error = UploadTaskError(
                         upload_task_id=upload_task_id,
                         input_store_id=store_id,
                         input_comment=comment,
                         input_reported_at=reported_at,
-                        error_message=f"Department {department.text} is not valid",
+                        error_message="Cannot classified in AI Analysis after retrying",
                     )
                     db.add(error)
                     db.commit()
-                    result["error"] = f"Department {department.text} is not valid"
+                    result["error"] = "Cannot classified in AI Analysis after retrying"
                     return result
+                # Check if the topics are valid
+                for topic in total.topics:
+                    if topic.text not in available_topics:
+                        logger.warning(
+                            f"Row {index + 1}: Topic {topic.text} is not valid after retrying, skipping row"
+                        )
+                        error = UploadTaskError(
+                            upload_task_id=upload_task_id,
+                            input_store_id=store_id,
+                            input_comment=comment,
+                            input_reported_at=reported_at,
+                            error_message=f"Topic {topic.text} is not valid after retrying",
+                        )
+                        db.add(error)
+                        db.commit()
+                        result["error"] = (
+                            f"Topic {topic.text} is not valid after retrying"
+                        )
+                        return result
+                # Check if the departments are valid
+                for department in total.departments:
+                    if department.text not in available_departments:
+                        logger.warning(
+                            f"Row {index + 1}: Department {department.text} is not valid after retrying, skipping row"
+                        )
+                        error = UploadTaskError(
+                            upload_task_id=upload_task_id,
+                            input_store_id=store_id,
+                            input_comment=comment,
+                            input_reported_at=reported_at,
+                            error_message=f"Department {department.text} is not valid after retrying",
+                        )
+                        db.add(error)
+                        db.commit()
+                        result["error"] = (
+                            f"Department {department.text} is not valid after retrying"
+                        )
+                        return result
 
         except Exception as e:
             logger.error(
@@ -544,16 +572,8 @@ async def process_upload_task(file_path, db, upload_task_id):
     available_departments = [department.name for department in departments]
 
     # Read the file from csv file
-    df = pd.read_csv(
-        file_path,
-        encoding="utf-8",
-        sep=",",
-        encoding_errors="ignore",
-        on_bad_lines="warn",  # Warn about bad lines but continue
-        engine="python",  # Use Python engine for more flexible parsing
-        quotechar='"',
-        escapechar="\\",
-    )
+    df = pd.read_csv(file_path, encoding="utf-8", sep=",", encoding_errors="ignore")
+
     # Prepare row data for processing
     row_data_list = []
     for index, row in df.iterrows():
