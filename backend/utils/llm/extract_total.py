@@ -30,8 +30,7 @@ EXTRACT_TOTAL_MODEL = os.getenv("EXTRACT_TOTAL_MODEL", "gpt-4.1-mini-CLS-DataUpl
 EXTRACT_TOTAL_TEMPERATURE = float(os.getenv("EXTRACT_TOTAL_TEMPERATURE", 0.0))
 
 
-def _extract_total_sync(text: str) -> tuple[TotalResponse, dict]:
-    system_prompt = """Role and Objective
+system_prompt = """Role and Objective
 You are an AI assistant analyzing exactly one retail customer comment for offline store.
 Your task is to classify topics, departments, and keywords with sentiment, and return a strictly formatted JSON.
 If no valid topic can be classified, return only: {"cannot_classified": true}.
@@ -284,6 +283,9 @@ Stop Condition
 - If no valid topic: output only {"cannot_classified": true}.
 - Never output any text other than JSON.
  """
+
+
+def _extract_total_sync(text: str) -> tuple[TotalResponse, dict]:
     user_prompt = f"""{text}"""
 
     response = client.chat.completions.create(
@@ -302,7 +304,7 @@ Stop Condition
             departments=[],
             keywords=[],
             overall_sentiment="neutral",
-            cannot_classified=True
+            cannot_classified=True,
         )
         return empty_response, None
     try:
@@ -317,14 +319,17 @@ Stop Condition
                 "departments": [],
                 "keywords": [],
                 "overall_sentiment": "neutral",
-                "cannot_classified": True
+                "cannot_classified": True,
             }
-            return TotalResponse.model_validate(complete_response), response.usage.model_dump()
-        
+            return (
+                TotalResponse.model_validate(complete_response),
+                response.usage.model_dump(),
+            )
+
         # For normal case, ensure cannot_classified is set to False if not present
         if "cannot_classified" not in response_json:
             response_json["cannot_classified"] = False
-             
+
         # Create and return TotalResponse object
         return TotalResponse.model_validate(response_json), response.usage.model_dump()
     except Exception as e:
@@ -333,5 +338,28 @@ Stop Condition
         raise Exception(f"Failed to validate keywords response: {e}")
 
 
+EXTRACT_TOTAL_RETRY_MODEL = os.getenv(
+    "EXTRACT_TOTAL_RETRY_MODEL", "gpt-4.1-mini-CLS-DataUpload"
+)
+EXTRACT_TOTAL_RETRY_TEMPERATURE = os.getenv("EXTRACT_TOTAL_RETRY_TEMPERATURE", 0.0)
+
+
+def _extract_total_retry_sync(text: str) -> tuple[TotalResponse, dict]:
+    user_prompt = f"""{text}"""
+    response = client.chat.completions.create(
+        model=EXTRACT_TOTAL_RETRY_MODEL,
+        messages=[{"role": "user", "content": user_prompt}],
+        temperature=EXTRACT_TOTAL_RETRY_TEMPERATURE,
+    )
+    response_content = response.choices[0].message.content
+    if response_content is None:
+        raise Exception("Failed to extract total")
+    return response_content
+
+
 async def extract_total(text: str) -> tuple[TotalResponse, dict]:
     return await run_in_threadpool(_extract_total_sync, text)
+
+
+async def extract_total_retry(text: str) -> tuple[TotalResponse, dict]:
+    return await run_in_threadpool(_extract_total_retry_sync, text)

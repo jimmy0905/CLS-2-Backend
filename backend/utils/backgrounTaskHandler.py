@@ -12,7 +12,7 @@ from models.SurveyDepartments import SurveyDepartments
 from models.Channel import Channel
 from models.DeliveryService import DeliveryService
 from datetime import datetime
-from utils.llm.extract_total import extract_total
+from utils.llm.extract_total import extract_total, extract_total_retry
 from utils.logger import logger
 import dateutil.parser
 from typing import Union, Optional, List, Dict, Any
@@ -30,31 +30,31 @@ def is_comment_valid(comment: str) -> bool:
     """
     Check if the comment is valid.
     """
-    
+
     # Handle None or empty comments
     if not comment or pd.isna(comment):
         return False
-    
+
     # Convert to string and strip whitespace
     comment_str = str(comment).strip()
-    
+
     # Define stop words that indicate invalid comments
     # These should match the comment exactly (case-insensitive) or be very similar
     stop_words = ["na", "n/a", "nan", "none", "null"]
-    
+
     # Check if comment is exactly one of the stop words
     for stop_word in stop_words:
         if comment_str.lower() == stop_word.lower():
             return False
-    
+
     # Check for comments that are just punctuation or very short
     if comment_str in [".", "...", "-", "沒有"]:
         return False
-    
+
     # Check if comment is just whitespace or special characters
     if not comment_str or comment_str.isspace():
         return False
-        
+
     return True
 
 
@@ -332,17 +332,26 @@ def process_single_row(
 
             # if total.cannot_classified is True, then skip the row
             if total.cannot_classified:
-                error = UploadTaskError(
-                    upload_task_id=upload_task_id,
-                    input_store_id=store_id,
-                    input_comment=comment,
-                    input_reported_at=reported_at,
-                    error_message="Cannot classified in AI Analysis" + str(total),
+                # retry the extract_total_retry
+                logger.warning(
+                    f"Row {index + 1}: Cannot classified in AI Analysis, retrying..."
                 )
-                db.add(error)
-                db.commit()
-                result["error"] = "Cannot classified in AI Analysis"
-                return result
+                total, usage = extract_total_retry(comment)
+                if total.cannot_classified:
+                    logger.warning(
+                        f"Row {index + 1}: Cannot classified in AI Analysis after retrying"
+                    )
+                    error = UploadTaskError(
+                        upload_task_id=upload_task_id,
+                        input_store_id=store_id,
+                        input_comment=comment,
+                        input_reported_at=reported_at,
+                        error_message="Cannot classified in AI Analysis" + str(total),
+                    )
+                    db.add(error)
+                    db.commit()
+                    result["error"] = "Cannot classified in AI Analysis"
+                    return result
             # Check if the topics are valid
             for topic in total.topics:
                 if topic.text not in available_topics:
@@ -536,15 +545,15 @@ async def process_upload_task(file_path, db, upload_task_id):
 
     # Read the file from csv file
     df = pd.read_csv(
-                file_path,
-                encoding="utf-8",
-                sep=",",
-                encoding_errors="ignore",
-                on_bad_lines="warn",  # Warn about bad lines but continue
-                engine="python",  # Use Python engine for more flexible parsing
-                quotechar='"',
-                escapechar="\\",
-            )
+        file_path,
+        encoding="utf-8",
+        sep=",",
+        encoding_errors="ignore",
+        on_bad_lines="warn",  # Warn about bad lines but continue
+        engine="python",  # Use Python engine for more flexible parsing
+        quotechar='"',
+        escapechar="\\",
+    )
     # Prepare row data for processing
     row_data_list = []
     for index, row in df.iterrows():

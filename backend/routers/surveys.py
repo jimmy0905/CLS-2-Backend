@@ -24,6 +24,7 @@ from utils.conditionFilter import (
 )
 from utils.llm.extract_total import (
     extract_total,
+    extract_total_retry,
 )
 from utils.security import get_current_user
 from fastapi_pagination import Page, paginate
@@ -385,5 +386,7 @@ async def extract_total_route(
     request: ExtractRequest,
 ) -> tuple[TotalResponse, dict]:
     total, usage = await extract_total(request.comment)
-    print(total)
+    if total.cannot_classified:
+        print("Cannot classified in AI Analysis, retrying...")
+        total, usage = await extract_total_retry(request.comment)
     return total, usage
