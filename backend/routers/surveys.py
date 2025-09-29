@@ -235,11 +235,6 @@ async def create_survey(
             db.add(survey_department)
         for request_topic in survey_request.topics:
             topic = db.query(Topic).filter(Topic.topic == request_topic.topic).first()
-            # Create topic if it doesn't exist
-            if not topic:
-                topic = Topic(topic=request_topic.topic)
-                db.add(topic)
-                db.flush()
             survey_topic = SurveyTopics(
                 survey_id=survey.id,
                 topic_id=topic.id,
