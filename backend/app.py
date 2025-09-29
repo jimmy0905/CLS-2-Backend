@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from utils.database import check_tables_exist
+from uvicorn.config import LOGGING_CONFIG
 import uvicorn
 from routers import (
     auth,
@@ -16,6 +18,9 @@ from routers import (
     regions,
     tasks,
     users,
+    channels,
+    delivery_services,
+    topics,
 )
 import os
 from fastapi_pagination import add_pagination
@@ -36,7 +41,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-add_pagination(app) 
+# Add session middleware for OAuth state management
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv(
+        "SESSION_SECRET_KEY", "fallback-session-secret-key-change-in-production"
+    ),
+)
+
+add_pagination(app)
+
+
 @app.on_event("startup")
 async def startup_event():
     check_tables_exist()
@@ -60,10 +75,16 @@ app.include_router(userBehavoiorLogs.router)
 app.include_router(regions.router)
 app.include_router(tasks.router)
 app.include_router(users.router)
-
-
-
+app.include_router(channels.router)
+app.include_router(delivery_services.router)
+app.include_router(topics.router)
 
 
 if __name__ == "__main__":
+    LOGGING_CONFIG["formatters"]["default"]["fmt"] = (
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    LOGGING_CONFIG["formatters"]["access"]["fmt"] = (
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
     uvicorn.run(app, host="0.0.0.0", port=8000)

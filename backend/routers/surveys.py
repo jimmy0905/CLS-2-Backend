@@ -8,8 +8,11 @@ from models.Topic import Topic
 from models.Keyword import Keyword
 from models.SurveyTopics import SurveyTopics
 from models.SurveyKeywords import SurveyKeywords
+from models.SurveyDepartments import SurveyDepartments
 from models.Store import Store
 from models.Department import Department
+from models.Channel import Channel
+from models.DeliveryService import DeliveryService
 from utils.database import get_db
 from pydantic import BaseModel, Field
 from typing import Literal, List, Optional
@@ -19,14 +22,16 @@ from utils.conditionFilter import (
     FilterRequest,
     get_filter_params,
 )
-from utils.llm import (
-    extract_keywords,
-    extract_topics,
-    extract_department,
-    extract_sentiment,
+from utils.llm.extract_total import (
+    extract_total,
+    extract_total_retry,
 )
 from utils.security import get_current_user
 from fastapi_pagination import Page, paginate
+from fastapi.responses import StreamingResponse
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(
@@ -59,24 +64,47 @@ class StoreResponse(BaseModel):
     region: RegionResponse
 
 
-class DepartmentResponse(BaseModel):
+class ChannelResponse(BaseModel):
     id: int
     name: str
+
+
+class DeliveryServiceResponse(BaseModel):
+    id: int
+    name: str
+
+
+class DepartmentWithSentimentResponse(BaseModel):
+    department_id: int
+    name: str
+    sentiment: str
+
+
+class KeywordWithSentimentResponse(BaseModel):
+    keyword_id: int
+    keyword: str
+    sentiment: str
+
+
+class TopicWithSentimentResponse(BaseModel):
+    topic_id: int
+    topic: str
+    sentiment: str
 
 
 class SurveyResponse(BaseModel):
     id: int
     store: StoreResponse
-    department: DepartmentResponse
+    channel: Optional[ChannelResponse]
+    delivery_service: Optional[DeliveryServiceResponse]
+    departments: List[DepartmentWithSentimentResponse]
+    topics: List[TopicWithSentimentResponse]
+    keywords: List[KeywordWithSentimentResponse]
     comment: str
     sentiment: str
-    cls_score: Optional[float] = None
-    wish_list: Optional[str] = None
     reported_at: datetime
     created_at: datetime
     updated_at: datetime
-    topics: List[str]
-    keywords: List[str]
 
 
 @router.get("")
@@ -88,41 +116,54 @@ async def get_surveys(
 ) -> Page[SurveyResponse]:
     filter_dict = filter_params.model_dump()
     filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
-    
+
     # Apply ordering
     ordered_query = filtered_query.order_by(Survey.reported_at.desc())
-    
+
     # Calculate total count
     total = ordered_query.count()
-    
+
     # Apply pagination
     offset = (page - 1) * size
     surveys = ordered_query.offset(offset).limit(size).all()
-    
+
     # Convert to response models
-    survey_responses = [SurveyResponse.model_validate(survey.to_dict()) for survey in surveys]
-    
+    survey_responses = [
+        SurveyResponse.model_validate(survey.to_dict()) for survey in surveys
+    ]
+
     # Create pagination response
     from fastapi_pagination import Params
+
     params = Params(page=page, size=size)
-    
-    return Page.create(
-        items=survey_responses,
-        total=total,
-        params=params
-    )
+
+    return Page.create(items=survey_responses, total=total, params=params)
+
+
+class CreateSurveyDepartmentRequest(BaseModel):
+    name: str
+    sentiment: Literal["positive", "negative", "neutral"] = "neutral"
+
+
+class CreateSurveyTopicRequest(BaseModel):
+    topic: str
+    sentiment: Literal["positive", "negative", "neutral"] = "neutral"
+
+
+class CreateSurveyKeywordRequest(BaseModel):
+    keyword: str
+    sentiment: Literal["positive", "negative", "neutral"] = "neutral"
 
 
 class CreateSurveyRequest(BaseModel):
     store_id: int
-    department_id: Optional[int] = None
-    department_name: Optional[str] = None
+    channel: Optional[str] = None
+    delivery_service: Optional[str] = None
+    departments: List[CreateSurveyDepartmentRequest]
     comment: str
-    sentiment: Literal["Positive", "Negative", "Neutral"]
-    cls_score: Optional[float] = None
-    wish_list: Optional[str] = None
-    topics: List[str] = Field(default_factory=list)
-    keywords: List[str] = Field(default_factory=list)
+    sentiment: Literal["positive", "negative", "neutral"] = "neutral"
+    topics: List[CreateSurveyTopicRequest]
+    keywords: List[CreateSurveyKeywordRequest]
     reported_at: datetime = Field(default_factory=datetime.now)
 
 
@@ -131,134 +172,183 @@ async def create_survey(
     survey_request: CreateSurveyRequest,
     db: Session = Depends(get_db),
 ):
+
+    # Check if store exists
+    store = db.query(Store).filter(Store.id == survey_request.store_id).first()
+    if not store:
+        raise HTTPException(status_code=404, detail="Store not found")
+    # Check if departments exist
+    departments = (
+        db.query(Department)
+        .filter(Department.name.in_([dept.name for dept in survey_request.departments]))
+        .all()
+    )
+    if not departments:
+        raise HTTPException(status_code=404, detail="Departments not found")
+    # Check if topics exist
+    topics = (
+        db.query(Topic)
+        .filter(Topic.topic.in_([topic.topic for topic in survey_request.topics]))
+        .all()
+    )
+    if not topics:
+        raise HTTPException(status_code=404, detail="Topics not found")
+    # Initialize channel and delivery_service to None
+    channel = None
+    delivery_service = None
+
+    # If channel is provided, check if channel exists
+    if survey_request.channel:
+        channel = (
+            db.query(Channel).filter(Channel.name == survey_request.channel).first()
+        )
+        if not channel:
+            raise HTTPException(status_code=404, detail="Channel not found")
+    # If delivery service is provided, check if delivery service exists
+    if survey_request.delivery_service:
+        delivery_service = (
+            db.query(DeliveryService)
+            .filter(DeliveryService.name == survey_request.delivery_service)
+            .first()
+        )
+        if not delivery_service:
+            raise HTTPException(status_code=404, detail="Delivery service not found")
     try:
-        # department_id and department_name cannot be provided together
-        if (
-            survey_request.department_id is not None
-            and survey_request.department_name is not None
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail="Department id and name cannot be provided together",
-            )
-        # if department_id is not provided, check if department_name exists
-        if (
-            survey_request.department_id is None
-            and survey_request.department_name is not None
-        ):
-            department = (
-                db.query(Department)
-                .filter(Department.name == survey_request.department_name)
-                .first()
-            )
-            if not department:
-                raise HTTPException(status_code=404, detail="Department not found")
-            survey_request.department_id = department.id
-        # Check if store exists
-        store = db.query(Store).filter(Store.id == survey_request.store_id).first()
-        if not store:
-            raise HTTPException(status_code=404, detail="Store not found")
-        # Create the survey first without relationships
+        # Create survey without departments, topics, and keywords relationships
         survey = Survey(
             store_id=survey_request.store_id,
-            department_id=survey_request.department_id,
             comment=survey_request.comment,
             sentiment=survey_request.sentiment,
             reported_at=survey_request.reported_at,
-            cls_score=survey_request.cls_score,
-            wish_list=survey_request.wish_list,
+            channel_id=channel.id if channel else None,
+            delivery_service_id=delivery_service.id if delivery_service else None,
         )
         db.add(survey)
         db.flush()
-
-        new_topics = []
-        topic_associations = []
-
-        for topic_str in survey_request.topics:
-            existing_topic = db.query(Topic).filter(Topic.topic == topic_str).first()
-            if existing_topic:
-                topic = existing_topic
-            else:
-                topic = Topic(topic=topic_str)
-                new_topics.append(topic)
+        # Add departments, topics, and keywords relationships
+        for department in departments:
+            survey_department = SurveyDepartments(
+                survey_id=survey.id,
+                department_id=department.id,
+                sentiment=survey_request.sentiment,
+            )
+            db.add(survey_department)
+        for request_topic in survey_request.topics:
+            topic = db.query(Topic).filter(Topic.topic == request_topic.topic).first()
+            # Create topic if it doesn't exist
+            if not topic:
+                topic = Topic(topic=request_topic.topic)
                 db.add(topic)
-
-        if new_topics:
-            db.flush()
-
-        # Create all topic associations
-        for topic_str in survey_request.topics:
-            existing_topic = db.query(Topic).filter(Topic.topic == topic_str).first()
-            topic = (
-                existing_topic
-                if existing_topic
-                else next(t for t in new_topics if t.topic == topic_str)
+                db.flush()
+            survey_topic = SurveyTopics(
+                survey_id=survey.id,
+                topic_id=topic.id,
+                sentiment=request_topic.sentiment,
             )
-            topic_associations.append(
-                SurveyTopics(survey_id=survey.id, topic_id=topic.id)
-            )
-
-        if topic_associations:
-            db.bulk_save_objects(topic_associations)
-
-        new_keywords = []
-        keyword_associations = []
-
-        for keyword_str in survey_request.keywords:
-            existing_keyword = (
-                db.query(Keyword).filter(Keyword.keyword == keyword_str).first()
-            )
-            if existing_keyword:
-                keyword = existing_keyword
-            else:
-                keyword = Keyword(keyword=keyword_str)
-                new_keywords.append(keyword)
-                db.add(keyword)
-
-        if new_keywords:
-            db.flush()
-
-        # Create all keyword associations
-        for keyword_str in survey_request.keywords:
-            existing_keyword = (
-                db.query(Keyword).filter(Keyword.keyword == keyword_str).first()
-            )
+            db.add(survey_topic)
+        for request_keyword in survey_request.keywords:
             keyword = (
-                existing_keyword
-                if existing_keyword
-                else next(k for k in new_keywords if k.keyword == keyword_str)
+                db.query(Keyword)
+                .filter(Keyword.keyword == request_keyword.keyword)
+                .first()
             )
-            keyword_associations.append(
-                SurveyKeywords(survey_id=survey.id, keyword_id=keyword.id)
+            # Create keyword if it doesn't exist
+            if not keyword:
+                keyword = Keyword(keyword=request_keyword.keyword)
+                db.add(keyword)
+                db.flush()
+            survey_keyword = SurveyKeywords(
+                survey_id=survey.id,
+                keyword_id=keyword.id,
+                sentiment=request_keyword.sentiment,
             )
-
-        if keyword_associations:
-            db.bulk_save_objects(keyword_associations)
-
+            db.add(survey_keyword)
         db.commit()
-        return {
-            "id": survey.id,
-        }
+        db.refresh(survey)
+        return survey.to_dict()
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/download")
+async def download_surveys(
+    filter_params: FilterRequest = Depends(get_filter_params),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    filter_dict = filter_params.model_dump()
+    filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
+
+    def format_csv_value(value):
+        if value is None:
+            return ""
+        elif isinstance(value, list):
+            return "; ".join(str(item) for item in value)
+        elif isinstance(value, datetime):
+            return value.isoformat()
+        else:
+            return str(value)
+
+    def generate_csv_rows():
+        # Yield CSV headers first
+        headers = [
+            "id",
+            "store_id",
+            "store_name",
+            "district_name",
+            "region_name",
+            "source_name",
+            "departments",
+            "topics",
+            "keywords",
+            "comment",
+            "channel",
+            "delivery_service",
+            "sentiment",
+            "reported_at",
+            "created_at",
+            "updated_at",
+        ]
+        yield ",".join(headers) + "\n"
+
+        # Stream surveys in batches using ID as offset
+        batch_size = 100
+        last_id = 0
+
+        while True:
+            # Get surveys with ID greater than last_id, ordered by ID
+            surveys = (
+                filtered_query.filter(Survey.id > last_id)
+                .order_by(Survey.id)
+                .limit(batch_size)
+                .all()
+            )
+
+            if not surveys:
+                break
+
+            # Process each survey and yield CSV row
+            for survey in surveys:
+                csv_row = survey.to_csv()
+                row_values = [format_csv_value(csv_row[header]) for header in headers]
+                csv_row_str = ",".join(f'"{value}"' for value in row_values) + "\n"
+                yield csv_row_str
+
+                # Update last_id for next batch
+                last_id = survey.id
+
+    return StreamingResponse(
+        generate_csv_rows(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=surveys.csv"},
+    )
+
+
 @router.get("/{survey_id}")
 async def get_survey(survey_id: int, db: Session = Depends(get_db)) -> SurveyResponse:
-    survey = (
-        db.query(Survey)
-        .options(
-            joinedload(Survey.survey_topics).joinedload(SurveyTopics.topic),
-            joinedload(Survey.survey_keywords).joinedload(SurveyKeywords.keyword),
-            joinedload(Survey.store),
-            joinedload(Survey.department),
-            joinedload(Survey.district),
-            joinedload(Survey.source),
-        )
-        .filter(Survey.id == survey_id)
-        .first()
-    )
+    filter_dict = {"ids": [survey_id]}
+    query = build_survey_query(db.query(Survey).distinct(), filter_dict)
+    survey = query.first()
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
     return SurveyResponse.model_validate(survey.to_dict())
@@ -268,33 +358,35 @@ class ExtractRequest(BaseModel):
     comment: str
 
 
-@router.post("/extract-keywords")
-async def extract_keywords_route(
+class ExtractedTopicResponse(BaseModel):
+    text: str
+    sentiment: str
+
+
+class ExtractedDepartmentResponse(BaseModel):
+    text: str
+    sentiment: str
+
+
+class ExtractedKeywordResponse(BaseModel):
+    text: str
+    sentiment: str
+
+
+class TotalResponse(BaseModel):
+    topics: list[ExtractedTopicResponse]
+    departments: list[ExtractedDepartmentResponse]
+    keywords: list[ExtractedKeywordResponse]
+    overall_sentiment: str
+    cannot_classified: bool
+
+
+@router.post("/extract-total")
+async def extract_total_route(
     request: ExtractRequest,
-) -> tuple[List[str], dict]:
-    keywords, usage = await extract_keywords(request.comment)
-    return keywords, usage
-
-
-@router.post("/extract-topics")
-async def extract_topics_route(
-    request: ExtractRequest,
-) -> tuple[List[str], dict]:
-    topics, usage = await extract_topics(request.comment)
-    return topics, usage
-
-
-@router.post("/extract-department")
-async def extract_department_route(
-    request: ExtractRequest,
-) -> tuple[str, dict]:
-    department, usage = await extract_department(request.comment)
-    return department, usage
-
-
-@router.post("/extract-sentiment")
-async def extract_sentiment_route(
-    request: ExtractRequest,
-) -> tuple[str, dict]:
-    sentiment, usage = await extract_sentiment(request.comment)
-    return sentiment, usage
+) -> tuple[TotalResponse, dict]:
+    total, usage = await extract_total(request.comment)
+    if total.cannot_classified:
+        print("Cannot classified in AI Analysis, retrying...")
+        total, usage = await extract_total_retry(request.comment)
+    return total, usage

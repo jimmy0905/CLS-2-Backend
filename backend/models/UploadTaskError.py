@@ -12,7 +12,7 @@ class UploadTaskError(Base):
 
     @staticmethod
     def _update_updated_at(mapper, connection, target):
-        target.updated_at = datetime.now()
+        target.updated_at = func.now()
 
     id = Column(CHAR(36), default=lambda: str(uuid.uuid4()), primary_key=True)
     upload_task_id = Column(CHAR(36), ForeignKey("upload_tasks.id"))

@@ -1,6 +1,7 @@
 from models.User import User
 from models.Survey import Survey
 from models.SurveyTopics import SurveyTopics
+from models.SurveyDepartments import SurveyDepartments
 from models.SurveyKeywords import SurveyKeywords
 from models.Topic import Topic
 from models.Keyword import Keyword
@@ -13,11 +14,14 @@ from models.GeneratedEmail import GeneratedEmail
 from models.EmailRecord import EmailRecord
 from models.UploadTask import UploadTask
 from models.UploadTaskError import UploadTaskError
+from models.Channel import Channel
+from models.DeliveryService import DeliveryService
 
 __all__ = [
     "User",
     "Survey",
     "SurveyTopics",
+    "SurveyDepartments",
     "SurveyKeywords",
     "Topic",
     "Keyword",
@@ -30,4 +34,6 @@ __all__ = [
     "EmailRecord",
     "UploadTask",
     "UploadTaskError",
+    "Channel",
+    "DeliveryService",
 ]

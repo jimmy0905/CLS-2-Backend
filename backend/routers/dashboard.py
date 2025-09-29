@@ -5,17 +5,23 @@ from models.Survey import Survey
 from models.Topic import Topic
 from models.Keyword import Keyword
 from models.SurveyKeywords import SurveyKeywords
+from models.SurveyDepartments import SurveyDepartments
 from models.Store import Store
 from models.Department import Department
 from models.District import District
 from models.Region import Region
 from models.Source import Source
 from models.SurveyTopics import SurveyTopics
+from models.Channel import Channel
+from models.DeliveryService import DeliveryService
 from utils.database import get_db
 from pydantic import BaseModel
 from utils.conditionFilter import (
     build_optimized_query,
-    build_sentiment_aggregation_query,
+    build_Survey_sentiment_aggregation_query,
+    build_SurveyKeywords_sentiment_aggregation_query,
+    build_SurveyDepartments_sentiment_aggregation_query,
+    build_SurveyTopics_sentiment_aggregation_query,
     FilterRequest,
     get_filter_params,
 )
@@ -27,6 +33,7 @@ router = APIRouter(
     tags=["dashboard"],
     dependencies=[Depends(get_db), Depends(get_current_user)],
 )
+
 
 class DepartmentDistributionResponse(BaseModel):
     department: str
@@ -49,10 +56,13 @@ async def get_department_distribution(
     # Add department join if not already present
     if "department" not in sentiment_joins:
         sentiment_query = sentiment_query.join(
-            Department, Survey.department_id == Department.id
+            SurveyDepartments, Survey.id == SurveyDepartments.survey_id
+        )
+        sentiment_query = sentiment_query.join(
+            Department, SurveyDepartments.department_id == Department.id
         )
 
-    sentiment_results = build_sentiment_aggregation_query(
+    sentiment_results = build_SurveyDepartments_sentiment_aggregation_query(
         sentiment_query, Department.name.label("department")
     ).all()
 
@@ -64,7 +74,10 @@ async def get_department_distribution(
     # Always add department join for total counts since we need to group by department
     if "department" not in total_joins:
         total_query = total_query.join(
-            Department, Survey.department_id == Department.id
+            SurveyDepartments, Survey.id == SurveyDepartments.survey_id
+        )
+        total_query = total_query.join(
+            Department, SurveyDepartments.department_id == Department.id
         )
 
     total_results = (
@@ -121,25 +134,16 @@ async def get_keyword_analysis(
 
     # Check if keyword joins are already present, if not add them
     if "keyword" not in joined_tables:
-        base_query = base_query.join(SurveyKeywords, Survey.id == SurveyKeywords.survey_id)
+        base_query = base_query.join(
+            SurveyKeywords, Survey.id == SurveyKeywords.survey_id
+        )
         base_query = base_query.join(Keyword, SurveyKeywords.keyword_id == Keyword.id)
 
     # Single optimized query for keyword analysis
     keyword_results = (
-        base_query.with_entities(
-            Keyword.keyword,
-            func.count(case((Survey.sentiment == "Neutral", Survey.id))).label(
-                "neutral_count"
-            ),
-            func.count(case((Survey.sentiment == "Positive", Survey.id))).label(
-                "positive_count"
-            ),
-            func.count(case((Survey.sentiment == "Negative", Survey.id))).label(
-                "negative_count"
-            ),
-            func.count(Survey.id).label("total_count"),
+        build_SurveyKeywords_sentiment_aggregation_query(
+            base_query, Keyword.keyword.label("keyword")
         )
-        .group_by(Keyword.id, Keyword.keyword)
         .order_by(func.count(Survey.id).desc())
         .limit(k)
         .all()
@@ -182,7 +186,7 @@ async def get_district_distribution(
             District, Store.district_id == District.id
         )
 
-    sentiment_results = build_sentiment_aggregation_query(
+    sentiment_results = build_Survey_sentiment_aggregation_query(
         sentiment_query, District.name.label("district")
     ).all()
 
@@ -252,7 +256,7 @@ async def get_topic_distribution(
         )
         sentiment_query = sentiment_query.join(Topic, SurveyTopics.topic_id == Topic.id)
 
-    sentiment_results = build_sentiment_aggregation_query(
+    sentiment_results = build_SurveyTopics_sentiment_aggregation_query(
         sentiment_query, Topic.topic.label("topic")
     ).all()
 
@@ -321,17 +325,8 @@ async def get_sentiment_distribution(
     sentiment_query, _ = build_optimized_query(db, filter_dict)
 
     sentiment_results = (
-        sentiment_query.with_entities(
-            func.date(Survey.reported_at).label("date"),
-            func.count(case((Survey.sentiment == "Neutral", Survey.id))).label(
-                "neutral_count"
-            ),
-            func.count(case((Survey.sentiment == "Positive", Survey.id))).label(
-                "positive_count"
-            ),
-            func.count(case((Survey.sentiment == "Negative", Survey.id))).label(
-                "negative_count"
-            ),
+        build_Survey_sentiment_aggregation_query(
+            sentiment_query, func.date(Survey.reported_at).label("date")
         )
         .group_by(func.date(Survey.reported_at))
         .order_by(func.date(Survey.reported_at))
@@ -342,13 +337,13 @@ async def get_sentiment_distribution(
     )
     total_results = total_query.with_entities(
         func.date(Survey.reported_at).label("date"),
-        func.count(case((Survey.sentiment == "Neutral", Survey.id))).label(
+        func.count(case((Survey.sentiment == "neutral", Survey.id))).label(
             "neutral_count_for_option"
         ),
-        func.count(case((Survey.sentiment == "Positive", Survey.id))).label(
+        func.count(case((Survey.sentiment == "positive", Survey.id))).label(
             "positive_count_for_option"
         ),
-        func.count(case((Survey.sentiment == "Negative", Survey.id))).label(
+        func.count(case((Survey.sentiment == "negative", Survey.id))).label(
             "negative_count_for_option"
         ),
     )
@@ -403,23 +398,9 @@ async def get_source_distribution(
     if "source" not in sentiment_joins:
         sentiment_query = sentiment_query.join(Source, Store.source_id == Source.id)
 
-    sentiment_results = (
-        sentiment_query.with_entities(
-            Source.id.label("source_id"),
-            Source.name.label("source"),
-            func.count(case((Survey.sentiment == "Neutral", Survey.id))).label(
-                "neutral_count"
-            ),
-            func.count(case((Survey.sentiment == "Positive", Survey.id))).label(
-                "positive_count"
-            ),
-            func.count(case((Survey.sentiment == "Negative", Survey.id))).label(
-                "negative_count"
-            ),
-        )
-        .group_by(Source.id, Source.name)
-        .all()
-    )
+    sentiment_results = build_Survey_sentiment_aggregation_query(
+        sentiment_query, Source.id.label("source_id"), Source.name.label("source")
+    ).all()
 
     # Total count query: Apply ALL filters EXCEPT source filters, but group by source
     total_query, total_joins = build_optimized_query(
@@ -450,7 +431,6 @@ async def get_source_distribution(
     for source_id in set(list(sentiment_dict.keys()) + list(total_dict.keys())):
         sentiment_row = sentiment_dict.get(source_id)
         total_count = total_dict.get(source_id, 0)
-
         # Get source name from either sentiment or total results
         source_name = (
             sentiment_row.source
@@ -497,23 +477,9 @@ async def get_store_distribution(
     if "store" not in sentiment_joins:
         sentiment_query = sentiment_query.join(Store, Survey.store_id == Store.id)
 
-    sentiment_results = (
-        sentiment_query.with_entities(
-            Store.id.label("store_id"),
-            Store.name.label("store_name"),
-            func.count(case((Survey.sentiment == "Neutral", Survey.id))).label(
-                "neutral_count"
-            ),
-            func.count(case((Survey.sentiment == "Positive", Survey.id))).label(
-                "positive_count"
-            ),
-            func.count(case((Survey.sentiment == "Negative", Survey.id))).label(
-                "negative_count"
-            ),
-        )
-        .group_by(Store.id, Store.name)
-        .all()
-    )
+    sentiment_results = build_Survey_sentiment_aggregation_query(
+        sentiment_query, Store.id.label("store_id"), Store.name.label("store_name")
+    ).all()
 
     # Total count query: Apply ALL filters EXCEPT store filters, but group by store
     total_query, total_joins = build_optimized_query(
@@ -591,7 +557,7 @@ async def get_region_distribution(
     if "region" not in sentiment_joins:
         sentiment_query = sentiment_query.join(Region, Store.region_id == Region.id)
 
-    sentiment_results = build_sentiment_aggregation_query(
+    sentiment_results = build_Survey_sentiment_aggregation_query(
         sentiment_query, Region.name.label("region")
     ).all()
 
@@ -634,3 +600,98 @@ async def get_region_distribution(
         )
 
     return region_distribution
+
+
+class ChannelAndDeliveryServiceDistributionResponse(BaseModel):
+    channel: str
+    delivery_service: str
+    neutral_count: int
+    positive_count: int
+    negative_count: int
+    total_count_for_option: int
+
+
+@router.get("/channel-and-delivery-service-distribution")
+async def get_channel_and_delivery_service_distribution(
+    filter_params: FilterRequest = Depends(get_filter_params),
+    db: Session = Depends(get_db),
+) -> List[ChannelAndDeliveryServiceDistributionResponse]:
+    filter_dict = filter_params.model_dump()
+
+    # Get all channels and delivery services
+    all_channels = db.query(Channel).all()
+    all_delivery_services = db.query(DeliveryService).all()
+
+    # Single query to get sentiment counts with channel and delivery service filter
+    sentiment_query, sentiment_joins = build_optimized_query(db, filter_dict)
+
+    # Add necessary joins if not already present
+    if "channel" not in sentiment_joins:
+        sentiment_query = sentiment_query.join(Channel, Survey.channel_id == Channel.id)
+    if "delivery_service" not in sentiment_joins:
+        sentiment_query = sentiment_query.join(
+            DeliveryService, Survey.delivery_service_id == DeliveryService.id
+        )
+
+    sentiment_results = build_Survey_sentiment_aggregation_query(
+        sentiment_query,
+        Channel.name.label("channel"),
+        DeliveryService.name.label("delivery_service"),
+    ).all()
+
+    # Total count query: Apply ALL filters EXCEPT channel and delivery service filters, but group by channel and delivery service
+    total_query, total_joins = build_optimized_query(
+        db,
+        filter_dict,
+        exclude_filters=[
+            "channel_ids",
+            "channel_names",
+            "delivery_service_ids",
+            "delivery_service_names",
+        ],
+    )
+
+    # Always add necessary joins for total counts since we need to group by channel and delivery service
+    if "channel" not in total_joins:
+        total_query = total_query.join(Channel, Survey.channel_id == Channel.id)
+    if "delivery_service" not in total_joins:
+        total_query = total_query.join(
+            DeliveryService, Survey.delivery_service_id == DeliveryService.id
+        )
+
+    total_results = (
+        total_query.with_entities(
+            Channel.name.label("channel"),
+            DeliveryService.name.label("delivery_service"),
+            func.count(Survey.id).label("total_count"),
+        )
+        .group_by(Channel.id, Channel.name, DeliveryService.id, DeliveryService.name)
+        .all()
+    )
+
+    # Combine results
+    sentiment_dict = {(row.channel, row.delivery_service): row for row in sentiment_results}
+    total_dict = {(row.channel, row.delivery_service): row.total_count for row in total_results}
+
+    # Generate all possible combinations
+    channel_and_delivery_service_distribution = []
+    for channel in all_channels:
+        for delivery_service in all_delivery_services:
+            channel_name = channel.name
+            delivery_service_name = delivery_service.name
+            
+            sentiment_row = sentiment_dict.get((channel_name, delivery_service_name))
+            total_count = total_dict.get((channel_name, delivery_service_name), 0)
+            
+            channel_and_delivery_service_distribution.append(
+                ChannelAndDeliveryServiceDistributionResponse(
+                    channel=channel_name,
+                    delivery_service=delivery_service_name,
+                    neutral_count=sentiment_row.neutral_count if sentiment_row else 0,
+                    positive_count=sentiment_row.positive_count if sentiment_row else 0,
+                    negative_count=sentiment_row.negative_count if sentiment_row else 0,
+                    total_count_for_option=total_count,
+                )
+            )
+
+    return channel_and_delivery_service_distribution
