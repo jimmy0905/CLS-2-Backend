@@ -321,10 +321,10 @@ def _extract_total_sync(text: str) -> tuple[TotalResponse, dict]:
                 "overall_sentiment": "neutral",
                 "cannot_classified": True,
             }
-        return (
-            TotalResponse.model_validate(complete_response),
-            response.usage.model_dump() if response.usage else None,
-        )
+            return (
+                TotalResponse.model_validate(complete_response),
+                response.usage.model_dump() if response.usage else None,
+            )
 
         # For normal case, ensure cannot_classified is set to False if not present
         if "cannot_classified" not in response_json:
@@ -348,7 +348,10 @@ def _extract_total_retry_sync(text: str) -> tuple[TotalResponse, dict]:
     user_prompt = f"""{text}"""
     response = client.chat.completions.create(
         model=EXTRACT_TOTAL_RETRY_MODEL,
-        messages=[{"role": "user", "content": user_prompt}],
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
         temperature=EXTRACT_TOTAL_RETRY_TEMPERATURE,
     )
     response_content = response.choices[0].message.content
