@@ -24,6 +24,32 @@ from functools import partial
 from sqlalchemy.orm import sessionmaker
 from utils.database import engine
 from config import MAX_WORKER_THREADS
+from utils.llm.models import TotalResponse
+
+
+# ONLY FOR WTCHKECLS PROJECT
+def is_total_valid(total: TotalResponse) -> tuple[bool, str]:
+    """
+    Check if the total is valid.
+    for these five topics, if dept select= Supply Chain only, then the topics chart should only show the topics below
+
+    Packaging/Condition of Delivered Items
+    Deliveryman Service
+    Communication of Order Status
+    Order Arrived at Promised Time
+    Store Staff’s Service
+    """
+    if total.departments == ["Supply Chain"]:
+        for topic in total.topics:
+            if topic.text not in [
+                "Packaging/Condition of Delivered Items",
+                "Deliveryman Service",
+                "Communication of Order Status",
+                "Order Arrived at Promised Time",
+                "Store Staff’s Service",
+            ]:
+                return False, f"Department {total.departments} only, but Topic {topic.text} is not valid"
+    return True, ""
 
 
 def is_comment_valid(comment: str) -> bool:
@@ -313,7 +339,21 @@ def process_single_row(
             from utils.llm.extract_total import _extract_total_sync
 
             total, usage = _extract_total_sync(comment)
-
+            # ONLY FOR WTCHKECLS PROJECT
+            # Check if the total is valid
+            is_valid, error_message = is_total_valid(total)
+            if not is_valid:
+                error = UploadTaskError(
+                    upload_task_id=upload_task_id,
+                    input_store_id=store_id,
+                    input_comment=comment,
+                    input_reported_at=reported_at,
+                    error_message=error_message,
+                )
+                db.add(error)
+                db.commit()
+                result["error"] = error_message
+                return result
             # Update usage statistics atomically
             if usage:
                 with stats_lock:
