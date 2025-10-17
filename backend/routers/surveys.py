@@ -24,6 +24,7 @@ from utils.conditionFilter import (
 )
 from utils.llm.extract_total import (
     extract_total,
+    extract_total_retry,
 )
 from utils.security import get_current_user
 from fastapi_pagination import Page, paginate
@@ -234,11 +235,6 @@ async def create_survey(
             db.add(survey_department)
         for request_topic in survey_request.topics:
             topic = db.query(Topic).filter(Topic.topic == request_topic.topic).first()
-            # Create topic if it doesn't exist
-            if not topic:
-                topic = Topic(topic=request_topic.topic)
-                db.add(topic)
-                db.flush()
             survey_topic = SurveyTopics(
                 survey_id=survey.id,
                 topic_id=topic.id,
@@ -385,5 +381,7 @@ async def extract_total_route(
     request: ExtractRequest,
 ) -> tuple[TotalResponse, dict]:
     total, usage = await extract_total(request.comment)
-    print(total)
+    if total.cannot_classified:
+        print("Cannot classified in AI Analysis, retrying...")
+        total, usage = await extract_total_retry(request.comment)
     return total, usage
