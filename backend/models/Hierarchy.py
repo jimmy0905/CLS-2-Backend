@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Index, ForeignKey
+from sqlalchemy import Column, Integer, String, Index
 from sqlalchemy.orm import relationship
 from utils.database import Base
 
@@ -9,11 +9,7 @@ class Hierarchy(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(100), unique=True)
     level = Column(Integer, nullable=False)  # 1-5 representing hierarchy level
-    parent_id = Column(Integer, ForeignKey("hierarchies.id"), nullable=True)
 
-    # Relationships
-    parent = relationship("Hierarchy", remote_side=[id], backref="children")
-    
     # Stores that reference this hierarchy at different levels
     stores_level_1 = relationship("Store", foreign_keys="Store.hierarchy_level_1_id", back_populates="hierarchy_level_1")
     stores_level_2 = relationship("Store", foreign_keys="Store.hierarchy_level_2_id", back_populates="hierarchy_level_2")
@@ -32,6 +28,5 @@ class Hierarchy(Base):
             "id": self.id,
             "name": self.name,
             "level": self.level,
-            "parent_id": self.parent_id,
         }
 

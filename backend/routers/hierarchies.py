@@ -17,7 +17,6 @@ class HierarchyResponse(BaseModel):
     id: int
     name: str
     level: int
-    parent_id: Optional[int] = None
 
 
 @router.get("/")
@@ -34,7 +33,6 @@ async def get_hierarchies(
             id=hierarchy.id,
             name=hierarchy.name,
             level=hierarchy.level,
-            parent_id=hierarchy.parent_id,
         )
         for hierarchy in hierarchies
     ]
@@ -51,14 +49,12 @@ async def get_hierarchy(
         id=hierarchy.id,
         name=hierarchy.name,
         level=hierarchy.level,
-        parent_id=hierarchy.parent_id,
     )
 
 
 class CreateHierarchyRequest(BaseModel):
     name: str
     level: int
-    parent_id: Optional[int] = None
 
 
 @router.post("/")
@@ -80,27 +76,9 @@ async def create_hierarchy(
     if existing:
         raise HTTPException(status_code=400, detail="Hierarchy name already exists")
     
-    # If parent_id is provided, check if parent exists
-    if create_hierarchy_request.parent_id:
-        parent = (
-            db.query(Hierarchy)
-            .filter(Hierarchy.id == create_hierarchy_request.parent_id)
-            .first()
-        )
-        if not parent:
-            raise HTTPException(status_code=404, detail="Parent hierarchy not found")
-        
-        # Validate that parent level is less than child level
-        if parent.level >= create_hierarchy_request.level:
-            raise HTTPException(
-                status_code=400,
-                detail="Parent level must be less than child level"
-            )
-    
     hierarchy = Hierarchy(
         name=create_hierarchy_request.name,
         level=create_hierarchy_request.level,
-        parent_id=create_hierarchy_request.parent_id,
     )
     db.add(hierarchy)
     db.commit()
@@ -109,14 +87,12 @@ async def create_hierarchy(
         id=hierarchy.id,
         name=hierarchy.name,
         level=hierarchy.level,
-        parent_id=hierarchy.parent_id,
     )
 
 
 class UpdateHierarchyRequest(BaseModel):
     name: Optional[str] = None
     level: Optional[int] = None
-    parent_id: Optional[int] = None
 
 
 @router.put("/{hierarchy_id}")
@@ -150,35 +126,12 @@ async def update_hierarchy(
             )
         hierarchy.level = update_hierarchy_request.level
     
-    if update_hierarchy_request.parent_id is not None:
-        if update_hierarchy_request.parent_id == hierarchy_id:
-            raise HTTPException(
-                status_code=400,
-                detail="Hierarchy cannot be its own parent"
-            )
-        parent = (
-            db.query(Hierarchy)
-            .filter(Hierarchy.id == update_hierarchy_request.parent_id)
-            .first()
-        )
-        if not parent:
-            raise HTTPException(status_code=404, detail="Parent hierarchy not found")
-        
-        # Validate that parent level is less than child level
-        if parent.level >= hierarchy.level:
-            raise HTTPException(
-                status_code=400,
-                detail="Parent level must be less than child level"
-            )
-        hierarchy.parent_id = update_hierarchy_request.parent_id
-    
     db.commit()
     db.refresh(hierarchy)
     return HierarchyResponse(
         id=hierarchy.id,
         name=hierarchy.name,
         level=hierarchy.level,
-        parent_id=hierarchy.parent_id,
     )
 
 

@@ -18,7 +18,6 @@ class HierarchyResponse(BaseModel):
     id: int
     name: str
     level: int
-    parent_id: Optional[int] = None
 
 
 class StoreResponse(BaseModel):
@@ -53,31 +52,26 @@ async def get_stores(db: Session = Depends(get_db)) -> List[StoreResponse]:
                 id=store.hierarchy_level_1.id,
                 name=store.hierarchy_level_1.name,
                 level=store.hierarchy_level_1.level,
-                parent_id=store.hierarchy_level_1.parent_id,
             ) if store.hierarchy_level_1 else None,
             hierarchy_level_2=HierarchyResponse(
                 id=store.hierarchy_level_2.id,
                 name=store.hierarchy_level_2.name,
                 level=store.hierarchy_level_2.level,
-                parent_id=store.hierarchy_level_2.parent_id,
             ) if store.hierarchy_level_2 else None,
             hierarchy_level_3=HierarchyResponse(
                 id=store.hierarchy_level_3.id,
                 name=store.hierarchy_level_3.name,
                 level=store.hierarchy_level_3.level,
-                parent_id=store.hierarchy_level_3.parent_id,
             ) if store.hierarchy_level_3 else None,
             hierarchy_level_4=HierarchyResponse(
                 id=store.hierarchy_level_4.id,
                 name=store.hierarchy_level_4.name,
                 level=store.hierarchy_level_4.level,
-                parent_id=store.hierarchy_level_4.parent_id,
             ) if store.hierarchy_level_4 else None,
             hierarchy_level_5=HierarchyResponse(
                 id=store.hierarchy_level_5.id,
                 name=store.hierarchy_level_5.name,
                 level=store.hierarchy_level_5.level,
-                parent_id=store.hierarchy_level_5.parent_id,
             ) if store.hierarchy_level_5 else None,
             is_active=store.is_active,
         )
@@ -108,31 +102,26 @@ async def get_store(store_id: int, db: Session = Depends(get_db)) -> StoreRespon
             id=store.hierarchy_level_1.id,
             name=store.hierarchy_level_1.name,
             level=store.hierarchy_level_1.level,
-            parent_id=store.hierarchy_level_1.parent_id,
         ) if store.hierarchy_level_1 else None,
         hierarchy_level_2=HierarchyResponse(
             id=store.hierarchy_level_2.id,
             name=store.hierarchy_level_2.name,
             level=store.hierarchy_level_2.level,
-            parent_id=store.hierarchy_level_2.parent_id,
         ) if store.hierarchy_level_2 else None,
         hierarchy_level_3=HierarchyResponse(
             id=store.hierarchy_level_3.id,
             name=store.hierarchy_level_3.name,
             level=store.hierarchy_level_3.level,
-            parent_id=store.hierarchy_level_3.parent_id,
         ) if store.hierarchy_level_3 else None,
         hierarchy_level_4=HierarchyResponse(
             id=store.hierarchy_level_4.id,
             name=store.hierarchy_level_4.name,
             level=store.hierarchy_level_4.level,
-            parent_id=store.hierarchy_level_4.parent_id,
         ) if store.hierarchy_level_4 else None,
         hierarchy_level_5=HierarchyResponse(
             id=store.hierarchy_level_5.id,
             name=store.hierarchy_level_5.name,
             level=store.hierarchy_level_5.level,
-            parent_id=store.hierarchy_level_5.parent_id,
         ) if store.hierarchy_level_5 else None,
         is_active=store.is_active,
     )
@@ -229,31 +218,26 @@ async def create_store(
             id=store.hierarchy_level_1.id,
             name=store.hierarchy_level_1.name,
             level=store.hierarchy_level_1.level,
-            parent_id=store.hierarchy_level_1.parent_id,
         ) if store.hierarchy_level_1 else None,
         hierarchy_level_2=HierarchyResponse(
             id=store.hierarchy_level_2.id,
             name=store.hierarchy_level_2.name,
             level=store.hierarchy_level_2.level,
-            parent_id=store.hierarchy_level_2.parent_id,
         ) if store.hierarchy_level_2 else None,
         hierarchy_level_3=HierarchyResponse(
             id=store.hierarchy_level_3.id,
             name=store.hierarchy_level_3.name,
             level=store.hierarchy_level_3.level,
-            parent_id=store.hierarchy_level_3.parent_id,
         ) if store.hierarchy_level_3 else None,
         hierarchy_level_4=HierarchyResponse(
             id=store.hierarchy_level_4.id,
             name=store.hierarchy_level_4.name,
             level=store.hierarchy_level_4.level,
-            parent_id=store.hierarchy_level_4.parent_id,
         ) if store.hierarchy_level_4 else None,
         hierarchy_level_5=HierarchyResponse(
             id=store.hierarchy_level_5.id,
             name=store.hierarchy_level_5.name,
             level=store.hierarchy_level_5.level,
-            parent_id=store.hierarchy_level_5.parent_id,
         ) if store.hierarchy_level_5 else None,
         is_active=store.is_active,
     )
@@ -325,31 +309,26 @@ async def update_store(
             id=store.hierarchy_level_1.id,
             name=store.hierarchy_level_1.name,
             level=store.hierarchy_level_1.level,
-            parent_id=store.hierarchy_level_1.parent_id,
         ) if store.hierarchy_level_1 else None,
         hierarchy_level_2=HierarchyResponse(
             id=store.hierarchy_level_2.id,
             name=store.hierarchy_level_2.name,
             level=store.hierarchy_level_2.level,
-            parent_id=store.hierarchy_level_2.parent_id,
         ) if store.hierarchy_level_2 else None,
         hierarchy_level_3=HierarchyResponse(
             id=store.hierarchy_level_3.id,
             name=store.hierarchy_level_3.name,
             level=store.hierarchy_level_3.level,
-            parent_id=store.hierarchy_level_3.parent_id,
         ) if store.hierarchy_level_3 else None,
         hierarchy_level_4=HierarchyResponse(
             id=store.hierarchy_level_4.id,
             name=store.hierarchy_level_4.name,
             level=store.hierarchy_level_4.level,
-            parent_id=store.hierarchy_level_4.parent_id,
         ) if store.hierarchy_level_4 else None,
         hierarchy_level_5=HierarchyResponse(
             id=store.hierarchy_level_5.id,
             name=store.hierarchy_level_5.name,
             level=store.hierarchy_level_5.level,
-            parent_id=store.hierarchy_level_5.parent_id,
         ) if store.hierarchy_level_5 else None,
         is_active=store.is_active,
     )
