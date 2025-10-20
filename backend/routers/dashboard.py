@@ -8,9 +8,7 @@ from models.SurveyKeywords import SurveyKeywords
 from models.SurveyDepartments import SurveyDepartments
 from models.Store import Store
 from models.Department import Department
-from models.District import District
-from models.Region import Region
-from models.Source import Source
+from models.Hierarchy import Hierarchy
 from models.SurveyTopics import SurveyTopics
 from models.Channel import Channel
 from models.DeliveryService import DeliveryService
@@ -160,67 +158,100 @@ async def get_keyword_analysis(
     ]
 
 
-class DistrictDistributionResponse(BaseModel):
-    district: str
+class HierarchyDistributionResponse(BaseModel):
+    id: int
+    name: str
+    level: int
     neutral_count: int
     positive_count: int
     negative_count: int
     total_count_for_option: int
 
 
-@router.get("/district-distribution")
-async def get_district_distribution(
+@router.get("/hierarchy-distribution")
+async def get_hierarchy_distribution(
+    level: int = Query(..., ge=1, le=5, description="Hierarchy level (1-5)"),
     filter_params: FilterRequest = Depends(get_filter_params),
     db: Session = Depends(get_db),
-) -> List[DistrictDistributionResponse]:
+) -> List[HierarchyDistributionResponse]:
     filter_dict = filter_params.model_dump()
+    
+    # Map level to Store hierarchy column
+    hierarchy_columns = {
+        1: Store.hierarchy_level_1_id,
+        2: Store.hierarchy_level_2_id,
+        3: Store.hierarchy_level_3_id,
+        4: Store.hierarchy_level_4_id,
+        5: Store.hierarchy_level_5_id,
+    }
+    
+    hierarchy_col = hierarchy_columns[level]
 
-    # Single query to get sentiment counts with district filter
+    # Single query to get sentiment counts with hierarchy filter
     sentiment_query, sentiment_joins = build_optimized_query(db, filter_dict)
 
     # Add necessary joins if not already present
     if "store" not in sentiment_joins:
         sentiment_query = sentiment_query.join(Store, Survey.store_id == Store.id)
-    if "district" not in sentiment_joins:
+    if f"hierarchy_level_{level}" not in sentiment_joins:
         sentiment_query = sentiment_query.join(
-            District, Store.district_id == District.id
+            Hierarchy, hierarchy_col == Hierarchy.id
         )
 
     sentiment_results = build_Survey_sentiment_aggregation_query(
-        sentiment_query, District.name.label("district")
+        sentiment_query, 
+        Hierarchy.id.label("hierarchy_id"),
+        Hierarchy.name.label("hierarchy_name")
     ).all()
 
-    # Total count query: Apply ALL filters EXCEPT district filters, but group by district
+    # Total count query: Apply ALL filters EXCEPT hierarchy level filters, but group by hierarchy
+    exclude_filters = [
+        f"hierarchy_level_{level}_ids",
+        f"hierarchy_level_{level}_names"
+    ]
     total_query, total_joins = build_optimized_query(
-        db, filter_dict, exclude_filters=["district_ids", "district_names"]
+        db, filter_dict, exclude_filters=exclude_filters
     )
 
-    # Always add necessary joins for total counts since we need to group by district
+    # Always add necessary joins for total counts
     if "store" not in total_joins:
         total_query = total_query.join(Store, Survey.store_id == Store.id)
-    if "district" not in total_joins:
-        total_query = total_query.join(District, Store.district_id == District.id)
+    if f"hierarchy_level_{level}" not in total_joins:
+        total_query = total_query.join(Hierarchy, hierarchy_col == Hierarchy.id)
 
     total_results = (
         total_query.with_entities(
-            District.name.label("district"), func.count(Survey.id).label("total_count")
+            Hierarchy.id.label("hierarchy_id"),
+            Hierarchy.name.label("hierarchy_name"),
+            func.count(Survey.id).label("total_count")
         )
-        .group_by(District.id, District.name)
+        .group_by(Hierarchy.id, Hierarchy.name)
         .all()
     )
 
     # Combine results
-    sentiment_dict = {row.district: row for row in sentiment_results}
-    total_dict = {row.district: row.total_count for row in total_results}
+    sentiment_dict = {row.hierarchy_id: row for row in sentiment_results}
+    total_dict = {row.hierarchy_id: row.total_count for row in total_results}
 
-    district_distribution = []
-    for district_name in set(list(sentiment_dict.keys()) + list(total_dict.keys())):
-        sentiment_row = sentiment_dict.get(district_name)
-        total_count = total_dict.get(district_name, 0)
+    hierarchy_distribution = []
+    for hierarchy_id in set(list(sentiment_dict.keys()) + list(total_dict.keys())):
+        sentiment_row = sentiment_dict.get(hierarchy_id)
+        total_count = total_dict.get(hierarchy_id, 0)
+        
+        # Get hierarchy name from either sentiment or total results
+        hierarchy_name = (
+            sentiment_row.hierarchy_name
+            if sentiment_row
+            else next(
+                (row.hierarchy_name for row in total_results if row.hierarchy_id == hierarchy_id), ""
+            )
+        )
 
-        district_distribution.append(
-            DistrictDistributionResponse(
-                district=district_name,
+        hierarchy_distribution.append(
+            HierarchyDistributionResponse(
+                id=hierarchy_id,
+                name=hierarchy_name,
+                level=level,
                 neutral_count=sentiment_row.neutral_count if sentiment_row else 0,
                 positive_count=sentiment_row.positive_count if sentiment_row else 0,
                 negative_count=sentiment_row.negative_count if sentiment_row else 0,
@@ -228,7 +259,7 @@ async def get_district_distribution(
             )
         )
 
-    return district_distribution
+    return hierarchy_distribution
 
 
 class TopicDistributionResponse(BaseModel):
@@ -373,85 +404,6 @@ async def get_sentiment_distribution(
     return date_results
 
 
-class SourceResponse(BaseModel):
-    id: int
-    source: str
-    neutral_count: int
-    positive_count: int
-    negative_count: int
-    total_count_for_option: int
-
-
-@router.get("/source-distribution")
-async def get_source_distribution(
-    filter_params: FilterRequest = Depends(get_filter_params),
-    db: Session = Depends(get_db),
-) -> List[SourceResponse]:
-    filter_dict = filter_params.model_dump()
-
-    # Single query to get sentiment counts with source filter
-    sentiment_query, sentiment_joins = build_optimized_query(db, filter_dict)
-
-    # Add necessary joins if not already present
-    if "store" not in sentiment_joins:
-        sentiment_query = sentiment_query.join(Store, Survey.store_id == Store.id)
-    if "source" not in sentiment_joins:
-        sentiment_query = sentiment_query.join(Source, Store.source_id == Source.id)
-
-    sentiment_results = build_Survey_sentiment_aggregation_query(
-        sentiment_query, Source.id.label("source_id"), Source.name.label("source")
-    ).all()
-
-    # Total count query: Apply ALL filters EXCEPT source filters, but group by source
-    total_query, total_joins = build_optimized_query(
-        db, filter_dict, exclude_filters=["source_ids", "source_names"]
-    )
-
-    # Always add necessary joins for total counts since we need to group by source
-    if "store" not in total_joins:
-        total_query = total_query.join(Store, Survey.store_id == Store.id)
-    if "source" not in total_joins:
-        total_query = total_query.join(Source, Store.source_id == Source.id)
-
-    total_results = (
-        total_query.with_entities(
-            Source.id.label("source_id"),
-            Source.name.label("source"),
-            func.count(Survey.id).label("total_count"),
-        )
-        .group_by(Source.id, Source.name)
-        .all()
-    )
-
-    # Combine results
-    sentiment_dict = {row.source_id: row for row in sentiment_results}
-    total_dict = {row.source_id: row.total_count for row in total_results}
-
-    source_distribution = []
-    for source_id in set(list(sentiment_dict.keys()) + list(total_dict.keys())):
-        sentiment_row = sentiment_dict.get(source_id)
-        total_count = total_dict.get(source_id, 0)
-        # Get source name from either sentiment or total results
-        source_name = (
-            sentiment_row.source
-            if sentiment_row
-            else next(
-                (row.source for row in total_results if row.source_id == source_id), ""
-            )
-        )
-
-        source_distribution.append(
-            SourceResponse(
-                id=source_id,
-                source=source_name,
-                neutral_count=sentiment_row.neutral_count if sentiment_row else 0,
-                positive_count=sentiment_row.positive_count if sentiment_row else 0,
-                negative_count=sentiment_row.negative_count if sentiment_row else 0,
-                total_count_for_option=total_count,
-            )
-        )
-
-    return source_distribution
 
 
 class StoreResponse(BaseModel):
@@ -533,73 +485,6 @@ async def get_store_distribution(
     return store_distribution
 
 
-class RegionDistributionResponse(BaseModel):
-    region: str
-    neutral_count: int
-    positive_count: int
-    negative_count: int
-    total_count_for_option: int
-
-
-@router.get("/region-distribution")
-async def get_region_distribution(
-    filter_params: FilterRequest = Depends(get_filter_params),
-    db: Session = Depends(get_db),
-) -> List[RegionDistributionResponse]:
-    filter_dict = filter_params.model_dump()
-
-    # Single query to get sentiment counts with district filter
-    sentiment_query, sentiment_joins = build_optimized_query(db, filter_dict)
-
-    # Add necessary joins if not already present
-    if "store" not in sentiment_joins:
-        sentiment_query = sentiment_query.join(Store, Survey.store_id == Store.id)
-    if "region" not in sentiment_joins:
-        sentiment_query = sentiment_query.join(Region, Store.region_id == Region.id)
-
-    sentiment_results = build_Survey_sentiment_aggregation_query(
-        sentiment_query, Region.name.label("region")
-    ).all()
-
-    # Total count query: Apply ALL filters EXCEPT district filters, but group by district
-    total_query, total_joins = build_optimized_query(
-        db, filter_dict, exclude_filters=["region_ids", "region_names"]
-    )
-
-    # Always add necessary joins for total counts since we need to group by district
-    if "store" not in total_joins:
-        total_query = total_query.join(Store, Survey.store_id == Store.id)
-    if "region" not in total_joins:
-        total_query = total_query.join(Region, Store.region_id == Region.id)
-
-    total_results = (
-        total_query.with_entities(
-            Region.name.label("region"), func.count(Survey.id).label("total_count")
-        )
-        .group_by(Region.id, Region.name)
-        .all()
-    )
-
-    # Combine results
-    sentiment_dict = {row.region: row for row in sentiment_results}
-    total_dict = {row.region: row.total_count for row in total_results}
-
-    region_distribution = []
-    for region_name in set(list(sentiment_dict.keys()) + list(total_dict.keys())):
-        sentiment_row = sentiment_dict.get(region_name)
-        total_count = total_dict.get(region_name, 0)
-
-        region_distribution.append(
-            RegionDistributionResponse(
-                region=region_name,
-                neutral_count=sentiment_row.neutral_count if sentiment_row else 0,
-                positive_count=sentiment_row.positive_count if sentiment_row else 0,
-                negative_count=sentiment_row.negative_count if sentiment_row else 0,
-                total_count_for_option=total_count,
-            )
-        )
-
-    return region_distribution
 
 
 class ChannelAndDeliveryServiceDistributionResponse(BaseModel):

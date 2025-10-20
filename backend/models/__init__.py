@@ -9,6 +9,7 @@ from models.Source import Source
 from models.Store import Store
 from models.District import District
 from models.Department import Department
+from models.Hierarchy import Hierarchy
 from models.Action import Action
 from models.GeneratedEmail import GeneratedEmail
 from models.EmailRecord import EmailRecord
@@ -29,6 +30,7 @@ __all__ = [
     "Store",
     "District",
     "Department",
+    "Hierarchy",
     "Action",
     "GeneratedEmail",
     "EmailRecord",

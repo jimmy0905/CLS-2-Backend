@@ -1,8 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, func, or_, select
-from models.District import District
-from models.Source import Source
 from models.Survey import Survey
 from models.Topic import Topic
 from models.Keyword import Keyword
@@ -10,6 +8,7 @@ from models.SurveyTopics import SurveyTopics
 from models.SurveyKeywords import SurveyKeywords
 from models.SurveyDepartments import SurveyDepartments
 from models.Store import Store
+from models.Hierarchy import Hierarchy
 from models.Department import Department
 from models.Channel import Channel
 from models.DeliveryService import DeliveryService
@@ -41,27 +40,20 @@ router = APIRouter(
 )
 
 
-class DistrictResponse(BaseModel):
+class HierarchyResponse(BaseModel):
     id: int
     name: str
-
-
-class RegionResponse(BaseModel):
-    id: int
-    name: str
-
-
-class SourceResponse(BaseModel):
-    id: int
-    name: str
+    level: int
 
 
 class StoreResponse(BaseModel):
     id: int
     name: str
-    district: DistrictResponse
-    source: SourceResponse
-    region: RegionResponse
+    hierarchy_level_1: Optional[HierarchyResponse] = None
+    hierarchy_level_2: Optional[HierarchyResponse] = None
+    hierarchy_level_3: Optional[HierarchyResponse] = None
+    hierarchy_level_4: Optional[HierarchyResponse] = None
+    hierarchy_level_5: Optional[HierarchyResponse] = None
 
 
 class ChannelResponse(BaseModel):

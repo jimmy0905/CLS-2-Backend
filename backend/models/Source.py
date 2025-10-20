@@ -1,6 +1,5 @@
 from utils.database import Base
 from sqlalchemy import Column, Integer, String, Index
-from sqlalchemy.orm import relationship
 
 
 class Source(Base):
@@ -8,16 +7,6 @@ class Source(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String(100), unique=True)
-
-    # Relationships
-    stores = relationship("Store", back_populates="source", overlaps="surveys")
-    surveys = relationship(
-        "Survey",
-        secondary="stores",
-        back_populates="source",
-        viewonly=True,
-        overlaps="store",
-    )
 
     # Indexes for filtered columns
     __table_args__ = (Index("idx_source_name", name),)
