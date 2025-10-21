@@ -49,7 +49,7 @@ async def get_department_distribution(
     filter_dict = filter_params.model_dump()
 
     # Single query to get sentiment counts with department filter
-    sentiment_query, sentiment_joins = build_optimized_query(db, filter_dict)
+    sentiment_query, sentiment_joins, _ = build_optimized_query(db, filter_dict)
 
     # Add department join if not already present
     if "department" not in sentiment_joins:
@@ -65,7 +65,7 @@ async def get_department_distribution(
     ).all()
 
     # Total count query: Apply ALL filters EXCEPT department filters, but group by department
-    total_query, total_joins = build_optimized_query(
+    total_query, total_joins, _ = build_optimized_query(
         db, filter_dict, exclude_filters=["department_ids", "department_names"]
     )
 
@@ -128,7 +128,7 @@ async def get_keyword_analysis(
     filter_dict = filter_params.model_dump()
 
     # Build base query with filters
-    base_query, joined_tables = build_optimized_query(db, filter_dict)
+    base_query, joined_tables, _ = build_optimized_query(db, filter_dict)
 
     # Check if keyword joins are already present, if not add them
     if "keyword" not in joined_tables:
@@ -188,44 +188,54 @@ async def get_hierarchy_distribution(
     hierarchy_col = hierarchy_columns[level]
 
     # Single query to get sentiment counts with hierarchy filter
-    sentiment_query, sentiment_joins = build_optimized_query(db, filter_dict)
+    sentiment_query, sentiment_joins, sentiment_hierarchy_aliases = build_optimized_query(db, filter_dict)
 
     # Add necessary joins if not already present
     if "store" not in sentiment_joins:
         sentiment_query = sentiment_query.join(Store, Survey.store_id == Store.id)
+    
+    # Check if the requested level's hierarchy join exists, if not, create it
+    sentiment_hierarchy_alias = sentiment_hierarchy_aliases.get(level)
     if f"hierarchy_level_{level}" not in sentiment_joins:
+        from sqlalchemy.orm import aliased
+        sentiment_hierarchy_alias = aliased(Hierarchy)
         sentiment_query = sentiment_query.join(
-            Hierarchy, hierarchy_col == Hierarchy.id
+            sentiment_hierarchy_alias, hierarchy_col == sentiment_hierarchy_alias.id
         )
 
     sentiment_results = build_Survey_sentiment_aggregation_query(
         sentiment_query, 
-        Hierarchy.id.label("hierarchy_id"),
-        Hierarchy.name.label("hierarchy_name")
+        sentiment_hierarchy_alias.id.label("hierarchy_id"),
+        sentiment_hierarchy_alias.name.label("hierarchy_name")
     ).all()
 
-    # Total count query: Apply ALL filters EXCEPT hierarchy level filters, but group by hierarchy
+    # Total count query: Apply ALL filters EXCEPT hierarchy level filters for the requested level, but keep other hierarchy filters
     exclude_filters = [
         f"hierarchy_level_{level}_ids",
         f"hierarchy_level_{level}_names"
     ]
-    total_query, total_joins = build_optimized_query(
+    total_query, total_joins, total_hierarchy_aliases = build_optimized_query(
         db, filter_dict, exclude_filters=exclude_filters
     )
 
     # Always add necessary joins for total counts
     if "store" not in total_joins:
         total_query = total_query.join(Store, Survey.store_id == Store.id)
+    
+    # Check if the requested level's hierarchy join exists for total query
+    total_hierarchy_alias = total_hierarchy_aliases.get(level)
     if f"hierarchy_level_{level}" not in total_joins:
-        total_query = total_query.join(Hierarchy, hierarchy_col == Hierarchy.id)
+        from sqlalchemy.orm import aliased
+        total_hierarchy_alias = aliased(Hierarchy)
+        total_query = total_query.join(total_hierarchy_alias, hierarchy_col == total_hierarchy_alias.id)
 
     total_results = (
         total_query.with_entities(
-            Hierarchy.id.label("hierarchy_id"),
-            Hierarchy.name.label("hierarchy_name"),
+            total_hierarchy_alias.id.label("hierarchy_id"),
+            total_hierarchy_alias.name.label("hierarchy_name"),
             func.count(Survey.id).label("total_count")
         )
-        .group_by(Hierarchy.id, Hierarchy.name)
+        .group_by(total_hierarchy_alias.id, total_hierarchy_alias.name)
         .all()
     )
 
@@ -278,7 +288,7 @@ async def get_topic_distribution(
     filter_dict = filter_params.model_dump()
 
     # Single query to get sentiment counts with topic filter
-    sentiment_query, sentiment_joins = build_optimized_query(db, filter_dict)
+    sentiment_query, sentiment_joins, _ = build_optimized_query(db, filter_dict)
 
     # Add topic joins if not already present
     if "topic" not in sentiment_joins:
@@ -292,7 +302,7 @@ async def get_topic_distribution(
     ).all()
 
     # Total count query: Apply ALL filters EXCEPT topic filters, but group by topic
-    total_query, total_joins = build_optimized_query(
+    total_query, total_joins, _ = build_optimized_query(
         db, filter_dict, exclude_filters=["topics"]
     )
 
@@ -353,7 +363,7 @@ async def get_sentiment_distribution(
     filter_dict = filter_params.model_dump()
 
     # Single query to get both sentiment and total counts by date
-    sentiment_query, _ = build_optimized_query(db, filter_dict)
+    sentiment_query, _, _ = build_optimized_query(db, filter_dict)
 
     sentiment_results = (
         build_Survey_sentiment_aggregation_query(
@@ -363,7 +373,7 @@ async def get_sentiment_distribution(
         .order_by(func.date(Survey.reported_at))
         .all()
     )
-    total_query, _ = build_optimized_query(
+    total_query, _, _ = build_optimized_query(
         db, filter_dict, exclude_filters=["sentiments"]
     )
     total_results = total_query.with_entities(
@@ -423,7 +433,7 @@ async def get_store_distribution(
     filter_dict = filter_params.model_dump()
 
     # Single query to get sentiment counts with store filter
-    sentiment_query, sentiment_joins = build_optimized_query(db, filter_dict)
+    sentiment_query, sentiment_joins, _ = build_optimized_query(db, filter_dict)
 
     # Add store join if not already present
     if "store" not in sentiment_joins:
@@ -434,7 +444,7 @@ async def get_store_distribution(
     ).all()
 
     # Total count query: Apply ALL filters EXCEPT store filters, but group by store
-    total_query, total_joins = build_optimized_query(
+    total_query, total_joins, _ = build_optimized_query(
         db, filter_dict, exclude_filters=["store_ids", "store_names"]
     )
 
@@ -508,7 +518,7 @@ async def get_channel_and_delivery_service_distribution(
     all_delivery_services = db.query(DeliveryService).all()
 
     # Single query to get sentiment counts with channel and delivery service filter
-    sentiment_query, sentiment_joins = build_optimized_query(db, filter_dict)
+    sentiment_query, sentiment_joins, _ = build_optimized_query(db, filter_dict)
 
     # Add necessary joins if not already present
     if "channel" not in sentiment_joins:
@@ -525,7 +535,7 @@ async def get_channel_and_delivery_service_distribution(
     ).all()
 
     # Total count query: Apply ALL filters EXCEPT channel and delivery service filters, but group by channel and delivery service
-    total_query, total_joins = build_optimized_query(
+    total_query, total_joins, _ = build_optimized_query(
         db,
         filter_dict,
         exclude_filters=[

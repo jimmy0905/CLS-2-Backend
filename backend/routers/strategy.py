@@ -58,7 +58,7 @@ async def get_top_k_performance_stores(
 ):
     filter_dict = filter_params.model_dump()
     # First get the sentiment counts per store
-    sentiment_query, sentiment_joins = build_optimized_query(db, filter_dict)
+    sentiment_query, sentiment_joins, _ = build_optimized_query(db, filter_dict)
     if "store" not in sentiment_joins:
         sentiment_query = sentiment_query.join(Store, Survey.store_id == Store.id)
 
@@ -162,7 +162,7 @@ async def get_strategy_for_store_by_ids(
         "store_ids": request.store_ids,
         "sentiments": ["positive"],
     }
-    filtered_query, _ = build_optimized_query(db, filter_dict)
+    filtered_query, _, _ = build_optimized_query(db, filter_dict)
     surveys = (
         filtered_query.order_by(func.length(Survey.comment).desc()).limit(30).all()
     )
@@ -201,17 +201,22 @@ async def get_top_k_performance_hierarchies(
     
     hierarchy_col = hierarchy_columns[level]
     
-    sentiment_query, sentiment_joins = build_optimized_query(db, filter_dict)
+    sentiment_query, sentiment_joins, hierarchy_aliases = build_optimized_query(db, filter_dict)
     if "store" not in sentiment_joins:
         sentiment_query = sentiment_query.join(Store, Survey.store_id == Store.id)
+    
+    # Check if the requested level's hierarchy join exists, if not, create it
+    hierarchy_alias = hierarchy_aliases.get(level)
     if f"hierarchy_level_{level}" not in sentiment_joins:
-        sentiment_query = sentiment_query.join(Hierarchy, hierarchy_col == Hierarchy.id)
+        from sqlalchemy.orm import aliased
+        hierarchy_alias = aliased(Hierarchy)
+        sentiment_query = sentiment_query.join(hierarchy_alias, hierarchy_col == hierarchy_alias.id)
     
     sentiment_results = (
         sentiment_query.with_entities(
-            Hierarchy.id.label("hierarchy_id"),
-            Hierarchy.name.label("hierarchy_name"),
-            Hierarchy.level.label("hierarchy_level"),
+            hierarchy_alias.id.label("hierarchy_id"),
+            hierarchy_alias.name.label("hierarchy_name"),
+            hierarchy_alias.level.label("hierarchy_level"),
             func.count(case((Survey.sentiment == "neutral", Survey.id))).label(
                 "neutral_count"
             ),
@@ -222,7 +227,7 @@ async def get_top_k_performance_hierarchies(
                 "negative_count"
             ),
         )
-        .group_by(Hierarchy.id, Hierarchy.name, Hierarchy.level)
+        .group_by(hierarchy_alias.id, hierarchy_alias.name, hierarchy_alias.level)
         .all()
     )
     hierarchy_with_sentiment = []
@@ -265,7 +270,7 @@ async def get_strategy_for_hierarchy_by_ids(
         f"hierarchy_level_{request.level}_ids": request.hierarchy_ids,
         "sentiments": ["positive"],
     }
-    filtered_query, _ = build_optimized_query(db, filter_dict)
+    filtered_query, _, _ = build_optimized_query(db, filter_dict)
     surveys = (
         filtered_query.order_by(func.length(Survey.comment).desc()).limit(30).all()
     )

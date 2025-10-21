@@ -81,53 +81,63 @@ def build_department_filter_conditions(filter_dict):
     return conditions
 
 
-def build_hierarchy_level_1_filter_conditions(filter_dict):
+def build_hierarchy_level_1_filter_conditions(filter_dict, hierarchy_alias=None):
     """Build filter conditions for hierarchy level 1"""
     conditions = []
+    if hierarchy_alias is None:
+        hierarchy_alias = Hierarchy
     if filter_dict.get("hierarchy_level_1_ids"):
-        conditions.append(Hierarchy.id.in_(filter_dict["hierarchy_level_1_ids"]))
+        conditions.append(hierarchy_alias.id.in_(filter_dict["hierarchy_level_1_ids"]))
     if filter_dict.get("hierarchy_level_1_names"):
-        conditions.append(Hierarchy.name.in_(filter_dict["hierarchy_level_1_names"]))
+        conditions.append(hierarchy_alias.name.in_(filter_dict["hierarchy_level_1_names"]))
     return conditions
 
 
-def build_hierarchy_level_2_filter_conditions(filter_dict):
+def build_hierarchy_level_2_filter_conditions(filter_dict, hierarchy_alias=None):
     """Build filter conditions for hierarchy level 2"""
     conditions = []
+    if hierarchy_alias is None:
+        hierarchy_alias = Hierarchy
     if filter_dict.get("hierarchy_level_2_ids"):
-        conditions.append(Hierarchy.id.in_(filter_dict["hierarchy_level_2_ids"]))
+        conditions.append(hierarchy_alias.id.in_(filter_dict["hierarchy_level_2_ids"]))
     if filter_dict.get("hierarchy_level_2_names"):
-        conditions.append(Hierarchy.name.in_(filter_dict["hierarchy_level_2_names"]))
+        conditions.append(hierarchy_alias.name.in_(filter_dict["hierarchy_level_2_names"]))
     return conditions
 
 
-def build_hierarchy_level_3_filter_conditions(filter_dict):
+def build_hierarchy_level_3_filter_conditions(filter_dict, hierarchy_alias=None):
     """Build filter conditions for hierarchy level 3"""
     conditions = []
+    if hierarchy_alias is None:
+        hierarchy_alias = Hierarchy
     if filter_dict.get("hierarchy_level_3_ids"):
-        conditions.append(Hierarchy.id.in_(filter_dict["hierarchy_level_3_ids"]))
+        conditions.append(hierarchy_alias.id.in_(filter_dict["hierarchy_level_3_ids"]))
     if filter_dict.get("hierarchy_level_3_names"):
-        conditions.append(Hierarchy.name.in_(filter_dict["hierarchy_level_3_names"]))
+        conditions.append(hierarchy_alias.name.in_(filter_dict["hierarchy_level_3_names"]))
     return conditions
 
 
-def build_hierarchy_level_4_filter_conditions(filter_dict):
+def build_hierarchy_level_4_filter_conditions(filter_dict, hierarchy_alias=None):
     """Build filter conditions for hierarchy level 4"""
     conditions = []
+    if hierarchy_alias is None:
+        hierarchy_alias = Hierarchy
     if filter_dict.get("hierarchy_level_4_ids"):
-        conditions.append(Hierarchy.id.in_(filter_dict["hierarchy_level_4_ids"]))
+        conditions.append(hierarchy_alias.id.in_(filter_dict["hierarchy_level_4_ids"]))
     if filter_dict.get("hierarchy_level_4_names"):
-        conditions.append(Hierarchy.name.in_(filter_dict["hierarchy_level_4_names"]))
+        conditions.append(hierarchy_alias.name.in_(filter_dict["hierarchy_level_4_names"]))
     return conditions
 
 
-def build_hierarchy_level_5_filter_conditions(filter_dict):
+def build_hierarchy_level_5_filter_conditions(filter_dict, hierarchy_alias=None):
     """Build filter conditions for hierarchy level 5"""
     conditions = []
+    if hierarchy_alias is None:
+        hierarchy_alias = Hierarchy
     if filter_dict.get("hierarchy_level_5_ids"):
-        conditions.append(Hierarchy.id.in_(filter_dict["hierarchy_level_5_ids"]))
+        conditions.append(hierarchy_alias.id.in_(filter_dict["hierarchy_level_5_ids"]))
     if filter_dict.get("hierarchy_level_5_names"):
-        conditions.append(Hierarchy.name.in_(filter_dict["hierarchy_level_5_names"]))
+        conditions.append(hierarchy_alias.name.in_(filter_dict["hierarchy_level_5_names"]))
     return conditions
 
 
@@ -143,30 +153,33 @@ def build_keyword_filter_conditions(filter_dict):
 
 def build_survey_query(query: Query, filter_dict) -> Query:
     """Build a complete survey query with appropriate joins and optimizations based on filter conditions"""
-    # Build all filter conditions
+    # Build all filter conditions (for non-hierarchy filters first)
     survey_conditions = build_survey_filter_conditions(filter_dict)
     store_conditions = build_store_filter_conditions(filter_dict)
     department_conditions = build_department_filter_conditions(filter_dict)
-    hierarchy_level_1_conditions = build_hierarchy_level_1_filter_conditions(filter_dict)
-    hierarchy_level_2_conditions = build_hierarchy_level_2_filter_conditions(filter_dict)
-    hierarchy_level_3_conditions = build_hierarchy_level_3_filter_conditions(filter_dict)
-    hierarchy_level_4_conditions = build_hierarchy_level_4_filter_conditions(filter_dict)
-    hierarchy_level_5_conditions = build_hierarchy_level_5_filter_conditions(filter_dict)
     topic_conditions = build_topic_filter_conditions(filter_dict)
     keyword_conditions = build_keyword_filter_conditions(filter_dict)
     channel_conditions = build_channel_filter_conditions(filter_dict)
     delivery_service_conditions = build_delivery_service_filter_conditions(filter_dict)
+    
+    # Check if hierarchy conditions exist before creating joins
+    has_hierarchy_level_1 = bool(filter_dict.get("hierarchy_level_1_ids") or filter_dict.get("hierarchy_level_1_names"))
+    has_hierarchy_level_2 = bool(filter_dict.get("hierarchy_level_2_ids") or filter_dict.get("hierarchy_level_2_names"))
+    has_hierarchy_level_3 = bool(filter_dict.get("hierarchy_level_3_ids") or filter_dict.get("hierarchy_level_3_names"))
+    has_hierarchy_level_4 = bool(filter_dict.get("hierarchy_level_4_ids") or filter_dict.get("hierarchy_level_4_names"))
+    has_hierarchy_level_5 = bool(filter_dict.get("hierarchy_level_5_ids") or filter_dict.get("hierarchy_level_5_names"))
+    
     # Add joins only when filtering is needed to avoid cartesian products
     joins_added = set()
 
     # Join Store if store filters are applied or if we need it for hierarchy joins
     if (
         store_conditions
-        or hierarchy_level_1_conditions
-        or hierarchy_level_2_conditions
-        or hierarchy_level_3_conditions
-        or hierarchy_level_4_conditions
-        or hierarchy_level_5_conditions
+        or has_hierarchy_level_1
+        or has_hierarchy_level_2
+        or has_hierarchy_level_3
+        or has_hierarchy_level_4
+        or has_hierarchy_level_5
     ):
         query = query.join(Store, Survey.store_id == Store.id)
         joins_added.add("store")
@@ -178,28 +191,43 @@ def build_survey_query(query: Query, filter_dict) -> Query:
         joins_added.add("department")
 
     # Join Hierarchy levels through Store if hierarchy filters are applied
-    if hierarchy_level_1_conditions and "store" in joins_added:
-        query = query.join(Hierarchy, Store.hierarchy_level_1_id == Hierarchy.id)
+    # Each hierarchy level needs to be aliased to allow multiple joins
+    from sqlalchemy.orm import aliased
+    
+    hierarchy_level_1_conditions = []
+    hierarchy_level_2_conditions = []
+    hierarchy_level_3_conditions = []
+    hierarchy_level_4_conditions = []
+    hierarchy_level_5_conditions = []
+    
+    if has_hierarchy_level_1 and "store" in joins_added:
+        hierarchy_level_1_alias = aliased(Hierarchy)
+        query = query.join(hierarchy_level_1_alias, Store.hierarchy_level_1_id == hierarchy_level_1_alias.id)
+        hierarchy_level_1_conditions = build_hierarchy_level_1_filter_conditions(filter_dict, hierarchy_level_1_alias)
         joins_added.add("hierarchy_level_1")
     
-    if hierarchy_level_2_conditions and "store" in joins_added:
-        if "hierarchy_level_1" not in joins_added:
-            query = query.join(Hierarchy, Store.hierarchy_level_2_id == Hierarchy.id)
+    if has_hierarchy_level_2 and "store" in joins_added:
+        hierarchy_level_2_alias = aliased(Hierarchy)
+        query = query.join(hierarchy_level_2_alias, Store.hierarchy_level_2_id == hierarchy_level_2_alias.id)
+        hierarchy_level_2_conditions = build_hierarchy_level_2_filter_conditions(filter_dict, hierarchy_level_2_alias)
         joins_added.add("hierarchy_level_2")
     
-    if hierarchy_level_3_conditions and "store" in joins_added:
-        if "hierarchy_level_1" not in joins_added and "hierarchy_level_2" not in joins_added:
-            query = query.join(Hierarchy, Store.hierarchy_level_3_id == Hierarchy.id)
+    if has_hierarchy_level_3 and "store" in joins_added:
+        hierarchy_level_3_alias = aliased(Hierarchy)
+        query = query.join(hierarchy_level_3_alias, Store.hierarchy_level_3_id == hierarchy_level_3_alias.id)
+        hierarchy_level_3_conditions = build_hierarchy_level_3_filter_conditions(filter_dict, hierarchy_level_3_alias)
         joins_added.add("hierarchy_level_3")
     
-    if hierarchy_level_4_conditions and "store" in joins_added:
-        if "hierarchy_level_1" not in joins_added and "hierarchy_level_2" not in joins_added and "hierarchy_level_3" not in joins_added:
-            query = query.join(Hierarchy, Store.hierarchy_level_4_id == Hierarchy.id)
+    if has_hierarchy_level_4 and "store" in joins_added:
+        hierarchy_level_4_alias = aliased(Hierarchy)
+        query = query.join(hierarchy_level_4_alias, Store.hierarchy_level_4_id == hierarchy_level_4_alias.id)
+        hierarchy_level_4_conditions = build_hierarchy_level_4_filter_conditions(filter_dict, hierarchy_level_4_alias)
         joins_added.add("hierarchy_level_4")
     
-    if hierarchy_level_5_conditions and "store" in joins_added:
-        if "hierarchy_level_1" not in joins_added and "hierarchy_level_2" not in joins_added and "hierarchy_level_3" not in joins_added and "hierarchy_level_4" not in joins_added:
-            query = query.join(Hierarchy, Store.hierarchy_level_5_id == Hierarchy.id)
+    if has_hierarchy_level_5 and "store" in joins_added:
+        hierarchy_level_5_alias = aliased(Hierarchy)
+        query = query.join(hierarchy_level_5_alias, Store.hierarchy_level_5_id == hierarchy_level_5_alias.id)
+        hierarchy_level_5_conditions = build_hierarchy_level_5_filter_conditions(filter_dict, hierarchy_level_5_alias)
         joins_added.add("hierarchy_level_5")
 
     # Join Topic through SurveyTopics if topic filters are applied
@@ -303,19 +331,21 @@ def build_optimized_query(
     # Create a copy of filter_dict without excluded filters
     working_filter = {k: v for k, v in filter_dict.items() if k not in exclude_filters}
 
-    # Build filter conditions
+    # Build filter conditions (for non-hierarchy filters first)
     survey_conditions = build_survey_filter_conditions(working_filter)
     store_conditions = build_store_filter_conditions(working_filter)
     department_conditions = build_department_filter_conditions(working_filter)
-    hierarchy_level_1_conditions = build_hierarchy_level_1_filter_conditions(working_filter)
-    hierarchy_level_2_conditions = build_hierarchy_level_2_filter_conditions(working_filter)
-    hierarchy_level_3_conditions = build_hierarchy_level_3_filter_conditions(working_filter)
-    hierarchy_level_4_conditions = build_hierarchy_level_4_filter_conditions(working_filter)
-    hierarchy_level_5_conditions = build_hierarchy_level_5_filter_conditions(working_filter)
     topic_conditions = build_topic_filter_conditions(working_filter)
     keyword_conditions = build_keyword_filter_conditions(working_filter)
     channel_conditions = build_channel_filter_conditions(working_filter)
     delivery_service_conditions = build_delivery_service_filter_conditions(working_filter)
+    
+    # Check if hierarchy conditions exist before creating joins
+    has_hierarchy_level_1 = bool(working_filter.get("hierarchy_level_1_ids") or working_filter.get("hierarchy_level_1_names"))
+    has_hierarchy_level_2 = bool(working_filter.get("hierarchy_level_2_ids") or working_filter.get("hierarchy_level_2_names"))
+    has_hierarchy_level_3 = bool(working_filter.get("hierarchy_level_3_ids") or working_filter.get("hierarchy_level_3_names"))
+    has_hierarchy_level_4 = bool(working_filter.get("hierarchy_level_4_ids") or working_filter.get("hierarchy_level_4_names"))
+    has_hierarchy_level_5 = bool(working_filter.get("hierarchy_level_5_ids") or working_filter.get("hierarchy_level_5_names"))
 
     # Start with base query
     query = db.query(Survey)
@@ -326,11 +356,11 @@ def build_optimized_query(
     # Join Store if store filters are applied or if we need it for hierarchy joins
     if (
         store_conditions
-        or hierarchy_level_1_conditions
-        or hierarchy_level_2_conditions
-        or hierarchy_level_3_conditions
-        or hierarchy_level_4_conditions
-        or hierarchy_level_5_conditions
+        or has_hierarchy_level_1
+        or has_hierarchy_level_2
+        or has_hierarchy_level_3
+        or has_hierarchy_level_4
+        or has_hierarchy_level_5
     ):
         query = query.join(Store, Survey.store_id == Store.id)
         joined_tables.add("store")
@@ -341,28 +371,49 @@ def build_optimized_query(
         joined_tables.add("department")
 
     # Join Hierarchy levels through Store if hierarchy filters are applied
-    if hierarchy_level_1_conditions and "store" in joined_tables:
-        query = query.join(Hierarchy, Store.hierarchy_level_1_id == Hierarchy.id)
+    # Each hierarchy level needs to be aliased to allow multiple joins
+    from sqlalchemy.orm import aliased
+    
+    hierarchy_aliases = {}
+    hierarchy_level_1_conditions = []
+    hierarchy_level_2_conditions = []
+    hierarchy_level_3_conditions = []
+    hierarchy_level_4_conditions = []
+    hierarchy_level_5_conditions = []
+    
+    if has_hierarchy_level_1 and "store" in joined_tables:
+        hierarchy_level_1_alias = aliased(Hierarchy)
+        query = query.join(hierarchy_level_1_alias, Store.hierarchy_level_1_id == hierarchy_level_1_alias.id)
+        hierarchy_aliases[1] = hierarchy_level_1_alias
+        hierarchy_level_1_conditions = build_hierarchy_level_1_filter_conditions(working_filter, hierarchy_level_1_alias)
         joined_tables.add("hierarchy_level_1")
     
-    if hierarchy_level_2_conditions and "store" in joined_tables:
-        if "hierarchy_level_1" not in joined_tables:
-            query = query.join(Hierarchy, Store.hierarchy_level_2_id == Hierarchy.id)
+    if has_hierarchy_level_2 and "store" in joined_tables:
+        hierarchy_level_2_alias = aliased(Hierarchy)
+        query = query.join(hierarchy_level_2_alias, Store.hierarchy_level_2_id == hierarchy_level_2_alias.id)
+        hierarchy_aliases[2] = hierarchy_level_2_alias
+        hierarchy_level_2_conditions = build_hierarchy_level_2_filter_conditions(working_filter, hierarchy_level_2_alias)
         joined_tables.add("hierarchy_level_2")
     
-    if hierarchy_level_3_conditions and "store" in joined_tables:
-        if "hierarchy_level_1" not in joined_tables and "hierarchy_level_2" not in joined_tables:
-            query = query.join(Hierarchy, Store.hierarchy_level_3_id == Hierarchy.id)
+    if has_hierarchy_level_3 and "store" in joined_tables:
+        hierarchy_level_3_alias = aliased(Hierarchy)
+        query = query.join(hierarchy_level_3_alias, Store.hierarchy_level_3_id == hierarchy_level_3_alias.id)
+        hierarchy_aliases[3] = hierarchy_level_3_alias
+        hierarchy_level_3_conditions = build_hierarchy_level_3_filter_conditions(working_filter, hierarchy_level_3_alias)
         joined_tables.add("hierarchy_level_3")
     
-    if hierarchy_level_4_conditions and "store" in joined_tables:
-        if "hierarchy_level_1" not in joined_tables and "hierarchy_level_2" not in joined_tables and "hierarchy_level_3" not in joined_tables:
-            query = query.join(Hierarchy, Store.hierarchy_level_4_id == Hierarchy.id)
+    if has_hierarchy_level_4 and "store" in joined_tables:
+        hierarchy_level_4_alias = aliased(Hierarchy)
+        query = query.join(hierarchy_level_4_alias, Store.hierarchy_level_4_id == hierarchy_level_4_alias.id)
+        hierarchy_aliases[4] = hierarchy_level_4_alias
+        hierarchy_level_4_conditions = build_hierarchy_level_4_filter_conditions(working_filter, hierarchy_level_4_alias)
         joined_tables.add("hierarchy_level_4")
     
-    if hierarchy_level_5_conditions and "store" in joined_tables:
-        if "hierarchy_level_1" not in joined_tables and "hierarchy_level_2" not in joined_tables and "hierarchy_level_3" not in joined_tables and "hierarchy_level_4" not in joined_tables:
-            query = query.join(Hierarchy, Store.hierarchy_level_5_id == Hierarchy.id)
+    if has_hierarchy_level_5 and "store" in joined_tables:
+        hierarchy_level_5_alias = aliased(Hierarchy)
+        query = query.join(hierarchy_level_5_alias, Store.hierarchy_level_5_id == hierarchy_level_5_alias.id)
+        hierarchy_aliases[5] = hierarchy_level_5_alias
+        hierarchy_level_5_conditions = build_hierarchy_level_5_filter_conditions(working_filter, hierarchy_level_5_alias)
         joined_tables.add("hierarchy_level_5")
 
     if topic_conditions:
@@ -402,7 +453,7 @@ def build_optimized_query(
     if filter_conditions is not None:
         query = query.filter(filter_conditions)
 
-    return query, joined_tables
+    return query, joined_tables, hierarchy_aliases
 
 
 def build_Survey_sentiment_aggregation_query(base_query, *group_by_fields):
