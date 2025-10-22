@@ -166,7 +166,7 @@ def process_single_row(
         # Handle NaN values for critical fields
         store_id = row["store_key"] if pd.notna(row["store_key"]) else None
         comment = row["answer"] if pd.notna(row["answer"]) else None
-        reported_at = row["submitdate"] if pd.notna(row["submitdate"]) else None
+        reported_at = row["survey_order_date"] if pd.notna(row["survey_order_date"]) else None
         if is_comment_valid(comment) is False:
             logger.warning(f"Row {index + 1}: Comment is invalid, skipping row")
             # Create an error for the upload task
@@ -334,6 +334,18 @@ def process_single_row(
             if total.cannot_classified:
                 logger.warning(f"Row {index + 1}: Cannot classified in AI Analysis after first try, retrying...")
                 have_to_retry = True
+            # Check if the topics are not empty
+            if total.topics is None:
+                logger.warning(f"Row {index + 1}: Topics are empty after first try, skipping row")
+                have_to_retry = True
+            # Check if the departments are not empty
+            if total.departments is None:
+                logger.warning(f"Row {index + 1}: Departments are empty after first try, skipping row")
+                have_to_retry = True
+            # Check if the keywords are not empty
+            if total.keywords is None:
+                logger.warning(f"Row {index + 1}: Keywords are empty after first try, skipping row")
+                have_to_retry = True
             # Check if the topics are valid
             for topic in total.topics:
                 if topic.text not in available_topics:
@@ -377,6 +389,48 @@ def process_single_row(
                     db.add(error)
                     db.commit()
                     result["error"] = "Cannot classified in AI Analysis after retrying"
+                    return result
+                # Check if the topics are not empty
+                if total.topics is None:
+                    logger.warning(f"Row {index + 1}: Topics are empty after retrying, skipping row")
+                    error = UploadTaskError(
+                        upload_task_id=upload_task_id,
+                        input_store_id=store_id,
+                        input_comment=comment,
+                        input_reported_at=reported_at,
+                        error_message="Topics are empty after retrying",
+                    )
+                    db.add(error)
+                    db.commit()
+                    result["error"] = "Topics are empty after retrying"
+                    return result
+                # Check if the departments are not empty
+                if total.departments is None:
+                    logger.warning(f"Row {index + 1}: Departments are empty after retrying, skipping row")
+                    error = UploadTaskError(
+                        upload_task_id=upload_task_id,
+                        input_store_id=store_id,
+                        input_comment=comment,
+                        input_reported_at=reported_at,
+                        error_message="Departments are empty after retrying",
+                    )
+                    db.add(error)
+                    db.commit()
+                    result["error"] = "Departments are empty after retrying"
+                    return result
+                # Check if the keywords are not empty
+                if total.keywords is None:
+                    logger.warning(f"Row {index + 1}: Keywords are empty after retrying, skipping row")
+                    error = UploadTaskError(
+                        upload_task_id=upload_task_id,
+                        input_store_id=store_id,
+                        input_comment=comment,
+                        input_reported_at=reported_at,
+                        error_message="Keywords are empty after retrying",
+                    )
+                    db.add(error)
+                    db.commit()
+                    result["error"] = "Keywords are empty after retrying"
                     return result
                 # Check if the topics are valid
                 for topic in total.topics:
