@@ -341,14 +341,19 @@ def _extract_total_sync(text: str) -> tuple[TotalResponse, dict]:
 EXTRACT_TOTAL_RETRY_MODEL = os.getenv(
     "EXTRACT_TOTAL_RETRY_MODEL", "gpt-4.1-mini-CLS-DataUpload"
 )
-EXTRACT_TOTAL_RETRY_TEMPERATURE = float(os.getenv("EXTRACT_TOTAL_RETRY_TEMPERATURE", 0.0))
+EXTRACT_TOTAL_RETRY_TEMPERATURE = float(
+    os.getenv("EXTRACT_TOTAL_RETRY_TEMPERATURE", 0.0)
+)
 
 
 def _extract_total_retry_sync(text: str) -> tuple[TotalResponse, dict]:
     user_prompt = f"""{text}"""
     response = client.chat.completions.create(
         model=EXTRACT_TOTAL_RETRY_MODEL,
-        messages=[{"role": "user", "content": user_prompt}],
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
         temperature=EXTRACT_TOTAL_RETRY_TEMPERATURE,
     )
     response_content = response.choices[0].message.content
