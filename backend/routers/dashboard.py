@@ -603,61 +603,6 @@ class TopicSentimentScoreResponse(BaseModel):
     mix_topic_count: int
     average_mix_topic_score: float
     average_overall_topic_score: float
-    
-#  -- Query to get survey categorization and average scores by category
-# WITH topic_counts AS (
-#     SELECT 
-#         s.id as survey_id,
-#         SUM(CASE WHEN st.sentiment::text = 'POSITIVE' THEN 1 ELSE 0 END) as positive_count,
-#         SUM(CASE WHEN st.sentiment::text = 'NEGATIVE' THEN 1 ELSE 0 END) as negative_count,
-#         SUM(CASE WHEN st.sentiment::text = 'NEUTRAL' THEN 1 ELSE 0 END) as neutral_count,
-#         COUNT(st.id) as total_topics
-#     FROM surveys s
-#     LEFT JOIN survey_topics st ON s.id = st.survey_id
-#     WHERE s.is_deleted = false
-#     GROUP BY s.id
-# ),
-# survey_categories AS (
-#     SELECT 
-#         survey_id,
-#         positive_count,
-#         negative_count,
-#         neutral_count,
-#         total_topics,
-#         CASE
-#             -- If survey has no topics, return 1
-#             WHEN total_topics = 0 THEN 1.0
-#             -- If only neutral topics, return 1
-#             WHEN positive_count = 0 AND negative_count = 0 THEN 1.0
-#             -- If only positive and neutral (no negative), return 1
-#             WHEN positive_count > 0 AND negative_count = 0 THEN 1.0
-#             -- If only negative and neutral (no positive), return -1
-#             WHEN positive_count = 0 AND negative_count > 0 THEN -1.0
-#             -- Otherwise, calculate (Positive - Negative) / Total
-#             ELSE CAST(positive_count - negative_count AS FLOAT) / total_topics
-#         END as sentiment_score,
-#         CASE
-#             -- Only neutral topics
-#             WHEN positive_count = 0 AND negative_count = 0 THEN 'neutral_only'
-#             -- Only positive and neutral (no negative)
-#             WHEN positive_count > 0 AND negative_count = 0 THEN 'positive_only'
-#             -- Only negative and neutral (no positive)
-#             WHEN positive_count = 0 AND negative_count > 0 THEN 'negative_only'
-#             -- Mixed: both positive and negative
-#             ELSE 'mixed'
-#         END as category
-#     FROM topic_counts
-# )
-# SELECT 
-#     SUM(CASE WHEN category = 'positive_only' THEN 1 ELSE 0 END) as positive_topic_count,
-#     SUM(CASE WHEN category = 'negative_only' THEN 1 ELSE 0 END) as negative_topic_count,
-#     SUM(CASE WHEN category = 'neutral_only' THEN 1 ELSE 0 END) as neutral_topic_count,
-#     SUM(CASE WHEN category = 'mixed' THEN 1 ELSE 0 END) as mix_topic_count,
-#     AVG(CASE WHEN category = 'mixed' THEN sentiment_score END) as average_mix_topic_sentiment_score,
-#     AVG(sentiment_score) as average_overall_topic_score
-# FROM survey_categories;
-
-
 
 @router.get("/topic-sentiment-score")
 async def get_topic_sentiment_score(
@@ -667,7 +612,7 @@ async def get_topic_sentiment_score(
     filter_dict = filter_params.model_dump()
     
     # Build base query with filters
-    base_query, joined_tables = build_optimized_query(db, filter_dict)
+    base_query, joined_tables, _ = build_optimized_query(db, filter_dict)
     
     # Add topic joins if not already present
     if "topic" not in joined_tables:
