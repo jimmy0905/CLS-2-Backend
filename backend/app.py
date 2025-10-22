@@ -11,11 +11,9 @@ from routers import (
     actions,
     strategy,
     userBehavoiorLogs,
-    districts,
     stores,
-    sources,
     departments,
-    regions,
+    hierarchies,
     tasks,
     users,
     channels,
@@ -67,12 +65,10 @@ app.include_router(surveys.router)
 app.include_router(dashboard.router)
 app.include_router(actions.router)
 app.include_router(strategy.router)
-app.include_router(districts.router)
 app.include_router(stores.router)
-app.include_router(sources.router)
 app.include_router(departments.router)
 app.include_router(userBehavoiorLogs.router)
-app.include_router(regions.router)
+app.include_router(hierarchies.router)
 app.include_router(tasks.router)
 app.include_router(users.router)
 app.include_router(channels.router)
