@@ -341,7 +341,7 @@ def _extract_total_sync(text: str) -> tuple[TotalResponse, dict]:
 EXTRACT_TOTAL_RETRY_MODEL = os.getenv(
     "EXTRACT_TOTAL_RETRY_MODEL", "gpt-4.1-mini-CLS-DataUpload"
 )
-EXTRACT_TOTAL_RETRY_TEMPERATURE = os.getenv("EXTRACT_TOTAL_RETRY_TEMPERATURE", 0.0)
+EXTRACT_TOTAL_RETRY_TEMPERATURE = float(os.getenv("EXTRACT_TOTAL_RETRY_TEMPERATURE", 0.0))
 
 
 def _extract_total_retry_sync(text: str) -> tuple[TotalResponse, dict]:
