@@ -2,13 +2,11 @@ from models.Survey import Survey
 from models.Topic import Topic
 from models.Store import Store
 from models.Department import Department
-from models.District import District
-from models.Source import Source
+from models.Hierarchy import Hierarchy
 from models.SurveyTopics import SurveyTopics
 from models.SurveyKeywords import SurveyKeywords
 from models.SurveyDepartments import SurveyDepartments
 from models.Keyword import Keyword
-from models.Region import Region
 from models.Channel import Channel
 from models.DeliveryService import DeliveryService
 from sqlalchemy import and_
@@ -83,29 +81,63 @@ def build_department_filter_conditions(filter_dict):
     return conditions
 
 
-def build_district_filter_conditions(filter_dict):
-    """Build filter conditions for district-related queries that include district filtering"""
+def build_hierarchy_level_1_filter_conditions(filter_dict, hierarchy_alias=None):
+    """Build filter conditions for hierarchy level 1"""
     conditions = []
-    # District filter
-    if filter_dict.get("district_ids"):
-        conditions.append(District.id.in_(filter_dict["district_ids"]))
-
-    if filter_dict.get("district_names"):
-        conditions.append(District.name.in_(filter_dict["district_names"]))
-
+    if hierarchy_alias is None:
+        hierarchy_alias = Hierarchy
+    if filter_dict.get("hierarchy_level_1_ids"):
+        conditions.append(hierarchy_alias.id.in_(filter_dict["hierarchy_level_1_ids"]))
+    if filter_dict.get("hierarchy_level_1_names"):
+        conditions.append(hierarchy_alias.name.in_(filter_dict["hierarchy_level_1_names"]))
     return conditions
 
 
-def build_source_filter_conditions(filter_dict):
-    """Build filter conditions for source-related queries that include source filtering"""
+def build_hierarchy_level_2_filter_conditions(filter_dict, hierarchy_alias=None):
+    """Build filter conditions for hierarchy level 2"""
     conditions = []
-    # Source filter
-    if filter_dict.get("source_ids"):
-        conditions.append(Source.id.in_(filter_dict["source_ids"]))
+    if hierarchy_alias is None:
+        hierarchy_alias = Hierarchy
+    if filter_dict.get("hierarchy_level_2_ids"):
+        conditions.append(hierarchy_alias.id.in_(filter_dict["hierarchy_level_2_ids"]))
+    if filter_dict.get("hierarchy_level_2_names"):
+        conditions.append(hierarchy_alias.name.in_(filter_dict["hierarchy_level_2_names"]))
+    return conditions
 
-    if filter_dict.get("source_names"):
-        conditions.append(Source.name.in_(filter_dict["source_names"]))
 
+def build_hierarchy_level_3_filter_conditions(filter_dict, hierarchy_alias=None):
+    """Build filter conditions for hierarchy level 3"""
+    conditions = []
+    if hierarchy_alias is None:
+        hierarchy_alias = Hierarchy
+    if filter_dict.get("hierarchy_level_3_ids"):
+        conditions.append(hierarchy_alias.id.in_(filter_dict["hierarchy_level_3_ids"]))
+    if filter_dict.get("hierarchy_level_3_names"):
+        conditions.append(hierarchy_alias.name.in_(filter_dict["hierarchy_level_3_names"]))
+    return conditions
+
+
+def build_hierarchy_level_4_filter_conditions(filter_dict, hierarchy_alias=None):
+    """Build filter conditions for hierarchy level 4"""
+    conditions = []
+    if hierarchy_alias is None:
+        hierarchy_alias = Hierarchy
+    if filter_dict.get("hierarchy_level_4_ids"):
+        conditions.append(hierarchy_alias.id.in_(filter_dict["hierarchy_level_4_ids"]))
+    if filter_dict.get("hierarchy_level_4_names"):
+        conditions.append(hierarchy_alias.name.in_(filter_dict["hierarchy_level_4_names"]))
+    return conditions
+
+
+def build_hierarchy_level_5_filter_conditions(filter_dict, hierarchy_alias=None):
+    """Build filter conditions for hierarchy level 5"""
+    conditions = []
+    if hierarchy_alias is None:
+        hierarchy_alias = Hierarchy
+    if filter_dict.get("hierarchy_level_5_ids"):
+        conditions.append(hierarchy_alias.id.in_(filter_dict["hierarchy_level_5_ids"]))
+    if filter_dict.get("hierarchy_level_5_names"):
+        conditions.append(hierarchy_alias.name.in_(filter_dict["hierarchy_level_5_names"]))
     return conditions
 
 
@@ -121,26 +153,33 @@ def build_keyword_filter_conditions(filter_dict):
 
 def build_survey_query(query: Query, filter_dict) -> Query:
     """Build a complete survey query with appropriate joins and optimizations based on filter conditions"""
-    # Build all filter conditions
+    # Build all filter conditions (for non-hierarchy filters first)
     survey_conditions = build_survey_filter_conditions(filter_dict)
     store_conditions = build_store_filter_conditions(filter_dict)
     department_conditions = build_department_filter_conditions(filter_dict)
-    district_conditions = build_district_filter_conditions(filter_dict)
-    source_conditions = build_source_filter_conditions(filter_dict)
     topic_conditions = build_topic_filter_conditions(filter_dict)
-    region_conditions = build_region_filter_conditions(filter_dict)
     keyword_conditions = build_keyword_filter_conditions(filter_dict)
     channel_conditions = build_channel_filter_conditions(filter_dict)
     delivery_service_conditions = build_delivery_service_filter_conditions(filter_dict)
+    
+    # Check if hierarchy conditions exist before creating joins
+    has_hierarchy_level_1 = bool(filter_dict.get("hierarchy_level_1_ids") or filter_dict.get("hierarchy_level_1_names"))
+    has_hierarchy_level_2 = bool(filter_dict.get("hierarchy_level_2_ids") or filter_dict.get("hierarchy_level_2_names"))
+    has_hierarchy_level_3 = bool(filter_dict.get("hierarchy_level_3_ids") or filter_dict.get("hierarchy_level_3_names"))
+    has_hierarchy_level_4 = bool(filter_dict.get("hierarchy_level_4_ids") or filter_dict.get("hierarchy_level_4_names"))
+    has_hierarchy_level_5 = bool(filter_dict.get("hierarchy_level_5_ids") or filter_dict.get("hierarchy_level_5_names"))
+    
     # Add joins only when filtering is needed to avoid cartesian products
     joins_added = set()
 
-    # Join Store if store filters are applied or if we need it for district/source/region joins
+    # Join Store if store filters are applied or if we need it for hierarchy joins
     if (
         store_conditions
-        or district_conditions
-        or source_conditions
-        or region_conditions
+        or has_hierarchy_level_1
+        or has_hierarchy_level_2
+        or has_hierarchy_level_3
+        or has_hierarchy_level_4
+        or has_hierarchy_level_5
     ):
         query = query.join(Store, Survey.store_id == Store.id)
         joins_added.add("store")
@@ -151,26 +190,51 @@ def build_survey_query(query: Query, filter_dict) -> Query:
         query = query.join(Department, SurveyDepartments.department_id == Department.id)
         joins_added.add("department")
 
-    # Join District through Store if district filters are applied
-    if district_conditions:
-        query = query.join(District, Store.district_id == District.id)
-        joins_added.add("district")
-
-    # Join Source through Store if source filters are applied
-    if source_conditions:
-        query = query.join(Source, Store.source_id == Source.id)
-        joins_added.add("source")
+    # Join Hierarchy levels through Store if hierarchy filters are applied
+    # Each hierarchy level needs to be aliased to allow multiple joins
+    from sqlalchemy.orm import aliased
+    
+    hierarchy_level_1_conditions = []
+    hierarchy_level_2_conditions = []
+    hierarchy_level_3_conditions = []
+    hierarchy_level_4_conditions = []
+    hierarchy_level_5_conditions = []
+    
+    if has_hierarchy_level_1 and "store" in joins_added:
+        hierarchy_level_1_alias = aliased(Hierarchy)
+        query = query.join(hierarchy_level_1_alias, Store.hierarchy_level_1_id == hierarchy_level_1_alias.id)
+        hierarchy_level_1_conditions = build_hierarchy_level_1_filter_conditions(filter_dict, hierarchy_level_1_alias)
+        joins_added.add("hierarchy_level_1")
+    
+    if has_hierarchy_level_2 and "store" in joins_added:
+        hierarchy_level_2_alias = aliased(Hierarchy)
+        query = query.join(hierarchy_level_2_alias, Store.hierarchy_level_2_id == hierarchy_level_2_alias.id)
+        hierarchy_level_2_conditions = build_hierarchy_level_2_filter_conditions(filter_dict, hierarchy_level_2_alias)
+        joins_added.add("hierarchy_level_2")
+    
+    if has_hierarchy_level_3 and "store" in joins_added:
+        hierarchy_level_3_alias = aliased(Hierarchy)
+        query = query.join(hierarchy_level_3_alias, Store.hierarchy_level_3_id == hierarchy_level_3_alias.id)
+        hierarchy_level_3_conditions = build_hierarchy_level_3_filter_conditions(filter_dict, hierarchy_level_3_alias)
+        joins_added.add("hierarchy_level_3")
+    
+    if has_hierarchy_level_4 and "store" in joins_added:
+        hierarchy_level_4_alias = aliased(Hierarchy)
+        query = query.join(hierarchy_level_4_alias, Store.hierarchy_level_4_id == hierarchy_level_4_alias.id)
+        hierarchy_level_4_conditions = build_hierarchy_level_4_filter_conditions(filter_dict, hierarchy_level_4_alias)
+        joins_added.add("hierarchy_level_4")
+    
+    if has_hierarchy_level_5 and "store" in joins_added:
+        hierarchy_level_5_alias = aliased(Hierarchy)
+        query = query.join(hierarchy_level_5_alias, Store.hierarchy_level_5_id == hierarchy_level_5_alias.id)
+        hierarchy_level_5_conditions = build_hierarchy_level_5_filter_conditions(filter_dict, hierarchy_level_5_alias)
+        joins_added.add("hierarchy_level_5")
 
     # Join Topic through SurveyTopics if topic filters are applied
     if topic_conditions:
         query = query.join(SurveyTopics, Survey.id == SurveyTopics.survey_id)
         query = query.join(Topic, SurveyTopics.topic_id == Topic.id)
         joins_added.add("topic")
-
-    # Join Region through Store if region filters are applied
-    if region_conditions and "store" in joins_added:
-        query = query.join(Region, Store.region_id == Region.id)
-        joins_added.add("region")
 
     # Join Keyword through SurveyKeywords if keyword filters are applied
     if keyword_conditions:
@@ -194,9 +258,6 @@ def build_survey_query(query: Query, filter_dict) -> Query:
         joinedload(Survey.survey_keywords).joinedload(SurveyKeywords.keyword),
         joinedload(Survey.store),
         joinedload(Survey.survey_departments).joinedload(SurveyDepartments.department),
-        joinedload(Survey.district),
-        joinedload(Survey.source),
-        joinedload(Survey.region),
     )
 
     # Apply the filter conditions
@@ -204,10 +265,12 @@ def build_survey_query(query: Query, filter_dict) -> Query:
         survey_conditions,
         store_conditions,
         department_conditions,
-        district_conditions,
-        source_conditions,
+        hierarchy_level_1_conditions,
+        hierarchy_level_2_conditions,
+        hierarchy_level_3_conditions,
+        hierarchy_level_4_conditions,
+        hierarchy_level_5_conditions,
         topic_conditions,
-        region_conditions,
         keyword_conditions,
         channel_conditions,
         delivery_service_conditions,
@@ -231,19 +294,6 @@ def merge_filter_conditions(*condition_lists):
         return None
 
     return and_(*all_conditions)
-
-
-def build_region_filter_conditions(filter_dict):
-    """Build filter conditions for region-related queries that include region filtering"""
-    conditions = []
-    # Region filter
-    if filter_dict.get("region_ids"):
-        conditions.append(Region.id.in_(filter_dict["region_ids"]))
-
-    if filter_dict.get("region_names"):
-        conditions.append(Region.name.in_(filter_dict["region_names"]))
-
-    return conditions
 
 
 def build_channel_filter_conditions(filter_dict):
@@ -281,17 +331,21 @@ def build_optimized_query(
     # Create a copy of filter_dict without excluded filters
     working_filter = {k: v for k, v in filter_dict.items() if k not in exclude_filters}
 
-    # Build filter conditions
+    # Build filter conditions (for non-hierarchy filters first)
     survey_conditions = build_survey_filter_conditions(working_filter)
     store_conditions = build_store_filter_conditions(working_filter)
     department_conditions = build_department_filter_conditions(working_filter)
-    district_conditions = build_district_filter_conditions(working_filter)
-    source_conditions = build_source_filter_conditions(working_filter)
     topic_conditions = build_topic_filter_conditions(working_filter)
     keyword_conditions = build_keyword_filter_conditions(working_filter)
-    region_conditions = build_region_filter_conditions(working_filter)
     channel_conditions = build_channel_filter_conditions(working_filter)
     delivery_service_conditions = build_delivery_service_filter_conditions(working_filter)
+    
+    # Check if hierarchy conditions exist before creating joins
+    has_hierarchy_level_1 = bool(working_filter.get("hierarchy_level_1_ids") or working_filter.get("hierarchy_level_1_names"))
+    has_hierarchy_level_2 = bool(working_filter.get("hierarchy_level_2_ids") or working_filter.get("hierarchy_level_2_names"))
+    has_hierarchy_level_3 = bool(working_filter.get("hierarchy_level_3_ids") or working_filter.get("hierarchy_level_3_names"))
+    has_hierarchy_level_4 = bool(working_filter.get("hierarchy_level_4_ids") or working_filter.get("hierarchy_level_4_names"))
+    has_hierarchy_level_5 = bool(working_filter.get("hierarchy_level_5_ids") or working_filter.get("hierarchy_level_5_names"))
 
     # Start with base query
     query = db.query(Survey)
@@ -299,12 +353,14 @@ def build_optimized_query(
     # Add joins only when needed - track what we've joined to avoid duplicates
     joined_tables = set()
 
-    # Join Store if store filters are applied or if we need it for district/source/region joins
+    # Join Store if store filters are applied or if we need it for hierarchy joins
     if (
         store_conditions
-        or district_conditions
-        or source_conditions
-        or region_conditions
+        or has_hierarchy_level_1
+        or has_hierarchy_level_2
+        or has_hierarchy_level_3
+        or has_hierarchy_level_4
+        or has_hierarchy_level_5
     ):
         query = query.join(Store, Survey.store_id == Store.id)
         joined_tables.add("store")
@@ -314,22 +370,56 @@ def build_optimized_query(
         query = query.join(Department, SurveyDepartments.department_id == Department.id)
         joined_tables.add("department")
 
-    if district_conditions and "store" in joined_tables:
-        query = query.join(District, Store.district_id == District.id)
-        joined_tables.add("district")
-
-    if source_conditions and "store" in joined_tables:
-        query = query.join(Source, Store.source_id == Source.id)
-        joined_tables.add("source")
+    # Join Hierarchy levels through Store if hierarchy filters are applied
+    # Each hierarchy level needs to be aliased to allow multiple joins
+    from sqlalchemy.orm import aliased
+    
+    hierarchy_aliases = {}
+    hierarchy_level_1_conditions = []
+    hierarchy_level_2_conditions = []
+    hierarchy_level_3_conditions = []
+    hierarchy_level_4_conditions = []
+    hierarchy_level_5_conditions = []
+    
+    if has_hierarchy_level_1 and "store" in joined_tables:
+        hierarchy_level_1_alias = aliased(Hierarchy)
+        query = query.join(hierarchy_level_1_alias, Store.hierarchy_level_1_id == hierarchy_level_1_alias.id)
+        hierarchy_aliases[1] = hierarchy_level_1_alias
+        hierarchy_level_1_conditions = build_hierarchy_level_1_filter_conditions(working_filter, hierarchy_level_1_alias)
+        joined_tables.add("hierarchy_level_1")
+    
+    if has_hierarchy_level_2 and "store" in joined_tables:
+        hierarchy_level_2_alias = aliased(Hierarchy)
+        query = query.join(hierarchy_level_2_alias, Store.hierarchy_level_2_id == hierarchy_level_2_alias.id)
+        hierarchy_aliases[2] = hierarchy_level_2_alias
+        hierarchy_level_2_conditions = build_hierarchy_level_2_filter_conditions(working_filter, hierarchy_level_2_alias)
+        joined_tables.add("hierarchy_level_2")
+    
+    if has_hierarchy_level_3 and "store" in joined_tables:
+        hierarchy_level_3_alias = aliased(Hierarchy)
+        query = query.join(hierarchy_level_3_alias, Store.hierarchy_level_3_id == hierarchy_level_3_alias.id)
+        hierarchy_aliases[3] = hierarchy_level_3_alias
+        hierarchy_level_3_conditions = build_hierarchy_level_3_filter_conditions(working_filter, hierarchy_level_3_alias)
+        joined_tables.add("hierarchy_level_3")
+    
+    if has_hierarchy_level_4 and "store" in joined_tables:
+        hierarchy_level_4_alias = aliased(Hierarchy)
+        query = query.join(hierarchy_level_4_alias, Store.hierarchy_level_4_id == hierarchy_level_4_alias.id)
+        hierarchy_aliases[4] = hierarchy_level_4_alias
+        hierarchy_level_4_conditions = build_hierarchy_level_4_filter_conditions(working_filter, hierarchy_level_4_alias)
+        joined_tables.add("hierarchy_level_4")
+    
+    if has_hierarchy_level_5 and "store" in joined_tables:
+        hierarchy_level_5_alias = aliased(Hierarchy)
+        query = query.join(hierarchy_level_5_alias, Store.hierarchy_level_5_id == hierarchy_level_5_alias.id)
+        hierarchy_aliases[5] = hierarchy_level_5_alias
+        hierarchy_level_5_conditions = build_hierarchy_level_5_filter_conditions(working_filter, hierarchy_level_5_alias)
+        joined_tables.add("hierarchy_level_5")
 
     if topic_conditions:
         query = query.join(SurveyTopics, Survey.id == SurveyTopics.survey_id)
         query = query.join(Topic, SurveyTopics.topic_id == Topic.id)
         joined_tables.add("topic")
-
-    if region_conditions and "store" in joined_tables:
-        query = query.join(Region, Store.region_id == Region.id)
-        joined_tables.add("region")
 
     if keyword_conditions:
         query = query.join(SurveyKeywords, Survey.id == SurveyKeywords.survey_id)
@@ -349,10 +439,12 @@ def build_optimized_query(
         survey_conditions,
         store_conditions,
         department_conditions,
-        district_conditions,
-        source_conditions,
+        hierarchy_level_1_conditions,
+        hierarchy_level_2_conditions,
+        hierarchy_level_3_conditions,
+        hierarchy_level_4_conditions,
+        hierarchy_level_5_conditions,
         topic_conditions,
-        region_conditions,
         keyword_conditions,
         channel_conditions,
         delivery_service_conditions,
@@ -361,7 +453,7 @@ def build_optimized_query(
     if filter_conditions is not None:
         query = query.filter(filter_conditions)
 
-    return query, joined_tables
+    return query, joined_tables, hierarchy_aliases
 
 
 def build_Survey_sentiment_aggregation_query(base_query, *group_by_fields):
@@ -433,12 +525,16 @@ class FilterRequest(BaseModel):
     store_names: List[str] = []
     department_ids: List[int] = []
     department_names: List[str] = []
-    district_ids: List[int] = []
-    district_names: List[str] = []
-    region_ids: List[int] = []
-    region_names: List[str] = []
-    source_ids: List[int] = []
-    source_names: List[str] = []
+    hierarchy_level_1_ids: List[int] = []
+    hierarchy_level_1_names: List[str] = []
+    hierarchy_level_2_ids: List[int] = []
+    hierarchy_level_2_names: List[str] = []
+    hierarchy_level_3_ids: List[int] = []
+    hierarchy_level_3_names: List[str] = []
+    hierarchy_level_4_ids: List[int] = []
+    hierarchy_level_4_names: List[str] = []
+    hierarchy_level_5_ids: List[int] = []
+    hierarchy_level_5_names: List[str] = []
     channel_ids: List[int] = []
     channel_names: List[str] = []
     delivery_service_ids: List[int] = []
@@ -467,29 +563,45 @@ def get_filter_params(
         default=[],
         description="The department names to filter by",
     ),
-    district_ids: List[int] = Query(
+    hierarchy_level_1_ids: List[int] = Query(
         default=[],
-        description="The district ids to filter by",
+        description="The hierarchy level 1 ids to filter by",
     ),
-    district_names: List[str] = Query(
+    hierarchy_level_1_names: List[str] = Query(
         default=[],
-        description="The district names to filter by",
+        description="The hierarchy level 1 names to filter by",
     ),
-    region_ids: List[int] = Query(
+    hierarchy_level_2_ids: List[int] = Query(
         default=[],
-        description="The region ids to filter by",
+        description="The hierarchy level 2 ids to filter by",
     ),
-    region_names: List[str] = Query(
+    hierarchy_level_2_names: List[str] = Query(
         default=[],
-        description="The region names to filter by",
+        description="The hierarchy level 2 names to filter by",
     ),
-    source_ids: List[int] = Query(
+    hierarchy_level_3_ids: List[int] = Query(
         default=[],
-        description="The source ids to filter by",
+        description="The hierarchy level 3 ids to filter by",
     ),
-    source_names: List[str] = Query(
+    hierarchy_level_3_names: List[str] = Query(
         default=[],
-        description="The source names to filter by",
+        description="The hierarchy level 3 names to filter by",
+    ),
+    hierarchy_level_4_ids: List[int] = Query(
+        default=[],
+        description="The hierarchy level 4 ids to filter by",
+    ),
+    hierarchy_level_4_names: List[str] = Query(
+        default=[],
+        description="The hierarchy level 4 names to filter by",
+    ),
+    hierarchy_level_5_ids: List[int] = Query(
+        default=[],
+        description="The hierarchy level 5 ids to filter by",
+    ),
+    hierarchy_level_5_names: List[str] = Query(
+        default=[],
+        description="The hierarchy level 5 names to filter by",
     ),
     channel_ids: List[int] = Query(
         default=[],
@@ -540,23 +652,35 @@ def get_filter_params(
             status_code=400,
             detail="department_ids and department_names cannot be used together",
         )
-    # district_ids and district_names cannot be used together
-    if district_ids and district_names:
+    # hierarchy_level_1_ids and hierarchy_level_1_names cannot be used together
+    if hierarchy_level_1_ids and hierarchy_level_1_names:
         raise HTTPException(
             status_code=400,
-            detail="district_ids and district_names cannot be used together",
+            detail="hierarchy_level_1_ids and hierarchy_level_1_names cannot be used together",
         )
-    # region_ids and region_names cannot be used together
-    if region_ids and region_names:
+    # hierarchy_level_2_ids and hierarchy_level_2_names cannot be used together
+    if hierarchy_level_2_ids and hierarchy_level_2_names:
         raise HTTPException(
             status_code=400,
-            detail="region_ids and region_names cannot be used together",
+            detail="hierarchy_level_2_ids and hierarchy_level_2_names cannot be used together",
         )
-    # source_ids and source_names cannot be used together
-    if source_ids and source_names:
+    # hierarchy_level_3_ids and hierarchy_level_3_names cannot be used together
+    if hierarchy_level_3_ids and hierarchy_level_3_names:
         raise HTTPException(
             status_code=400,
-            detail="source_ids and source_names cannot be used together",
+            detail="hierarchy_level_3_ids and hierarchy_level_3_names cannot be used together",
+        )
+    # hierarchy_level_4_ids and hierarchy_level_4_names cannot be used together
+    if hierarchy_level_4_ids and hierarchy_level_4_names:
+        raise HTTPException(
+            status_code=400,
+            detail="hierarchy_level_4_ids and hierarchy_level_4_names cannot be used together",
+        )
+    # hierarchy_level_5_ids and hierarchy_level_5_names cannot be used together
+    if hierarchy_level_5_ids and hierarchy_level_5_names:
+        raise HTTPException(
+            status_code=400,
+            detail="hierarchy_level_5_ids and hierarchy_level_5_names cannot be used together",
         )
     # channel_ids and channel_names cannot be used together
     if channel_ids and channel_names:
@@ -576,12 +700,16 @@ def get_filter_params(
         store_names=store_names,
         department_ids=department_ids,
         department_names=department_names,
-        district_ids=district_ids,
-        district_names=district_names,
-        region_ids=region_ids,
-        region_names=region_names,
-        source_ids=source_ids,
-        source_names=source_names,
+        hierarchy_level_1_ids=hierarchy_level_1_ids,
+        hierarchy_level_1_names=hierarchy_level_1_names,
+        hierarchy_level_2_ids=hierarchy_level_2_ids,
+        hierarchy_level_2_names=hierarchy_level_2_names,
+        hierarchy_level_3_ids=hierarchy_level_3_ids,
+        hierarchy_level_3_names=hierarchy_level_3_names,
+        hierarchy_level_4_ids=hierarchy_level_4_ids,
+        hierarchy_level_4_names=hierarchy_level_4_names,
+        hierarchy_level_5_ids=hierarchy_level_5_ids,
+        hierarchy_level_5_names=hierarchy_level_5_names,
         channel_ids=channel_ids,
         channel_names=channel_names,
         delivery_service_ids=delivery_service_ids,
