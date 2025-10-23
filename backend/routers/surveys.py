@@ -302,7 +302,7 @@ async def download_surveys(
 
         # Stream surveys in batches using ID as offset
         batch_size = 100
-
+        offset = 0
         while True:
             # Get surveys
             surveys = (
