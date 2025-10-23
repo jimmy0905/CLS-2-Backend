@@ -341,20 +341,61 @@ def _extract_total_sync(text: str) -> tuple[TotalResponse, dict]:
 EXTRACT_TOTAL_RETRY_MODEL = os.getenv(
     "EXTRACT_TOTAL_RETRY_MODEL", "gpt-4.1-mini-CLS-DataUpload"
 )
-EXTRACT_TOTAL_RETRY_TEMPERATURE = os.getenv("EXTRACT_TOTAL_RETRY_TEMPERATURE", 0.0)
+EXTRACT_TOTAL_RETRY_TEMPERATURE = float(
+    os.getenv("EXTRACT_TOTAL_RETRY_TEMPERATURE", 0.0)
+)
 
 
 def _extract_total_retry_sync(text: str) -> tuple[TotalResponse, dict]:
     user_prompt = f"""{text}"""
     response = client.chat.completions.create(
         model=EXTRACT_TOTAL_RETRY_MODEL,
-        messages=[{"role": "user", "content": user_prompt}],
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
         temperature=EXTRACT_TOTAL_RETRY_TEMPERATURE,
     )
     response_content = response.choices[0].message.content
     if response_content is None:
-        raise Exception("Failed to extract total")
-    return response_content
+        # Return empty TotalResponse when no content
+        empty_response = TotalResponse(
+            topics=[],
+            departments=[],
+            keywords=[],
+            overall_sentiment="neutral",
+            cannot_classified=True,
+        )
+        return empty_response, None
+    try:
+        cleaned_response_content = _clean_response_content(response_content)
+        response_json = json.loads(cleaned_response_content)
+        print("response_json (retry)", response_json)
+        # Handle the case where only cannot_classified=True is returned
+        if response_json.get("cannot_classified") is True:
+            # Fill with empty arrays and default values to match TotalResponse model
+            complete_response = {
+                "topics": [],
+                "departments": [],
+                "keywords": [],
+                "overall_sentiment": "neutral",
+                "cannot_classified": True,
+            }
+            return (
+                TotalResponse.model_validate(complete_response),
+                response.usage.model_dump(),
+            )
+
+        # For normal case, ensure cannot_classified is set to False if not present
+        if "cannot_classified" not in response_json:
+            response_json["cannot_classified"] = False
+
+        # Create and return TotalResponse object
+        return TotalResponse.model_validate(response_json), response.usage.model_dump()
+    except Exception as e:
+        print(f"Error validating JSON response (retry): {e}")
+        print(f"Response content (first 500 chars): {response_content[:500]}")
+        raise Exception(f"Failed to validate keywords response on retry: {e}")
 
 
 async def extract_total(text: str) -> tuple[TotalResponse, dict]:
