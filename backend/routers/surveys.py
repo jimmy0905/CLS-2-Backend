@@ -308,13 +308,12 @@ async def download_surveys(
 
         # Stream surveys in batches using ID as offset
         batch_size = 100
-        last_id = 0
 
         while True:
             # Get surveys with ID greater than last_id, ordered by ID
             surveys = (
-                filtered_query.filter(Survey.id > last_id)
-                .order_by(Survey.id)
+                filtered_query
+                .order_by(Survey.reported_at.asc())
                 .limit(batch_size)
                 .all()
             )
@@ -329,8 +328,6 @@ async def download_surveys(
                 csv_row_str = ",".join(f'"{value}"' for value in row_values) + "\n"
                 yield csv_row_str
 
-                # Update last_id for next batch
-                last_id = survey.id
 
     return StreamingResponse(
         generate_csv_rows(),
