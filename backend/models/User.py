@@ -1,6 +1,6 @@
 from utils.database import Base
 from sqlalchemy import CHAR, Column, DateTime, String, Boolean, UniqueConstraint
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.orm import relationship
@@ -46,8 +46,8 @@ class User(Base):
             "username": self.username,
             "role": self.role,
             "oauth_provider": self.oauth_provider,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
+            "created_at": self.created_at.astimezone(timezone.utc) if self.created_at else None,
+            "updated_at": self.updated_at.astimezone(timezone.utc) if self.updated_at else None,
             "is_deleted": self.is_deleted,
         }
 

@@ -1,6 +1,7 @@
 from utils.database import Base
 from sqlalchemy import Column, Integer, String, DateTime, CHAR, event
 import uuid
+from datetime import timezone
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -32,8 +33,8 @@ class UploadTask(Base):
             "status": self.status,
             "total_rows": self.total_rows,
             "processed_rows": self.processed_rows,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
+            "created_at": self.created_at.astimezone(timezone.utc) if self.created_at else None,
+            "updated_at": self.updated_at.astimezone(timezone.utc) if self.updated_at else None,
             "completion_tokens": self.completion_tokens,
             "prompt_tokens": self.prompt_tokens,
             "total_tokens": self.total_tokens,
