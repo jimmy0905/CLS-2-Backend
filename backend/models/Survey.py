@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
 )
 import enum
+import datetime
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -138,13 +139,13 @@ class Survey(Base):
             "comment": self.comment,
             "sentiment": self.sentiment,
             "reported_at": (
-                self.reported_at.isoformat() if self.reported_at else None
+                self.reported_at.astimezone(datetime.timezone.utc).isoformat() if self.reported_at else None
             ),
             "created_at": (
-                self.created_at.isoformat() if self.created_at else None
+                self.created_at.astimezone(datetime.timezone.utc).isoformat() if self.created_at else None
             ),
             "updated_at": (
-                self.updated_at.isoformat() if self.updated_at else None
+                self.updated_at.astimezone(datetime.timezone.utc).isoformat() if self.updated_at else None
             ),
         }
 

@@ -1,6 +1,7 @@
 from utils.database import Base
 from sqlalchemy import Column, ForeignKey, DateTime, CHAR, Text, Integer, event
 import uuid
+from datetime import timezone
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -28,8 +29,8 @@ class UploadTaskError(Base):
             "input_store_id": self.input_store_id,
             "input_comment": self.input_comment,
             "input_reported_at": self.input_reported_at,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
+            "created_at": self.created_at.astimezone(timezone.utc) if self.created_at else None,
+            "updated_at": self.updated_at.astimezone(timezone.utc) if self.updated_at else None,
         }
 
 
