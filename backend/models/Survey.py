@@ -160,7 +160,6 @@ class Survey(Base):
             "hierarchy_level_4_name": self.store.hierarchy_level_4.name if self.store.hierarchy_level_4 else None,
             "hierarchy_level_5_name": self.store.hierarchy_level_5.name if self.store.hierarchy_level_5 else None,
             "comment": self.comment,
-            "sentiment": self.sentiment,
             "reported_at": self.reported_at,
             "created_at": self.created_at,
             "updated_at": self.updated_at,

@@ -266,6 +266,42 @@ async def download_surveys(
     filter_dict = filter_params.model_dump()
     filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
 
+    def calculate_sentiment(survey):
+        """Calculate sentiment based on topics using the same logic as frontend."""
+        # Get topics with sentiment from the survey
+        topics = [
+            {"topic": survey_topic.topic.topic, "sentiment": survey_topic.sentiment}
+            for survey_topic in survey.survey_topics
+        ]
+        
+        # Safety check: ensure topics is an array
+        if not topics or len(topics) == 0:
+            return {"sentiment": "neutral", "score": 0}
+        
+        # if there are only neutral, return "neutral"
+        if all(topic["sentiment"] == "neutral" for topic in topics):
+            return {"sentiment": "neutral", "score": 0}
+        
+        # if there are only positive or neutral, return "positive"
+        if all(topic["sentiment"] in ["positive", "neutral"] for topic in topics):
+            return {"sentiment": "positive", "score": 1}
+        
+        # if there are only negative or neutral, return "negative"
+        if all(topic["sentiment"] in ["negative", "neutral"] for topic in topics):
+            return {"sentiment": "negative", "score": -1}
+        
+        # if there are both positive and negative, return "mix"
+        positive_count = sum(1 for topic in topics if topic["sentiment"] == "positive")
+        negative_count = sum(1 for topic in topics if topic["sentiment"] == "negative")
+        neutral_count = sum(1 for topic in topics if topic["sentiment"] == "neutral")
+        
+        if positive_count > 0 and negative_count > 0:
+            total_count = positive_count + negative_count + neutral_count
+            score = round((positive_count - negative_count) / total_count, 2)
+            return {"sentiment": "mix", "score": score}
+        
+        return {"sentiment": "neutral", "score": 0}
+
     def format_csv_value(value):
         if value is None:
             return ""
@@ -294,14 +330,16 @@ async def download_surveys(
             "channel",
             "delivery_service",
             "sentiment",
+            "sentiment_score",
             "reported_at",
             "created_at",
             "updated_at",
         ]
         yield ",".join(headers) + "\n"
 
-        # Stream surveys in batches using ID as offset
+        # Stream surveys in batches using offset
         batch_size = 100
+        offset = 0
 
         while True:
             # Get surveys
@@ -315,10 +353,14 @@ async def download_surveys(
                 break
             for survey in surveys:
                 csv_value = survey.to_csv()
+                # Calculate sentiment based on topics
+                sentiment_result = calculate_sentiment(survey)
+                csv_value["sentiment"] = sentiment_result["sentiment"]
+                csv_value["sentiment_score"] = sentiment_result["score"]
                 row_values = [format_csv_value(csv_value[header]) for header in headers]
                 csv_row_str = ",".join(f'"{value}"' for value in row_values) + "\n"
                 yield csv_row_str
-                offset += batch_size
+            offset += batch_size
 
     return StreamingResponse(
         generate_csv_rows(),
