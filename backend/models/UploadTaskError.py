@@ -1,18 +1,13 @@
 from utils.database import Base
 from sqlalchemy import Column, ForeignKey, DateTime, CHAR, Text, Integer, event
-from datetime import datetime
 import uuid
+from datetime import timezone
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 
-
 class UploadTaskError(Base):
     __tablename__ = "upload_task_errors"
-
-    @staticmethod
-    def _update_updated_at(mapper, connection, target):
-        target.updated_at = func.now()
 
     id = Column(CHAR(36), default=lambda: str(uuid.uuid4()), primary_key=True)
     upload_task_id = Column(CHAR(36), ForeignKey("upload_tasks.id"))
@@ -34,9 +29,18 @@ class UploadTaskError(Base):
             "input_store_id": self.input_store_id,
             "input_comment": self.input_comment,
             "input_reported_at": self.input_reported_at,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
+            "created_at": self.created_at.astimezone(timezone.utc) if self.created_at else None,
+            "updated_at": self.updated_at.astimezone(timezone.utc) if self.updated_at else None,
         }
 
+
 # Register the event listener to automatically update updated_at
-event.listen(UploadTaskError, 'before_update', UploadTaskError._update_updated_at)
+@event.listens_for(UploadTaskError, "before_update")
+def update_updated_at(mapper, connection, target):
+    from models.UploadTask import UploadTask
+
+    connection.execute(
+        UploadTaskError.__table__.update()
+        .where(UploadTaskError.id == target.id)
+        .values(updated_at=func.now())
+    )

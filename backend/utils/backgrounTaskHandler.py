@@ -11,7 +11,7 @@ from models.SurveyKeywords import SurveyKeywords
 from models.SurveyDepartments import SurveyDepartments
 from models.Channel import Channel
 from models.DeliveryService import DeliveryService
-from datetime import datetime
+from datetime import datetime, timezone
 from utils.llm.extract_total import extract_total, _extract_total_retry_sync
 from utils.logger import logger
 import dateutil.parser
@@ -24,32 +24,6 @@ from functools import partial
 from sqlalchemy.orm import sessionmaker
 from utils.database import engine
 from config import MAX_WORKER_THREADS
-from utils.llm.models import TotalResponse
-
-
-# ONLY FOR WTCHKECLS PROJECT
-def is_total_valid(total: TotalResponse) -> tuple[bool, str]:
-    """
-    Check if the total is valid.
-    for these five topics, if dept select= Supply Chain only, then the topics chart should only show the topics below
-
-    Packaging/Condition of Delivered Items
-    Deliveryman Service
-    Communication of Order Status
-    Order Arrived at Promised Time
-    Store Staff’s Service
-    """
-    if total.departments == ["Supply Chain"]:
-        for topic in total.topics:
-            if topic.text not in [
-                "Packaging/Condition of Delivered Items",
-                "Deliveryman Service",
-                "Communication of Order Status",
-                "Order Arrived at Promised Time",
-                "Store Staff’s Service",
-            ]:
-                return False, f"Department {total.departments} only, but Topic {topic.text} is not valid"
-    return True, ""
 
 
 def is_comment_valid(comment: str) -> bool:
@@ -88,18 +62,18 @@ def parse_flexible_date(
     date_input: Union[str, datetime, pd.Timestamp], row_number: int = None
 ) -> Optional[datetime]:
     """
-    Parse date formats into a datetime object.
+    Parse date formats into a timezone-aware datetime object.
 
     Only supports these specific formats:
-    - 'YYYY-MM-DD HH:MM:SS' (e.g., '2025-09-01 10:04:57')
-    - 'YYYY-MM-DDTHH:MM:SS.000Z' (e.g., '2025-09-01T10:04:57.000Z')
+    - 'YYYY-MM-DD HH:MM:SS' (e.g., '2025-09-01 10:04:57') - interpreted as UTC
+    - 'YYYY-MM-DDTHH:MM:SS.000Z' (e.g., '2025-09-01T10:04:57.000Z') - UTC timezone
 
     Args:
         date_input: The date value to parse
         row_number: Optional row number for logging context
 
     Returns:
-        datetime object or None if parsing fails
+        Timezone-aware datetime object (UTC) or None if parsing fails
     """
     if not date_input or pd.isna(date_input):
         return None
@@ -107,33 +81,43 @@ def parse_flexible_date(
     row_context = f"Row {row_number}: " if row_number else ""
 
     try:
-        # If it's already a datetime object, return as is
+        # If it's already a datetime object
         if isinstance(date_input, datetime):
+            # If it's naive, assume UTC
+            if date_input.tzinfo is None:
+                return date_input.replace(tzinfo=timezone.utc)
             return date_input
 
         # If it's a pandas Timestamp, convert to datetime
         if isinstance(date_input, pd.Timestamp):
-            return date_input.to_pydatetime()
+            dt = date_input.to_pydatetime()
+            # If it's naive, assume UTC
+            if dt.tzinfo is None:
+                return dt.replace(tzinfo=timezone.utc)
+            return dt
 
         # Convert to string for parsing
         date_str = str(date_input).strip()
 
-        # Only accept these two specific date formats
-        date_formats = [
-            "%Y-%m-%d %H:%M:%S",  # 2025-09-01 10:04:57
-            "%Y-%m-%dT%H:%M:%S.%fZ",  # 2025-09-01T10:04:57.000Z
-        ]
-
-        # Try each format
-        for date_format in date_formats:
+        # Handle ISO format with Z (UTC timezone)
+        if date_str.endswith('Z'):
             try:
-                parsed_date = datetime.strptime(date_str, date_format)
-                return parsed_date
+                # Parse the ISO format and set UTC timezone
+                parsed_date = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S.%fZ")
+                return parsed_date.replace(tzinfo=timezone.utc)
             except ValueError:
                 logger.debug(
-                    f"{row_context}Failed to parse date '{date_str}' using format '{date_format}'"
+                    f"{row_context}Failed to parse date '{date_str}' using ISO format with Z"
                 )
-                continue
+        
+        # Handle simple datetime format (assume UTC)
+        try:
+            parsed_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+            return parsed_date.replace(tzinfo=timezone.utc)
+        except ValueError:
+            logger.debug(
+                f"{row_context}Failed to parse date '{date_str}' using simple format"
+            )
 
         # If all parsing attempts fail
         logger.warning(
@@ -192,7 +176,7 @@ def process_single_row(
         # Handle NaN values for critical fields
         store_id = row["store_key"] if pd.notna(row["store_key"]) else None
         comment = row["answer"] if pd.notna(row["answer"]) else None
-        reported_at = row["submitdate"] if pd.notna(row["submitdate"]) else None
+        reported_at = row["survey_order_date"] if pd.notna(row["survey_order_date"]) else None
         if is_comment_valid(comment) is False:
             logger.warning(f"Row {index + 1}: Comment is invalid, skipping row")
             # Create an error for the upload task
@@ -339,21 +323,7 @@ def process_single_row(
             from utils.llm.extract_total import _extract_total_sync
 
             total, usage = _extract_total_sync(comment)
-            # ONLY FOR WTCHKECLS PROJECT
-            # Check if the total is valid
-            is_valid, error_message = is_total_valid(total)
-            if not is_valid:
-                error = UploadTaskError(
-                    upload_task_id=upload_task_id,
-                    input_store_id=store_id,
-                    input_comment=comment,
-                    input_reported_at=reported_at,
-                    error_message=error_message,
-                )
-                db.add(error)
-                db.commit()
-                result["error"] = error_message
-                return result
+
             # Update usage statistics atomically
             if usage:
                 with stats_lock:
@@ -373,6 +343,18 @@ def process_single_row(
             # if total.cannot_classified is True, set have_to_retry to True
             if total.cannot_classified:
                 logger.warning(f"Row {index + 1}: Cannot classified in AI Analysis after first try, retrying...")
+                have_to_retry = True
+            # Check if the topics are not empty
+            if total.topics is None:
+                logger.warning(f"Row {index + 1}: Topics are empty after first try, skipping row")
+                have_to_retry = True
+            # Check if the departments are not empty
+            if total.departments is None:
+                logger.warning(f"Row {index + 1}: Departments are empty after first try, skipping row")
+                have_to_retry = True
+            # Check if the keywords are not empty
+            if total.keywords is None:
+                logger.warning(f"Row {index + 1}: Keywords are empty after first try, skipping row")
                 have_to_retry = True
             # Check if the topics are valid
             for topic in total.topics:
@@ -417,6 +399,48 @@ def process_single_row(
                     db.add(error)
                     db.commit()
                     result["error"] = "Cannot classified in AI Analysis after retrying"
+                    return result
+                # Check if the topics are not empty
+                if total.topics is None:
+                    logger.warning(f"Row {index + 1}: Topics are empty after retrying, skipping row")
+                    error = UploadTaskError(
+                        upload_task_id=upload_task_id,
+                        input_store_id=store_id,
+                        input_comment=comment,
+                        input_reported_at=reported_at,
+                        error_message="Topics are empty after retrying",
+                    )
+                    db.add(error)
+                    db.commit()
+                    result["error"] = "Topics are empty after retrying"
+                    return result
+                # Check if the departments are not empty
+                if total.departments is None:
+                    logger.warning(f"Row {index + 1}: Departments are empty after retrying, skipping row")
+                    error = UploadTaskError(
+                        upload_task_id=upload_task_id,
+                        input_store_id=store_id,
+                        input_comment=comment,
+                        input_reported_at=reported_at,
+                        error_message="Departments are empty after retrying",
+                    )
+                    db.add(error)
+                    db.commit()
+                    result["error"] = "Departments are empty after retrying"
+                    return result
+                # Check if the keywords are not empty
+                if total.keywords is None:
+                    logger.warning(f"Row {index + 1}: Keywords are empty after retrying, skipping row")
+                    error = UploadTaskError(
+                        upload_task_id=upload_task_id,
+                        input_store_id=store_id,
+                        input_comment=comment,
+                        input_reported_at=reported_at,
+                        error_message="Keywords are empty after retrying",
+                    )
+                    db.add(error)
+                    db.commit()
+                    result["error"] = "Keywords are empty after retrying"
                     return result
                 # Check if the topics are valid
                 for topic in total.topics:

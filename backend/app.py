@@ -11,11 +11,9 @@ from routers import (
     actions,
     strategy,
     userBehavoiorLogs,
-    districts,
     stores,
-    sources,
     departments,
-    regions,
+    hierarchies,
     tasks,
     users,
     channels,
@@ -24,6 +22,10 @@ from routers import (
 )
 import os
 from fastapi_pagination import add_pagination
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+from utils.database import get_db
+from fastapi import Depends, HTTPException
 
 app = FastAPI(
     title="CLS Connex",
@@ -58,8 +60,13 @@ async def startup_event():
 
 
 @app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
+async def health_check(db: Session = Depends(get_db)):
+    # Check if the database is connected, by executing a simple query (list all tables in the database)
+    try:
+        db.execute(text("SELECT table_name FROM information_schema.tables")).all()
+        return {"status": "healthy"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 app.include_router(auth.router)
@@ -67,12 +74,10 @@ app.include_router(surveys.router)
 app.include_router(dashboard.router)
 app.include_router(actions.router)
 app.include_router(strategy.router)
-app.include_router(districts.router)
 app.include_router(stores.router)
-app.include_router(sources.router)
 app.include_router(departments.router)
 app.include_router(userBehavoiorLogs.router)
-app.include_router(regions.router)
+app.include_router(hierarchies.router)
 app.include_router(tasks.router)
 app.include_router(users.router)
 app.include_router(channels.router)
