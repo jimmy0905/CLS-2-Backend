@@ -1,8 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, func, or_, select
-from models.District import District
-from models.Source import Source
 from models.Survey import Survey
 from models.Topic import Topic
 from models.Keyword import Keyword
@@ -10,6 +8,7 @@ from models.SurveyTopics import SurveyTopics
 from models.SurveyKeywords import SurveyKeywords
 from models.SurveyDepartments import SurveyDepartments
 from models.Store import Store
+from models.Hierarchy import Hierarchy
 from models.Department import Department
 from models.Channel import Channel
 from models.DeliveryService import DeliveryService
@@ -41,27 +40,20 @@ router = APIRouter(
 )
 
 
-class DistrictResponse(BaseModel):
+class HierarchyResponse(BaseModel):
     id: int
     name: str
-
-
-class RegionResponse(BaseModel):
-    id: int
-    name: str
-
-
-class SourceResponse(BaseModel):
-    id: int
-    name: str
+    level: int
 
 
 class StoreResponse(BaseModel):
     id: int
     name: str
-    district: DistrictResponse
-    source: SourceResponse
-    region: RegionResponse
+    hierarchy_level_1: Optional[HierarchyResponse] = None
+    hierarchy_level_2: Optional[HierarchyResponse] = None
+    hierarchy_level_3: Optional[HierarchyResponse] = None
+    hierarchy_level_4: Optional[HierarchyResponse] = None
+    hierarchy_level_5: Optional[HierarchyResponse] = None
 
 
 class ChannelResponse(BaseModel):
@@ -274,6 +266,42 @@ async def download_surveys(
     filter_dict = filter_params.model_dump()
     filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
 
+    def calculate_sentiment(survey):
+        """Calculate sentiment based on topics using the same logic as frontend."""
+        # Get topics with sentiment from the survey
+        topics = [
+            {"topic": survey_topic.topic.topic, "sentiment": survey_topic.sentiment}
+            for survey_topic in survey.survey_topics
+        ]
+        
+        # Safety check: ensure topics is an array
+        if not topics or len(topics) == 0:
+            return {"sentiment": "neutral", "score": 0}
+        
+        # if there are only neutral, return "neutral"
+        if all(topic["sentiment"] == "neutral" for topic in topics):
+            return {"sentiment": "neutral", "score": 0}
+        
+        # if there are only positive or neutral, return "positive"
+        if all(topic["sentiment"] in ["positive", "neutral"] for topic in topics):
+            return {"sentiment": "positive", "score": 1}
+        
+        # if there are only negative or neutral, return "negative"
+        if all(topic["sentiment"] in ["negative", "neutral"] for topic in topics):
+            return {"sentiment": "negative", "score": -1}
+        
+        # if there are both positive and negative, return "mix"
+        positive_count = sum(1 for topic in topics if topic["sentiment"] == "positive")
+        negative_count = sum(1 for topic in topics if topic["sentiment"] == "negative")
+        neutral_count = sum(1 for topic in topics if topic["sentiment"] == "neutral")
+        
+        if positive_count > 0 and negative_count > 0:
+            total_count = positive_count + negative_count + neutral_count
+            score = round((positive_count - negative_count) / total_count, 2)
+            return {"sentiment": "mix", "score": score}
+        
+        return {"sentiment": "neutral", "score": 0}
+
     def format_csv_value(value):
         if value is None:
             return ""
@@ -290,9 +318,11 @@ async def download_surveys(
             "id",
             "store_id",
             "store_name",
-            "district_name",
-            "region_name",
-            "source_name",
+            "hierarchy_level_1_name",
+            "hierarchy_level_2_name",
+            "hierarchy_level_3_name",
+            "hierarchy_level_4_name",
+            "hierarchy_level_5_name",
             "departments",
             "topics",
             "keywords",
@@ -300,37 +330,37 @@ async def download_surveys(
             "channel",
             "delivery_service",
             "sentiment",
+            "sentiment_score",
             "reported_at",
             "created_at",
             "updated_at",
         ]
         yield ",".join(headers) + "\n"
 
-        # Stream surveys in batches using ID as offset
+        # Stream surveys in batches using offset
         batch_size = 100
-        last_id = 0
+        offset = 0
 
         while True:
-            # Get surveys with ID greater than last_id, ordered by ID
+            # Get surveys
             surveys = (
-                filtered_query.filter(Survey.id > last_id)
-                .order_by(Survey.id)
+                filtered_query.order_by(Survey.reported_at.asc())
+                .offset(offset)
                 .limit(batch_size)
                 .all()
             )
-
             if not surveys:
                 break
-
-            # Process each survey and yield CSV row
             for survey in surveys:
-                csv_row = survey.to_csv()
-                row_values = [format_csv_value(csv_row[header]) for header in headers]
+                csv_value = survey.to_csv()
+                # Calculate sentiment based on topics
+                sentiment_result = calculate_sentiment(survey)
+                csv_value["sentiment"] = sentiment_result["sentiment"]
+                csv_value["sentiment_score"] = sentiment_result["score"]
+                row_values = [format_csv_value(csv_value[header]) for header in headers]
                 csv_row_str = ",".join(f'"{value}"' for value in row_values) + "\n"
                 yield csv_row_str
-
-                # Update last_id for next batch
-                last_id = survey.id
+            offset += batch_size
 
     return StreamingResponse(
         generate_csv_rows(),

@@ -1,6 +1,6 @@
 from utils.database import Base
 from sqlalchemy import CHAR, Column, DateTime, String, Boolean, UniqueConstraint
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.orm import relationship
@@ -13,11 +13,7 @@ class User(Base):
     __table_args__ = (
         UniqueConstraint("oauth_provider", "oauth_id", name="uq_oauth_provider_id"),
     )
-
-    @staticmethod
-    def _update_updated_at(mapper, connection, target):
-        target.updated_at = func.now()
-
+    
     id = Column(CHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     username = Column(String(50), unique=True, nullable=False, index=True)
     password = Column(String(255), nullable=True)
@@ -50,10 +46,16 @@ class User(Base):
             "username": self.username,
             "role": self.role,
             "oauth_provider": self.oauth_provider,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
+            "created_at": self.created_at.astimezone(timezone.utc) if self.created_at else None,
+            "updated_at": self.updated_at.astimezone(timezone.utc) if self.updated_at else None,
             "is_deleted": self.is_deleted,
         }
 
 
-event.listen(User, "before_update", User._update_updated_at)
+@event.listens_for(User, "after_update")
+def update_updated_at(mapper, connection, target):
+    connection.execute(
+        User.__table__.update()
+        .where(User.id == target.id)
+        .values(updated_at=func.now())
+    )

@@ -12,10 +12,8 @@ from utils.llm.generate_strategy import (
 )
 from pydantic import BaseModel, Field
 from models.Store import Store
+from models.Hierarchy import Hierarchy
 from sqlalchemy import or_, func, case
-from models.District import District
-from models.Region import Region
-from models.Source import Source
 from utils.conditionFilter import FilterRequest, get_filter_params
 
 router = APIRouter(
@@ -25,27 +23,20 @@ router = APIRouter(
 )
 
 
-class DistrictResponse(BaseModel):
+class HierarchyResponse(BaseModel):
     id: int
     name: str
-
-
-class SourceResponse(BaseModel):
-    id: int
-    name: str
-
-
-class RegionResponse(BaseModel):
-    id: int
-    name: str
+    level: int
 
 
 class StoreResponse(BaseModel):
     id: int
     name: str
-    district: DistrictResponse
-    region: RegionResponse
-    source: SourceResponse
+    hierarchy_level_1: Optional[HierarchyResponse] = None
+    hierarchy_level_2: Optional[HierarchyResponse] = None
+    hierarchy_level_3: Optional[HierarchyResponse] = None
+    hierarchy_level_4: Optional[HierarchyResponse] = None
+    hierarchy_level_5: Optional[HierarchyResponse] = None
 
 
 class TopKPerformanceStoresResponse(BaseModel):
@@ -67,7 +58,7 @@ async def get_top_k_performance_stores(
 ):
     filter_dict = filter_params.model_dump()
     # First get the sentiment counts per store
-    sentiment_query, sentiment_joins = build_optimized_query(db, filter_dict)
+    sentiment_query, sentiment_joins, _ = build_optimized_query(db, filter_dict)
     if "store" not in sentiment_joins:
         sentiment_query = sentiment_query.join(Store, Survey.store_id == Store.id)
 
@@ -91,30 +82,25 @@ async def get_top_k_performance_stores(
 
     # Get store details for the stores we found
     store_ids = [r.store_id for r in sentiment_results]
-    store_details = (
+    stores = (
         db.query(Store)
         .filter(Store.id.in_(store_ids))
-        .join(District, Store.district_id == District.id)
-        .join(Region, Store.region_id == Region.id)
-        .join(Source, Store.source_id == Source.id)
-        .with_entities(
-            Store.id.label("store_id"),
-            District.id.label("district_id"),
-            District.name.label("district_name"),
-            Region.id.label("region_id"),
-            Region.name.label("region_name"),
-            Source.id.label("source_id"),
-            Source.name.label("source_name"),
+        .options(
+            joinedload(Store.hierarchy_level_1),
+            joinedload(Store.hierarchy_level_2),
+            joinedload(Store.hierarchy_level_3),
+            joinedload(Store.hierarchy_level_4),
+            joinedload(Store.hierarchy_level_5),
         )
         .all()
     )
 
     # Create a lookup dictionary for store details
-    store_details_map = {d.store_id: d for d in store_details}
+    store_details_map = {s.id: s for s in stores}
 
     store_with_sentiment = []
     for store in sentiment_results:
-        details = store_details_map[store.store_id]
+        store_obj = store_details_map[store.store_id]
         score = (store.positive_count - store.negative_count) / (
             store.positive_count + store.negative_count + store.neutral_count
         )
@@ -123,18 +109,31 @@ async def get_top_k_performance_stores(
                 store={
                     "id": store.store_id,
                     "name": store.store_name,
-                    "district": {
-                        "id": details.district_id,
-                        "name": details.district_name,
-                    },
-                    "region": {
-                        "id": details.region_id,
-                        "name": details.region_name,
-                    },
-                    "source": {
-                        "id": details.source_id,
-                        "name": details.source_name,
-                    },
+                    "hierarchy_level_1": {
+                        "id": store_obj.hierarchy_level_1.id,
+                        "name": store_obj.hierarchy_level_1.name,
+                        "level": store_obj.hierarchy_level_1.level,
+                    } if store_obj.hierarchy_level_1 else None,
+                    "hierarchy_level_2": {
+                        "id": store_obj.hierarchy_level_2.id,
+                        "name": store_obj.hierarchy_level_2.name,
+                        "level": store_obj.hierarchy_level_2.level,
+                    } if store_obj.hierarchy_level_2 else None,
+                    "hierarchy_level_3": {
+                        "id": store_obj.hierarchy_level_3.id,
+                        "name": store_obj.hierarchy_level_3.name,
+                        "level": store_obj.hierarchy_level_3.level,
+                    } if store_obj.hierarchy_level_3 else None,
+                    "hierarchy_level_4": {
+                        "id": store_obj.hierarchy_level_4.id,
+                        "name": store_obj.hierarchy_level_4.name,
+                        "level": store_obj.hierarchy_level_4.level,
+                    } if store_obj.hierarchy_level_4 else None,
+                    "hierarchy_level_5": {
+                        "id": store_obj.hierarchy_level_5.id,
+                        "name": store_obj.hierarchy_level_5.name,
+                        "level": store_obj.hierarchy_level_5.level,
+                    } if store_obj.hierarchy_level_5 else None,
                 },
                 score=score,
                 positive_count=store.positive_count,
@@ -163,7 +162,7 @@ async def get_strategy_for_store_by_ids(
         "store_ids": request.store_ids,
         "sentiments": ["positive"],
     }
-    filtered_query, _ = build_optimized_query(db, filter_dict)
+    filtered_query, _, _ = build_optimized_query(db, filter_dict)
     surveys = (
         filtered_query.order_by(func.length(Survey.comment).desc()).limit(30).all()
     )
@@ -171,33 +170,53 @@ async def get_strategy_for_store_by_ids(
     return strategy
 
 
-class TopKPerformanceRegionsResponse(BaseModel):
-    region: RegionResponse
+class TopKPerformanceHierarchyResponse(BaseModel):
+    hierarchy: HierarchyResponse
     score: float
     positive_count: int
     negative_count: int
     neutral_count: int
 
 
-@router.get("/get_top_k_performance_regions")
-async def get_top_k_performance_regions(
+@router.get("/get_top_k_performance_hierarchies")
+async def get_top_k_performance_hierarchies(
+    level: int = Query(..., ge=1, le=5, description="Hierarchy level (1-5)"),
     db: Session = Depends(get_db),
     filter_params: FilterRequest = Depends(get_filter_params),
     k: int = Query(
         default=10,
-        description="The number of top performing regions to return",
+        description="The number of top performing hierarchies to return",
     ),
 ):
     filter_dict = filter_params.model_dump()
-    sentiment_query, sentiment_joins = build_optimized_query(db, filter_dict)
+    
+    # Map level to Store hierarchy column
+    hierarchy_columns = {
+        1: Store.hierarchy_level_1_id,
+        2: Store.hierarchy_level_2_id,
+        3: Store.hierarchy_level_3_id,
+        4: Store.hierarchy_level_4_id,
+        5: Store.hierarchy_level_5_id,
+    }
+    
+    hierarchy_col = hierarchy_columns[level]
+    
+    sentiment_query, sentiment_joins, hierarchy_aliases = build_optimized_query(db, filter_dict)
     if "store" not in sentiment_joins:
         sentiment_query = sentiment_query.join(Store, Survey.store_id == Store.id)
-    if "region" not in sentiment_joins:
-        sentiment_query = sentiment_query.join(Region, Store.region_id == Region.id)
+    
+    # Check if the requested level's hierarchy join exists, if not, create it
+    hierarchy_alias = hierarchy_aliases.get(level)
+    if f"hierarchy_level_{level}" not in sentiment_joins:
+        from sqlalchemy.orm import aliased
+        hierarchy_alias = aliased(Hierarchy)
+        sentiment_query = sentiment_query.join(hierarchy_alias, hierarchy_col == hierarchy_alias.id)
+    
     sentiment_results = (
         sentiment_query.with_entities(
-            Region.id.label("region_id"),
-            Region.name.label("region_name"),
+            hierarchy_alias.id.label("hierarchy_id"),
+            hierarchy_alias.name.label("hierarchy_name"),
+            hierarchy_alias.level.label("hierarchy_level"),
             func.count(case((Survey.sentiment == "neutral", Survey.id))).label(
                 "neutral_count"
             ),
@@ -208,48 +227,50 @@ async def get_top_k_performance_regions(
                 "negative_count"
             ),
         )
-        .group_by(Region.id, Region.name)
+        .group_by(hierarchy_alias.id, hierarchy_alias.name, hierarchy_alias.level)
         .all()
     )
-    region_with_sentiment = []
-    for region in sentiment_results:
-        score = (region.positive_count - region.negative_count) / (
-            region.positive_count + region.negative_count + region.neutral_count
+    hierarchy_with_sentiment = []
+    for hierarchy in sentiment_results:
+        score = (hierarchy.positive_count - hierarchy.negative_count) / (
+            hierarchy.positive_count + hierarchy.negative_count + hierarchy.neutral_count
         )
-        region_with_sentiment.append(
-            TopKPerformanceRegionsResponse(
-                region={
-                    "id": region.region_id,
-                    "name": region.region_name,
+        hierarchy_with_sentiment.append(
+            TopKPerformanceHierarchyResponse(
+                hierarchy={
+                    "id": hierarchy.hierarchy_id,
+                    "name": hierarchy.hierarchy_name,
+                    "level": hierarchy.hierarchy_level,
                 },
                 score=score,
-                positive_count=region.positive_count,
-                negative_count=region.negative_count,
-                neutral_count=region.neutral_count,
+                positive_count=hierarchy.positive_count,
+                negative_count=hierarchy.negative_count,
+                neutral_count=hierarchy.neutral_count,
             )
         )
-    region_with_sentiment.sort(key=lambda x: x.score, reverse=True)
-    region_with_sentiment = region_with_sentiment[:k]
-    return region_with_sentiment
+    hierarchy_with_sentiment.sort(key=lambda x: x.score, reverse=True)
+    hierarchy_with_sentiment = hierarchy_with_sentiment[:k]
+    return hierarchy_with_sentiment
 
 
-class StrategyByRegionIdsRequest(BaseModel):
-    region_ids: List[str] = Field(
+class StrategyByHierarchyIdsRequest(BaseModel):
+    hierarchy_ids: List[int] = Field(
         default_factory=list,
-        description="The region ids to get the strategy",
+        description="The hierarchy ids to get the strategy",
     )
+    level: int = Field(..., ge=1, le=5, description="Hierarchy level (1-5)")
 
 
-@router.post("/get_strategy_for_region_by_ids")
-async def get_strategy_for_region_by_ids(
-    request: StrategyByRegionIdsRequest,
+@router.post("/get_strategy_for_hierarchy_by_ids")
+async def get_strategy_for_hierarchy_by_ids(
+    request: StrategyByHierarchyIdsRequest,
     db: Session = Depends(get_db),
 ) -> str:
     filter_dict = {
-        "region_ids": request.region_ids,
+        f"hierarchy_level_{request.level}_ids": request.hierarchy_ids,
         "sentiments": ["positive"],
     }
-    filtered_query, _ = build_optimized_query(db, filter_dict)
+    filtered_query, _, _ = build_optimized_query(db, filter_dict)
     surveys = (
         filtered_query.order_by(func.length(Survey.comment).desc()).limit(30).all()
     )
