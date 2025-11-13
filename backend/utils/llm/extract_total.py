@@ -31,7 +31,7 @@ EXTRACT_TOTAL_TEMPERATURE = float(os.getenv("EXTRACT_TOTAL_TEMPERATURE", 0.0))
 
 
 system_prompt = """Role and Objective
-You are an AI assistant analyzing exactly one retail customer comment for offline store.
+You are an AI assistant analyzing exactly one retail customer comment for online store.
 Your task is to classify topics, departments, and keywords with sentiment, and return a strictly formatted JSON.
 If no valid topic can be classified, return only: {"cannot_classified": true}.
 
@@ -135,54 +135,63 @@ Formatting Rules
 
 ---
 
-Allowed Topics (retail context)
-- Checkout Process (speed, efficiency, ease of in-store cashier counters)
-- Payment Options (availability or function of e-wallets, cards, Apple Pay, etc.)
-- Stock Availability (products in stock, sold out, or hard to find)
-- Product Assortment (range and variety of categories, brands, SKUs)
-- Price Tagging (accuracy/visibility of labels or shelf tags vs register)
-- Product Price (fairness, affordability, or expensiveness)
-- Product Information (labels, descriptions, ingredients clarity)
-- Promotion (discounts, bundles, campaigns, correct application)
-- Loyalty Program (points, membership tiers, app-linked benefits)
-- Returns & Exchange (returning or exchanging products)
-- Samples / Free Gift (availability or fairness of samples, testers, giveaways)
-- Gift Wrapping (service availability, quality, presentation)
-- Staff Attitude (politeness, friendliness, helpfulness)
-- Staff Availability (enough staff present to assist)
-- Staff Knowledge (expertise, ability to answer questions)
-- Store Layout & Navigation (signage, aisle design, item findability)
-- Store Size (impressions of store spaciousness, crowding)
-- Store Cleanliness & Environment (cleanliness of floors, shelves, testers, environment)
-- Tester (availability/condition of cosmetic or product testers)
-- Product Quality (performance, durability, safety)
-- Self-Checkout (performance of self-service machines)
-- Cannot Classified (only if no valid topic matches)
+Allowed Topics (retail context):
+1. **Online Checkout Process** (Speed, ease, and smoothness of completing the online purchase)  
+2. **Payment Options** (Availability and functionality of payment methods such as credit cards, e‑wallets, PayPal, and Apple Pay)  
+3. **Price Display Accuracy** (Consistency between the price shown on the product page/cart and the final charged amount)  
+4. **Product Price** (Perceptions of fairness, affordability, or expensiveness of products)  
+5. **Promotion** (Discounts, bundles, campaign offers, and whether they are applied correctly)  
+6. **Loyalty Program** (Membership tiers, reward points, and benefits linked to the app or website)  
+7. **Stock Availability** (Whether items are in stock, sold out, or difficult to find online)  
+8. **Product Assortment** (Range and variety of product categories, brands, and SKUs offered online)  
+9. **Product Information** (Clarity and accuracy of product descriptions, photos, specifications, or ingredients)  
+10. **Product Quality** (Actual performance, durability, and safety of purchased products)  
+11. **Customer Support Attitude** (Politeness, friendliness, and helpfulness of hotline, chat, or email support)  
+12. **Customer Support Availability** (Response speed and accessibility of support, including 24/7 service)  
+13. **Customer Support Knowledge** (Expertise and ability of support agents to answer questions accurately)  
+14. **Returns & Exchange** (Convenience and fairness of returning or exchanging products, including refund processes)  
+15. **Gift Wrapping** (Availability, quality, and presentation of wrapping services for online orders)  
+16. **Samples / Free Gift** (Availability and fairness of free samples or gifts included with purchases)  
+17. **Website/App Navigation** (Ease of browsing, search, filters, and overall findability of products)  
+18. **Platform Capacity/Scalability** (Ability of the platform to handle large traffic and maintain wide product variety)  
+19. **Website/App Design & Reliability** (Professional design, ease of use, loading speed, security, and absence of bugs or crashes)  
+20. **Packaging/Condition of Delivered Items** (Whether items arrive intact, safely packed, and in good condition)  
+21. **Deliveryman Service** (Professionalism, politeness, and helpfulness of the delivery personnel)  
+22. **Communication of Order Status** (Timeliness and clarity of order updates, shipping information, and tracking)  
+23. **Order Arrived at Promised Time** (Reliability of delivery speed and whether items arrive as scheduled)  
+24. **Store Staff’s Service** (Quality of service when interacting with staff during hybrid models such as in‑store pickup)  
+25. **Cannot Classified** (For cases that do not fit into any of the above categories)
 
 ---
 
-Mapping Table (topic → departments)
-- Checkout Process → Sales Ops, IT
-- Payment Options → Finance, IT
-- Stock Availability → Supply Chain, Merchandising, Trading
-- Product Assortment → Merchandising, Trading
-- Price Tagging → Sales Ops, Merchandising
-- Product Price → Finance, Merchandising, Trading
-- Product Information → Merchandising, Marketing, Trading
-- Promotion → Marketing, CRM, Trading
-- Loyalty Program → CRM, Marketing
-- Returns & Exchange → Sales Ops
-- Samples / Free Gift → Marketing, Merchandising
-- Gift Wrapping → Sales Ops, Marketing
-- Staff Attitude → Sales Ops, HR L&D
-- Staff Availability → Sales Ops
-- Staff Knowledge → Sales Ops, HR L&D, Merchandising
-- Store Layout & Navigation → Sales Ops, Merchandising
-- Store Size → Sales Ops, Merchandising
-- Store Cleanliness & Environment → Sales Ops
-- Tester → Merchandising, Sales Ops
-- Product Quality → Merchandising, Trading
-- Self-Checkout → IT, Sales Ops
+Mapping Table (topic → departments):
+
+* Online Checkout Process → Sales Ops, IT
+* Payment Options → Finance, IT
+* Price Display Accuracy → Sales Ops, IT
+* Product Price → Finance, Merchandising, Trading
+* Promotion → Marketing, CRM, Trading
+* Loyalty Program → CRM, Marketing
+* Stock Availability → Merchandising, Trading
+* Product Assortment → Merchandising, Trading
+* Product Information → Merchandising, Marketing, Trading
+* Product Quality → Merchandising, Trading
+* Customer Support Attitude → Sales Ops, HR L\&D
+* Customer Support Availability → Sales Ops
+* Customer Support Knowledge → Sales Ops, HR L\&D, Merchandising
+* Returns & Exchange → Sales Ops
+* Gift Wrapping → Sales Ops, Marketing
+* Samples / Free Gift → Marketing, Merchandising
+* Website/App Navigation → IT, Marketing
+* Platform Capacity/Scalability → IT
+* Website/App Design & Reliability → IT, Marketing
+* Packaging/Condition of Delivered Items → Supply Chain
+* Deliveryman Service → Supply Chain
+* Communication of Order Status → Supply Chain
+* Order Arrived at Promised Time → Supply Chain
+* Store Staff’s Service → Supply Chain, Sales Ops, HR L\&D
+* Cannot Classified → (Unassigned / Review case-by-case)
+
 (Note: Do NOT output any department outside the Departments List. If "Cannot Classified" is selected, return only {"cannot_classified": true}.)
 
 ---
