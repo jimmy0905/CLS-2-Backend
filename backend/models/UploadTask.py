@@ -1,18 +1,13 @@
 from utils.database import Base
 from sqlalchemy import Column, Integer, String, DateTime, CHAR, event
 import uuid
-from sqlalchemy.orm import relationship 
+from datetime import timezone
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from datetime import datetime
-from models.UploadTaskError import UploadTaskError
 
 
 class UploadTask(Base):
     __tablename__ = "upload_tasks"
-
-    @staticmethod
-    def _update_updated_at(mapper, connection, target):
-        target.updated_at = func.now()
 
     id = Column(CHAR(36), default=lambda: str(uuid.uuid4()), primary_key=True)
     file_name = Column(String)
@@ -38,8 +33,8 @@ class UploadTask(Base):
             "status": self.status,
             "total_rows": self.total_rows,
             "processed_rows": self.processed_rows,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
+            "created_at": self.created_at.astimezone(timezone.utc) if self.created_at else None,
+            "updated_at": self.updated_at.astimezone(timezone.utc) if self.updated_at else None,
             "completion_tokens": self.completion_tokens,
             "prompt_tokens": self.prompt_tokens,
             "total_tokens": self.total_tokens,
@@ -47,6 +42,12 @@ class UploadTask(Base):
             "errors": [error.to_dict() for error in self.errors],
         }
 
+
 # Register the event listener to automatically update updated_at
-event.listen(UploadTask, 'before_update', UploadTask._update_updated_at)
-event.listen(UploadTaskError, 'before_update', UploadTaskError._update_updated_at)
+@event.listens_for(UploadTask, "before_update")
+def update_updated_at(mapper, connection, target):
+    connection.execute(
+        UploadTask.__table__.update()
+        .where(UploadTask.id == target.id)
+        .values(updated_at=func.now())
+    )
