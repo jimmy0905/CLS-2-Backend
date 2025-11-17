@@ -29,6 +29,8 @@ from utils.security import get_current_user
 from fastapi_pagination import Page, paginate
 from fastapi.responses import StreamingResponse
 import logging
+from openpyxl import Workbook
+from io import BytesIO
 
 logger = logging.getLogger(__name__)
 
@@ -302,7 +304,7 @@ async def download_surveys(
         
         return {"sentiment": "neutral", "score": 0}
 
-    def format_csv_value(value):
+    def format_excel_value(value):
         if value is None:
             return ""
         elif isinstance(value, list):
@@ -312,8 +314,13 @@ async def download_surveys(
         else:
             return str(value)
 
-    def generate_csv_rows():
-        # Yield CSV headers first
+    def generate_excel_file():
+        # Create a workbook and worksheet
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Surveys"
+
+        # Define headers
         headers = [
             "id",
             "store_id",
@@ -335,11 +342,15 @@ async def download_surveys(
             "created_at",
             "updated_at",
         ]
-        yield ",".join(headers) + "\n"
+
+        # Write headers to first row
+        for col_idx, header in enumerate(headers, start=1):
+            ws.cell(row=1, column=col_idx, value=header)
 
         # Stream surveys in batches using offset
         batch_size = 100
         offset = 0
+        row_num = 2  # Start from row 2 (row 1 is headers)
 
         while True:
             # Get surveys
@@ -357,15 +368,25 @@ async def download_surveys(
                 sentiment_result = calculate_sentiment(survey)
                 csv_value["sentiment"] = sentiment_result["sentiment"]
                 csv_value["sentiment_score"] = sentiment_result["score"]
-                row_values = [format_csv_value(csv_value[header]) for header in headers]
-                csv_row_str = ",".join(f'"{value}"' for value in row_values) + "\n"
-                yield csv_row_str
+                
+                # Write row values
+                for col_idx, header in enumerate(headers, start=1):
+                    value = format_excel_value(csv_value[header])
+                    ws.cell(row=row_num, column=col_idx, value=value)
+                row_num += 1
             offset += batch_size
 
+        # Save workbook to BytesIO buffer
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        return buffer
+
+    excel_buffer = generate_excel_file()
     return StreamingResponse(
-        generate_csv_rows(),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=surveys.csv"},
+        excel_buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=surveys.xlsx"},
     )
 
 
