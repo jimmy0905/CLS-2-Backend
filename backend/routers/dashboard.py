@@ -167,6 +167,7 @@ class HierarchyDistributionResponse(BaseModel):
     neutral_count: int
     positive_count: int
     negative_count: int
+    mixed_count: int
     total_count_for_option: int
 
 
