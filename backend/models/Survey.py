@@ -19,20 +19,7 @@ import datetime
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy import event
-
-
-class DepartmentSentiment(str, enum.Enum):
-    POSITIVE = "POSITIVE"
-    NEGATIVE = "NEGATIVE"
-    NEUTRAL = "NEUTRAL"
-
-
-# DO $$ BEGIN CREATE TYPE topic_sentiment_enum AS ENUM ('POSITIVE', 'NEGATIVE', 'NEUTRAL', 'MIXED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
-class TopicSentiment(str, enum.Enum):
-    POSITIVE = "POSITIVE"
-    NEGATIVE = "NEGATIVE"
-    NEUTRAL = "NEUTRAL"
-    MIXED = "MIXED"
+from models.enum.Sentiment import Sentiment, TopicSentiment
 
 
 class Survey(Base):
@@ -47,7 +34,7 @@ class Survey(Base):
     )
     # Columns
     comment = Column(Text)
-    sentiment = Column(Enum(DepartmentSentiment, name="sentiment_enum"))
+    sentiment = Column(Enum(Sentiment, name="sentiment_enum"))
     reported_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
     created_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
     updated_at = Column(
@@ -56,7 +43,8 @@ class Survey(Base):
     is_deleted = Column(Boolean, default=False)
     topic_sentiment = Column(
         Enum(TopicSentiment, name="topic_sentiment_enum")
-    )  # Insert this column in the database, sql commands for PostgreSQL:
+    )  
+    # Insert this column in the database, sql commands for PostgreSQL:
     # ALTER TABLE surveys ADD COLUMN IF NOT EXISTS topic_sentiment topic_sentiment_enum;
     topic_sentiment_score = Column(
         Float, default=0.0
@@ -199,6 +187,19 @@ class Survey(Base):
             "is_deleted": self.is_deleted,
         }
 
+    @staticmethod
+    def _format_sentiment_value(sentiment):
+        """Helper function to format sentiment enum values for CSV export."""
+        if not sentiment:
+            return "N/A"
+        if hasattr(sentiment, 'value'):
+            return sentiment.value.title()  # "POSITIVE" -> "Positive"
+        # Fallback: extract value from string representation like "Sentiment.NEUTRAL"
+        sentiment_str = str(sentiment)
+        if '.' in sentiment_str:
+            return sentiment_str.split('.')[-1].title()
+        return sentiment_str.title()
+
     def to_csv(self):
         return {
             "id": self.id,
@@ -233,21 +234,21 @@ class Survey(Base):
             "reported_at": self.reported_at,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
-            "topic_sentiment": self.topic_sentiment,
-            "topic_sentiment_score": self.topic_sentiment_score,
+            "sentiment": self._format_sentiment_value(self.topic_sentiment), # use topic_sentiment instead of sentiment
+            "sentiment_score": self.topic_sentiment_score,
             # department1 (positive), department2 (negative), department3 (neutral)
             "departments": [
-                f"{survey_department.department.name} ({survey_department.sentiment})"
+                f"{survey_department.department.name} ({self._format_sentiment_value(survey_department.sentiment)})"
                 for survey_department in self.survey_departments
             ],
             # topic1 (positive), topic2 (negative), topic3 (neutral)
             "topics": [
-                f"{survey_topic.topic.topic} ({survey_topic.sentiment})"
+                f"{survey_topic.topic.topic} ({self._format_sentiment_value(survey_topic.sentiment)})"
                 for survey_topic in self.survey_topics
             ],
             # keyword1 (positive), keyword2 (negative), keyword3 (neutral)
             "keywords": [
-                f"{survey_keyword.keyword.keyword} ({survey_keyword.sentiment})"
+                f"{survey_keyword.keyword.keyword} ({self._format_sentiment_value(survey_keyword.sentiment)})"
                 for survey_keyword in self.survey_keywords
             ],
             "channel": self.channel.name if self.channel else None,
@@ -275,7 +276,7 @@ def update_topic_sentiment(mapper, connection, target):
         connection.execute(
             select(func.count(SurveyTopics.id)).where(
                 SurveyTopics.survey_id == target.id,
-                SurveyTopics.sentiment == "positive",
+                SurveyTopics.sentiment == Sentiment.POSITIVE,
             )
         ).scalar()
         or 0
@@ -285,7 +286,7 @@ def update_topic_sentiment(mapper, connection, target):
         connection.execute(
             select(func.count(SurveyTopics.id)).where(
                 SurveyTopics.survey_id == target.id,
-                SurveyTopics.sentiment == "negative",
+                SurveyTopics.sentiment == Sentiment.NEGATIVE,
             )
         ).scalar()
         or 0

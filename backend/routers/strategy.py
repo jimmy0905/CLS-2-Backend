@@ -15,6 +15,7 @@ from models.Store import Store
 from models.Hierarchy import Hierarchy
 from sqlalchemy import or_, func, case
 from utils.conditionFilter import FilterRequest, get_filter_params
+from models.enum.Sentiment import TopicSentiment
 
 router = APIRouter(
     prefix="/strategy",
@@ -45,6 +46,7 @@ class TopKPerformanceStoresResponse(BaseModel):
     positive_count: int
     negative_count: int
     neutral_count: int
+    mixed_count: int
 
 
 @router.get("/get_top_k_performance_stores")
@@ -66,15 +68,18 @@ async def get_top_k_performance_stores(
         sentiment_query.with_entities(
             Store.id.label("store_id"),
             Store.name.label("store_name"),
-            func.count(case((Survey.sentiment == "neutral", Survey.id))).label(
-                "neutral_count"
-            ),
-            func.count(case((Survey.sentiment == "positive", Survey.id))).label(
-                "positive_count"
-            ),
-            func.count(case((Survey.sentiment == "negative", Survey.id))).label(
-                "negative_count"
-            ),
+            func.count(
+                case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id))
+            ).label("neutral_count"),
+            func.count(
+                case((Survey.topic_sentiment == TopicSentiment.POSITIVE, Survey.id))
+            ).label("positive_count"),
+            func.count(
+                case((Survey.topic_sentiment == TopicSentiment.NEGATIVE, Survey.id))
+            ).label("negative_count"),
+            func.count(
+                case((Survey.topic_sentiment == TopicSentiment.MIXED, Survey.id))
+            ).label("mixed_count"),
         )
         .group_by(Store.id, Store.name)
         .all()
@@ -101,44 +106,68 @@ async def get_top_k_performance_stores(
     store_with_sentiment = []
     for store in sentiment_results:
         store_obj = store_details_map[store.store_id]
-        score = (store.positive_count - store.negative_count) / (
-            store.positive_count + store.negative_count + store.neutral_count
+        score = (store.positive_count - store.negative_count + store.mixed_count) / (
+            store.positive_count
+            + store.negative_count
+            + store.neutral_count
+            + store.mixed_count
         )
         store_with_sentiment.append(
             TopKPerformanceStoresResponse(
                 store={
                     "id": store.store_id,
                     "name": store.store_name,
-                    "hierarchy_level_1": {
-                        "id": store_obj.hierarchy_level_1.id,
-                        "name": store_obj.hierarchy_level_1.name,
-                        "level": store_obj.hierarchy_level_1.level,
-                    } if store_obj.hierarchy_level_1 else None,
-                    "hierarchy_level_2": {
-                        "id": store_obj.hierarchy_level_2.id,
-                        "name": store_obj.hierarchy_level_2.name,
-                        "level": store_obj.hierarchy_level_2.level,
-                    } if store_obj.hierarchy_level_2 else None,
-                    "hierarchy_level_3": {
-                        "id": store_obj.hierarchy_level_3.id,
-                        "name": store_obj.hierarchy_level_3.name,
-                        "level": store_obj.hierarchy_level_3.level,
-                    } if store_obj.hierarchy_level_3 else None,
-                    "hierarchy_level_4": {
-                        "id": store_obj.hierarchy_level_4.id,
-                        "name": store_obj.hierarchy_level_4.name,
-                        "level": store_obj.hierarchy_level_4.level,
-                    } if store_obj.hierarchy_level_4 else None,
-                    "hierarchy_level_5": {
-                        "id": store_obj.hierarchy_level_5.id,
-                        "name": store_obj.hierarchy_level_5.name,
-                        "level": store_obj.hierarchy_level_5.level,
-                    } if store_obj.hierarchy_level_5 else None,
+                    "hierarchy_level_1": (
+                        {
+                            "id": store_obj.hierarchy_level_1.id,
+                            "name": store_obj.hierarchy_level_1.name,
+                            "level": store_obj.hierarchy_level_1.level,
+                        }
+                        if store_obj.hierarchy_level_1
+                        else None
+                    ),
+                    "hierarchy_level_2": (
+                        {
+                            "id": store_obj.hierarchy_level_2.id,
+                            "name": store_obj.hierarchy_level_2.name,
+                            "level": store_obj.hierarchy_level_2.level,
+                        }
+                        if store_obj.hierarchy_level_2
+                        else None
+                    ),
+                    "hierarchy_level_3": (
+                        {
+                            "id": store_obj.hierarchy_level_3.id,
+                            "name": store_obj.hierarchy_level_3.name,
+                            "level": store_obj.hierarchy_level_3.level,
+                        }
+                        if store_obj.hierarchy_level_3
+                        else None
+                    ),
+                    "hierarchy_level_4": (
+                        {
+                            "id": store_obj.hierarchy_level_4.id,
+                            "name": store_obj.hierarchy_level_4.name,
+                            "level": store_obj.hierarchy_level_4.level,
+                        }
+                        if store_obj.hierarchy_level_4
+                        else None
+                    ),
+                    "hierarchy_level_5": (
+                        {
+                            "id": store_obj.hierarchy_level_5.id,
+                            "name": store_obj.hierarchy_level_5.name,
+                            "level": store_obj.hierarchy_level_5.level,
+                        }
+                        if store_obj.hierarchy_level_5
+                        else None
+                    ),
                 },
                 score=score,
                 positive_count=store.positive_count,
                 negative_count=store.negative_count,
                 neutral_count=store.neutral_count,
+                mixed_count=store.mixed_count,
             )
         )
     store_with_sentiment.sort(key=lambda x: x.score, reverse=True)
@@ -176,6 +205,7 @@ class TopKPerformanceHierarchyResponse(BaseModel):
     positive_count: int
     negative_count: int
     neutral_count: int
+    mixed_count: int
 
 
 @router.get("/get_top_k_performance_hierarchies")
@@ -189,7 +219,7 @@ async def get_top_k_performance_hierarchies(
     ),
 ):
     filter_dict = filter_params.model_dump()
-    
+
     # Map level to Store hierarchy column
     hierarchy_columns = {
         1: Store.hierarchy_level_1_id,
@@ -198,42 +228,55 @@ async def get_top_k_performance_hierarchies(
         4: Store.hierarchy_level_4_id,
         5: Store.hierarchy_level_5_id,
     }
-    
+
     hierarchy_col = hierarchy_columns[level]
-    
-    sentiment_query, sentiment_joins, hierarchy_aliases = build_optimized_query(db, filter_dict)
+
+    sentiment_query, sentiment_joins, hierarchy_aliases = build_optimized_query(
+        db, filter_dict
+    )
     if "store" not in sentiment_joins:
         sentiment_query = sentiment_query.join(Store, Survey.store_id == Store.id)
-    
+
     # Check if the requested level's hierarchy join exists, if not, create it
     hierarchy_alias = hierarchy_aliases.get(level)
     if f"hierarchy_level_{level}" not in sentiment_joins:
         from sqlalchemy.orm import aliased
+
         hierarchy_alias = aliased(Hierarchy)
-        sentiment_query = sentiment_query.join(hierarchy_alias, hierarchy_col == hierarchy_alias.id)
-    
+        sentiment_query = sentiment_query.join(
+            hierarchy_alias, hierarchy_col == hierarchy_alias.id
+        )
+
     sentiment_results = (
         sentiment_query.with_entities(
             hierarchy_alias.id.label("hierarchy_id"),
             hierarchy_alias.name.label("hierarchy_name"),
             hierarchy_alias.level.label("hierarchy_level"),
-            func.count(case((Survey.sentiment == "neutral", Survey.id))).label(
-                "neutral_count"
-            ),
-            func.count(case((Survey.sentiment == "positive", Survey.id))).label(
-                "positive_count"
-            ),
-            func.count(case((Survey.sentiment == "negative", Survey.id))).label(
-                "negative_count"
-            ),
+            func.count(
+                case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id))
+            ).label("neutral_count"),
+            func.count(
+                case((Survey.topic_sentiment == TopicSentiment.POSITIVE, Survey.id))
+            ).label("positive_count"),
+            func.count(
+                case((Survey.topic_sentiment == TopicSentiment.NEGATIVE, Survey.id))
+            ).label("negative_count"),
+            func.count(
+                case((Survey.topic_sentiment == TopicSentiment.MIXED, Survey.id))
+            ).label("mixed_count"),
         )
         .group_by(hierarchy_alias.id, hierarchy_alias.name, hierarchy_alias.level)
         .all()
     )
     hierarchy_with_sentiment = []
     for hierarchy in sentiment_results:
-        score = (hierarchy.positive_count - hierarchy.negative_count) / (
-            hierarchy.positive_count + hierarchy.negative_count + hierarchy.neutral_count
+        score = (
+            hierarchy.positive_count - hierarchy.negative_count + hierarchy.mixed_count
+        ) / (
+            hierarchy.positive_count
+            + hierarchy.negative_count
+            + hierarchy.neutral_count
+            + hierarchy.mixed_count
         )
         hierarchy_with_sentiment.append(
             TopKPerformanceHierarchyResponse(
@@ -246,6 +289,7 @@ async def get_top_k_performance_hierarchies(
                 positive_count=hierarchy.positive_count,
                 negative_count=hierarchy.negative_count,
                 neutral_count=hierarchy.neutral_count,
+                mixed_count=hierarchy.mixed_count,
             )
         )
     hierarchy_with_sentiment.sort(key=lambda x: x.score, reverse=True)

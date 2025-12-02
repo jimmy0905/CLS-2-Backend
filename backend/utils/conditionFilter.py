@@ -651,7 +651,7 @@ def get_filter_params(
     ),
     sentiments: List[str] = Query(
         default=[],
-        description="The sentiments to filter by",
+        description="The sentiments to filter by (POSITIVE, NEGATIVE, NEUTRAL)",
     ),
     topic_sentiments: List[str] = Query(
         default=[],
