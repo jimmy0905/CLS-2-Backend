@@ -275,33 +275,33 @@ async def download_surveys(
             {"topic": survey_topic.topic.topic, "sentiment": survey_topic.sentiment}
             for survey_topic in survey.survey_topics
         ]
-        
+
         # Safety check: ensure topics is an array
         if not topics or len(topics) == 0:
             return {"sentiment": "neutral", "score": 0}
-        
+
         # if there are only neutral, return "neutral"
         if all(topic["sentiment"] == "neutral" for topic in topics):
             return {"sentiment": "neutral", "score": 0}
-        
+
         # if there are only positive or neutral, return "positive"
         if all(topic["sentiment"] in ["positive", "neutral"] for topic in topics):
             return {"sentiment": "positive", "score": 1}
-        
+
         # if there are only negative or neutral, return "negative"
         if all(topic["sentiment"] in ["negative", "neutral"] for topic in topics):
             return {"sentiment": "negative", "score": -1}
-        
+
         # if there are both positive and negative, return "mix"
         positive_count = sum(1 for topic in topics if topic["sentiment"] == "positive")
         negative_count = sum(1 for topic in topics if topic["sentiment"] == "negative")
         neutral_count = sum(1 for topic in topics if topic["sentiment"] == "neutral")
-        
+
         if positive_count > 0 and negative_count > 0:
             total_count = positive_count + negative_count + neutral_count
             score = round((positive_count - negative_count) / total_count, 2)
             return {"sentiment": "mix", "score": score}
-        
+
         return {"sentiment": "neutral", "score": 0}
 
     def format_excel_value(value):
@@ -368,7 +368,7 @@ async def download_surveys(
                 sentiment_result = calculate_sentiment(survey)
                 csv_value["sentiment"] = sentiment_result["sentiment"]
                 csv_value["sentiment_score"] = sentiment_result["score"]
-                
+
                 # Write row values
                 for col_idx, header in enumerate(headers, start=1):
                     value = format_excel_value(csv_value[header])
@@ -398,6 +398,139 @@ async def get_survey(survey_id: int, db: Session = Depends(get_db)) -> SurveyRes
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
     return SurveyResponse.model_validate(survey.to_dict())
+
+
+class UpdateSurveyTopicRequest(BaseModel):
+    topic: str
+    sentiment: Literal["positive", "negative", "neutral"] = "neutral"
+
+
+class UpdateSurveyKeywordRequest(BaseModel):
+    keyword: str
+    sentiment: Literal["positive", "negative", "neutral"] = "neutral"
+
+
+class UpdateSurveyDepartmentRequest(BaseModel):
+    name: str
+    sentiment: Literal["positive", "negative", "neutral"] = "neutral"
+
+
+class UpdateSurveyRequest(BaseModel):
+    store_id: Optional[int] = None
+    channel: Optional[str] = None
+    delivery_service: Optional[str] = None
+    departments: Optional[List[UpdateSurveyDepartmentRequest]] = None
+    comment: Optional[str] = None
+    sentiment: Optional[Literal["positive", "negative", "neutral"]] = None
+    topics: Optional[List[UpdateSurveyTopicRequest]] = None
+    keywords: Optional[List[UpdateSurveyKeywordRequest]] = None
+    reported_at: Optional[datetime] = None
+
+
+@router.put("/{survey_id}")
+async def update_survey(
+    survey_id: int, survey_request: UpdateSurveyRequest, db: Session = Depends(get_db)
+) -> SurveyResponse:
+    try:
+        filter_dict = {"ids": [survey_id]}
+        query = build_survey_query(db.query(Survey).distinct(), filter_dict)
+        survey = query.first()
+        if not survey:
+            raise HTTPException(status_code=404, detail="Survey not found")
+        if survey_request.store_id:
+            survey.store_id = survey_request.store_id
+        if survey_request.channel:
+            survey.channel_id = survey_request.channel
+        if survey_request.delivery_service:
+            survey.delivery_service_id = survey_request.delivery_service
+        if survey_request.departments:
+            for department in survey_request.departments:
+                survey_department = (
+                    db.query(SurveyDepartments)
+                    .filter(
+                        SurveyDepartments.survey_id == survey.id,
+                        SurveyDepartments.department_id == department.name,
+                    )
+                    .first()
+                )
+                if not survey_department:
+                    survey_department = SurveyDepartments(
+                        survey_id=survey.id,
+                        department_id=department.name,
+                        sentiment=department.sentiment,
+                    )
+                    db.add(survey_department)
+                else:
+                    survey_department.sentiment = department.sentiment
+        if survey_request.comment:
+            survey.comment = survey_request.comment
+        if survey_request.sentiment:
+            survey.sentiment = survey_request.sentiment
+        if survey_request.topics:
+            for topic in survey_request.topics:
+                survey_topic = (
+                    db.query(SurveyTopics)
+                    .filter(
+                        SurveyTopics.survey_id == survey.id,
+                        SurveyTopics.topic_id == topic.topic,
+                    )
+                    .first()
+                )
+                if not survey_topic:
+                    survey_topic = SurveyTopics(
+                        survey_id=survey.id,
+                        topic_id=topic.topic,
+                        sentiment=topic.sentiment,
+                    )
+                    db.add(survey_topic)
+                else:
+                    survey_topic.sentiment = topic.sentiment
+        if survey_request.keywords:
+            for keyword in survey_request.keywords:
+                survey_keyword = (
+                    db.query(SurveyKeywords)
+                    .filter(
+                        SurveyKeywords.survey_id == survey.id,
+                        SurveyKeywords.keyword_id == keyword.keyword,
+                    )
+                    .first()
+                )
+                if not survey_keyword:
+                    survey_keyword = SurveyKeywords(
+                        survey_id=survey.id,
+                        keyword_id=keyword.keyword,
+                        sentiment=keyword.sentiment,
+                    )
+                    db.add(survey_keyword)
+                else:
+                    survey_keyword.sentiment = keyword.sentiment
+        if survey_request.reported_at:
+            survey.reported_at = survey_request.reported_at
+        db.commit()
+        db.refresh(survey)
+        return SurveyResponse.model_validate(survey.to_dict())
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{survey_id}")
+async def delete_survey(
+    survey_id: int, db: Session = Depends(get_db)
+) -> SurveyResponse:
+    try:
+        filter_dict = {"ids": [survey_id]}
+        query = build_survey_query(db.query(Survey).distinct(), filter_dict)
+        survey = query.first()
+        if not survey:
+            raise HTTPException(status_code=404, detail="Survey not found")
+        survey.is_deleted = True
+        db.commit()
+        db.refresh(survey)
+        return SurveyResponse.model_validate(survey.to_dict())
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 class ExtractRequest(BaseModel):

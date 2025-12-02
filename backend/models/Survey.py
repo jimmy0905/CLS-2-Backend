@@ -8,17 +8,31 @@ from sqlalchemy import (
     Enum,
     Index,
     ForeignKey,
+    Float,
+    cast,
+    case,
+    select,
+    text,
 )
 import enum
 import datetime
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from sqlalchemy import event
 
 
-class Sentiment(str, enum.Enum):
-    POSITIVE = "positive"
-    NEGATIVE = "negative"
-    NEUTRAL = "neutral"
+class DepartmentSentiment(str, enum.Enum):
+    POSITIVE = "POSITIVE"
+    NEGATIVE = "NEGATIVE"
+    NEUTRAL = "NEUTRAL"
+
+
+# DO $$ BEGIN CREATE TYPE topic_sentiment_enum AS ENUM ('POSITIVE', 'NEGATIVE', 'NEUTRAL', 'MIXED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+class TopicSentiment(str, enum.Enum):
+    POSITIVE = "POSITIVE"
+    NEGATIVE = "NEGATIVE"
+    NEUTRAL = "NEUTRAL"
+    MIXED = "MIXED"
 
 
 class Survey(Base):
@@ -33,14 +47,21 @@ class Survey(Base):
     )
     # Columns
     comment = Column(Text)
-    sentiment = Column(Enum(Sentiment, name="sentiment_enum"))
+    sentiment = Column(Enum(DepartmentSentiment, name="sentiment_enum"))
     reported_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
     created_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True), default=func.now(), onupdate=func.now(), nullable=False
     )
     is_deleted = Column(Boolean, default=False)
-
+    topic_sentiment = Column(
+        Enum(TopicSentiment, name="topic_sentiment_enum")
+    )  # Insert this column in the database, sql commands for PostgreSQL:
+    # ALTER TABLE surveys ADD COLUMN IF NOT EXISTS topic_sentiment topic_sentiment_enum;
+    topic_sentiment_score = Column(
+        Float, default=0.0
+    )  # Insert this column in the database, sql commands for PostgreSQL:
+    # ALTER TABLE surveys ADD COLUMN IF NOT EXISTS topic_sentiment_score FLOAT DEFAULT 0.0;
     # Relationships
     store = relationship("Store", back_populates="surveys")
     survey_topics = relationship("SurveyTopics", back_populates="survey")
@@ -77,31 +98,51 @@ class Survey(Base):
                 {
                     "id": self.store.id,
                     "name": self.store.name,
-                    "hierarchy_level_1": {
-                        "id": self.store.hierarchy_level_1.id,
-                        "name": self.store.hierarchy_level_1.name,
-                        "level": self.store.hierarchy_level_1.level,
-                    } if self.store.hierarchy_level_1 else None,
-                    "hierarchy_level_2": {
-                        "id": self.store.hierarchy_level_2.id,
-                        "name": self.store.hierarchy_level_2.name,
-                        "level": self.store.hierarchy_level_2.level,
-                    } if self.store.hierarchy_level_2 else None,
-                    "hierarchy_level_3": {
-                        "id": self.store.hierarchy_level_3.id,
-                        "name": self.store.hierarchy_level_3.name,
-                        "level": self.store.hierarchy_level_3.level,
-                    } if self.store.hierarchy_level_3 else None,
-                    "hierarchy_level_4": {
-                        "id": self.store.hierarchy_level_4.id,
-                        "name": self.store.hierarchy_level_4.name,
-                        "level": self.store.hierarchy_level_4.level,
-                    } if self.store.hierarchy_level_4 else None,
-                    "hierarchy_level_5": {
-                        "id": self.store.hierarchy_level_5.id,
-                        "name": self.store.hierarchy_level_5.name,
-                        "level": self.store.hierarchy_level_5.level,
-                    } if self.store.hierarchy_level_5 else None,
+                    "hierarchy_level_1": (
+                        {
+                            "id": self.store.hierarchy_level_1.id,
+                            "name": self.store.hierarchy_level_1.name,
+                            "level": self.store.hierarchy_level_1.level,
+                        }
+                        if self.store.hierarchy_level_1
+                        else None
+                    ),
+                    "hierarchy_level_2": (
+                        {
+                            "id": self.store.hierarchy_level_2.id,
+                            "name": self.store.hierarchy_level_2.name,
+                            "level": self.store.hierarchy_level_2.level,
+                        }
+                        if self.store.hierarchy_level_2
+                        else None
+                    ),
+                    "hierarchy_level_3": (
+                        {
+                            "id": self.store.hierarchy_level_3.id,
+                            "name": self.store.hierarchy_level_3.name,
+                            "level": self.store.hierarchy_level_3.level,
+                        }
+                        if self.store.hierarchy_level_3
+                        else None
+                    ),
+                    "hierarchy_level_4": (
+                        {
+                            "id": self.store.hierarchy_level_4.id,
+                            "name": self.store.hierarchy_level_4.name,
+                            "level": self.store.hierarchy_level_4.level,
+                        }
+                        if self.store.hierarchy_level_4
+                        else None
+                    ),
+                    "hierarchy_level_5": (
+                        {
+                            "id": self.store.hierarchy_level_5.id,
+                            "name": self.store.hierarchy_level_5.name,
+                            "level": self.store.hierarchy_level_5.level,
+                        }
+                        if self.store.hierarchy_level_5
+                        else None
+                    ),
                 }
                 if self.store
                 else None
@@ -138,15 +179,24 @@ class Survey(Base):
             # Columns
             "comment": self.comment,
             "sentiment": self.sentiment,
+            "topic_sentiment": self.topic_sentiment,
+            "topic_sentiment_score": self.topic_sentiment_score,
             "reported_at": (
-                self.reported_at.astimezone(datetime.timezone.utc).isoformat() if self.reported_at else None
+                self.reported_at.astimezone(datetime.timezone.utc).isoformat()
+                if self.reported_at
+                else None
             ),
             "created_at": (
-                self.created_at.astimezone(datetime.timezone.utc).isoformat() if self.created_at else None
+                self.created_at.astimezone(datetime.timezone.utc).isoformat()
+                if self.created_at
+                else None
             ),
             "updated_at": (
-                self.updated_at.astimezone(datetime.timezone.utc).isoformat() if self.updated_at else None
+                self.updated_at.astimezone(datetime.timezone.utc).isoformat()
+                if self.updated_at
+                else None
             ),
+            "is_deleted": self.is_deleted,
         }
 
     def to_csv(self):
@@ -154,15 +204,37 @@ class Survey(Base):
             "id": self.id,
             "store_id": self.store.id,
             "store_name": self.store.name,
-            "hierarchy_level_1_name": self.store.hierarchy_level_1.name if self.store.hierarchy_level_1 else None,
-            "hierarchy_level_2_name": self.store.hierarchy_level_2.name if self.store.hierarchy_level_2 else None,
-            "hierarchy_level_3_name": self.store.hierarchy_level_3.name if self.store.hierarchy_level_3 else None,
-            "hierarchy_level_4_name": self.store.hierarchy_level_4.name if self.store.hierarchy_level_4 else None,
-            "hierarchy_level_5_name": self.store.hierarchy_level_5.name if self.store.hierarchy_level_5 else None,
+            "hierarchy_level_1_name": (
+                self.store.hierarchy_level_1.name
+                if self.store.hierarchy_level_1
+                else None
+            ),
+            "hierarchy_level_2_name": (
+                self.store.hierarchy_level_2.name
+                if self.store.hierarchy_level_2
+                else None
+            ),
+            "hierarchy_level_3_name": (
+                self.store.hierarchy_level_3.name
+                if self.store.hierarchy_level_3
+                else None
+            ),
+            "hierarchy_level_4_name": (
+                self.store.hierarchy_level_4.name
+                if self.store.hierarchy_level_4
+                else None
+            ),
+            "hierarchy_level_5_name": (
+                self.store.hierarchy_level_5.name
+                if self.store.hierarchy_level_5
+                else None
+            ),
             "comment": self.comment,
             "reported_at": self.reported_at,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "topic_sentiment": self.topic_sentiment,
+            "topic_sentiment_score": self.topic_sentiment_score,
             # department1 (positive), department2 (negative), department3 (neutral)
             "departments": [
                 f"{survey_department.department.name} ({survey_department.sentiment})"
@@ -183,3 +255,110 @@ class Survey(Base):
                 self.delivery_service.name if self.delivery_service else None
             ),
         }
+
+
+@event.listens_for(Survey, "before_update")
+def update_topic_sentiment(mapper, connection, target):
+    from models.SurveyTopics import SurveyTopics
+
+    # Query the database to get counts for each sentiment type
+    total_count = (
+        connection.execute(
+            select(func.count(SurveyTopics.id)).where(
+                SurveyTopics.survey_id == target.id
+            )
+        ).scalar()
+        or 0
+    )
+
+    positive_count = (
+        connection.execute(
+            select(func.count(SurveyTopics.id)).where(
+                SurveyTopics.survey_id == target.id,
+                SurveyTopics.sentiment == "positive",
+            )
+        ).scalar()
+        or 0
+    )
+
+    negative_count = (
+        connection.execute(
+            select(func.count(SurveyTopics.id)).where(
+                SurveyTopics.survey_id == target.id,
+                SurveyTopics.sentiment == "negative",
+            )
+        ).scalar()
+        or 0
+    )
+
+    # Calculate sentiment score
+    if total_count == 0:
+        # If survey has no topics, return 1.0
+        topic_sentiment_score = 1.0
+        topic_sentiment_value = TopicSentiment.POSITIVE
+    elif positive_count == 0 and negative_count == 0:
+        # If only neutral topics, return 1.0
+        topic_sentiment_score = 1.0
+        topic_sentiment_value = TopicSentiment.POSITIVE
+    elif positive_count > 0 and negative_count == 0:
+        # If only positive and neutral (no negative), return 1.0
+        topic_sentiment_score = 1.0
+        topic_sentiment_value = TopicSentiment.POSITIVE
+    elif positive_count == 0 and negative_count > 0:
+        # If only negative and neutral (no positive), return -1.0
+        topic_sentiment_score = -1.0
+        topic_sentiment_value = TopicSentiment.NEGATIVE
+    else:
+        # Otherwise, calculate (Positive - Negative) / Total
+        topic_sentiment_score = (positive_count - negative_count) / total_count
+        # Determine sentiment category based on score and presence of both positive and negative
+        if positive_count > 0 and negative_count > 0:
+            # If both positive and negative topics exist, it's mixed
+            topic_sentiment_value = TopicSentiment.MIXED
+        elif topic_sentiment_score > 0:
+            topic_sentiment_value = TopicSentiment.POSITIVE
+        elif topic_sentiment_score < 0:
+            topic_sentiment_value = TopicSentiment.NEGATIVE
+        else:
+            topic_sentiment_value = TopicSentiment.NEUTRAL
+
+    # Update the survey with calculated values using raw SQL
+    # Map enum member to uppercase string to match database enum definition
+    sentiment_map = {
+        TopicSentiment.POSITIVE: "POSITIVE",
+        TopicSentiment.NEGATIVE: "NEGATIVE",
+        TopicSentiment.NEUTRAL: "NEUTRAL",
+        TopicSentiment.MIXED: "MIXED",
+    }
+
+    # Get uppercase enum name for database
+    enum_name = sentiment_map[topic_sentiment_value]
+
+    # Update via raw SQL with enum value embedded directly to avoid any parameter conversion
+    # This ensures we use uppercase values that match the database enum
+    # enum_name is safe to embed as it's always one of the 4 controlled uppercase strings
+    connection.execute(
+        text(
+            f"""
+            UPDATE surveys 
+            SET topic_sentiment = '{enum_name}'::topic_sentiment_enum,
+                topic_sentiment_score = :topic_sentiment_score,
+                updated_at = now()
+            WHERE id = :survey_id
+        """
+        ),
+        {"topic_sentiment_score": topic_sentiment_score, "survey_id": target.id},
+    )
+
+    # Update target object's score attribute
+    target.topic_sentiment_score = topic_sentiment_score
+
+    # Prevent SQLAlchemy from trying to update topic_sentiment in its generated UPDATE
+    # by expiring the attribute - this tells SQLAlchemy to reload it from DB on next access
+    from sqlalchemy.orm import object_session
+
+    session = object_session(target)
+    if session:
+        # Expire the attribute so SQLAlchemy doesn't try to validate/update it
+        # The value we set via raw SQL will be loaded on next access
+        session.expire(target, ["topic_sentiment"])

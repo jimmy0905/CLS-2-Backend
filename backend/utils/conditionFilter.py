@@ -35,6 +35,17 @@ def build_survey_filter_conditions(filter_dict):
     if filter_dict.get("sentiments"):
         conditions.append(Survey.sentiment.in_(filter_dict["sentiments"]))
 
+    # Topic sentiment filter
+    if filter_dict.get("topic_sentiments"):
+        conditions.append(Survey.topic_sentiment.in_(filter_dict["topic_sentiments"]))
+
+    # Topic sentiment score range filters
+    if filter_dict.get("min_topic_sentiment_score") is not None:
+        conditions.append(Survey.topic_sentiment_score >= filter_dict["min_topic_sentiment_score"])
+
+    if filter_dict.get("max_topic_sentiment_score") is not None:
+        conditions.append(Survey.topic_sentiment_score <= filter_dict["max_topic_sentiment_score"])
+
     # id filter
     if filter_dict.get("ids"):
         conditions.append(Survey.id.in_(filter_dict["ids"]))
@@ -544,6 +555,9 @@ class FilterRequest(BaseModel):
     from_date: Optional[str] = ""
     to_date: Optional[str] = ""
     sentiments: List[str] = []
+    topic_sentiments: List[str] = []
+    min_topic_sentiment_score: Optional[float] = None
+    max_topic_sentiment_score: Optional[float] = None
 
 
 def get_filter_params(
@@ -639,6 +653,18 @@ def get_filter_params(
         default=[],
         description="The sentiments to filter by",
     ),
+    topic_sentiments: List[str] = Query(
+        default=[],
+        description="The topic sentiments to filter by (POSITIVE, NEGATIVE, NEUTRAL, MIXED)",
+    ),
+    min_topic_sentiment_score: Optional[float] = Query(
+        default=None,
+        description="Minimum topic sentiment score to filter by",
+    ),
+    max_topic_sentiment_score: Optional[float] = Query(
+        default=None,
+        description="Maximum topic sentiment score to filter by",
+    ),
 ) -> FilterRequest:
     # store_ids and store_names cannot be used together
     if store_ids and store_names:
@@ -720,5 +746,10 @@ def get_filter_params(
         to_date=to_date,
         sentiments=[
             sentiment.lower() for sentiment in sentiments # Convert into list of lowercase strings
-        ],  
+        ],
+        topic_sentiments=[
+            topic_sentiment.upper() for topic_sentiment in topic_sentiments # Convert into list of uppercase strings to match enum
+        ],
+        min_topic_sentiment_score=min_topic_sentiment_score,
+        max_topic_sentiment_score=max_topic_sentiment_score,
     )
