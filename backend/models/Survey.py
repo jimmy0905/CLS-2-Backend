@@ -292,36 +292,37 @@ def update_topic_sentiment(mapper, connection, target):
         or 0
     )
 
+    neutral_count = (
+        connection.execute(
+            select(func.count(SurveyTopics.id)).where(
+                SurveyTopics.survey_id == target.id,
+                SurveyTopics.sentiment == Sentiment.NEUTRAL,
+            )
+        ).scalar()
+        or 0
+    )
+
     # Calculate sentiment score
     if total_count == 0:
-        # If survey has no topics, return 1.0
+        # If survey has no topics, return neutral
+        topic_sentiment_score = 0.0
+        topic_sentiment_value = TopicSentiment.NEUTRAL
+    # If survey has only neutral topics, return neutral
+    elif neutral_count == total_count:
+        topic_sentiment_score = 0.0
+        topic_sentiment_value = TopicSentiment.NEUTRAL
+    # If survey has only positive topics and neutral topics, return positive
+    elif positive_count > 0 and neutral_count > 0 and negative_count == 0:
         topic_sentiment_score = 1.0
         topic_sentiment_value = TopicSentiment.POSITIVE
-    elif positive_count == 0 and negative_count == 0:
-        # If only neutral topics, return 1.0
-        topic_sentiment_score = 1.0
-        topic_sentiment_value = TopicSentiment.POSITIVE
-    elif positive_count > 0 and negative_count == 0:
-        # If only positive and neutral (no negative), return 1.0
-        topic_sentiment_score = 1.0
-        topic_sentiment_value = TopicSentiment.POSITIVE
-    elif positive_count == 0 and negative_count > 0:
-        # If only negative and neutral (no positive), return -1.0
+    # If survey has only negative topics and neutral topics, return negative
+    elif negative_count > 0 and neutral_count > 0 and positive_count == 0:
         topic_sentiment_score = -1.0
         topic_sentiment_value = TopicSentiment.NEGATIVE
+    # else return mixed
     else:
-        # Otherwise, calculate (Positive - Negative) / Total
         topic_sentiment_score = (positive_count - negative_count) / total_count
-        # Determine sentiment category based on score and presence of both positive and negative
-        if positive_count > 0 and negative_count > 0:
-            # If both positive and negative topics exist, it's mixed
-            topic_sentiment_value = TopicSentiment.MIXED
-        elif topic_sentiment_score > 0:
-            topic_sentiment_value = TopicSentiment.POSITIVE
-        elif topic_sentiment_score < 0:
-            topic_sentiment_value = TopicSentiment.NEGATIVE
-        else:
-            topic_sentiment_value = TopicSentiment.NEUTRAL
+        topic_sentiment_value = TopicSentiment.MIXED
 
     # Update the survey with calculated values using raw SQL
     # Map enum member to uppercase string to match database enum definition

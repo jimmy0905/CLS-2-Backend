@@ -189,7 +189,7 @@ async def get_strategy_for_store_by_ids(
 ) -> str:
     filter_dict = {
         "store_ids": request.store_ids,
-        "sentiments": ["positive"],
+        "topic_sentiments": ["POSITIVE"],
     }
     filtered_query, _, _ = build_optimized_query(db, filter_dict)
     surveys = (
@@ -312,7 +312,7 @@ async def get_strategy_for_hierarchy_by_ids(
 ) -> str:
     filter_dict = {
         f"hierarchy_level_{request.level}_ids": request.hierarchy_ids,
-        "sentiments": ["positive"],
+        "topic_sentiments": ["POSITIVE"],
     }
     filtered_query, _, _ = build_optimized_query(db, filter_dict)
     surveys = (
