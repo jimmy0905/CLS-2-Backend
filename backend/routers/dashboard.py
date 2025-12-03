@@ -413,6 +413,10 @@ class DailySentimentDistributionResponse(BaseModel):
     year: int
     month: int
     day: int
+    positive_count: int
+    negative_count: int
+    neutral_count: int
+    mixed_count: int
     sentiment_score: float
 
 
@@ -423,8 +427,14 @@ async def get_sentiment_distribution(
 ) -> List[DailySentimentDistributionResponse]:
     filter_dict = filter_params.model_dump()
 
-    # Single query to get sentiment score by date
+    # Single query to get sentiment counts and score by date
     sentiment_query, sentiment_joins, _ = build_optimized_query(db, filter_dict)
+
+    # Get sentiment counts grouped by date
+    sentiment_counts_results = build_Survey_TopicSentiment_aggregation_query(
+        sentiment_query,
+        func.date(Survey.reported_at).label("date"),
+    ).group_by(func.date(Survey.reported_at)).all()
 
     # Use distinct to avoid counting the same survey multiple times after many-to-many joins
     # Create a subquery with distinct survey IDs
@@ -439,24 +449,44 @@ async def get_sentiment_distribution(
         Survey.id == distinct_survey_ids_subquery.c.survey_id,
     )
 
-    sentiment_results = (
+    sentiment_score_results = (
         distinct_surveys_query.with_entities(
             func.date(Survey.reported_at).label("date"),
             func.avg(Survey.topic_sentiment_score).label("sentiment_score"),
         )
         .group_by(func.date(Survey.reported_at))
-        .order_by(func.date(Survey.reported_at))
         .all()
     )
     
+    # Combine results
+    counts_dict = {
+        row.date: {
+            "positive_count": row.positive_count,
+            "negative_count": row.negative_count,
+            "neutral_count": row.neutral_count,
+            "mixed_count": row.mixed_count,
+        }
+        for row in sentiment_counts_results
+    }
+    score_dict = {
+        row.date: row.sentiment_score for row in sentiment_score_results
+    }
+    
+    # Get all unique dates
+    all_dates = set(list(counts_dict.keys()) + list(score_dict.keys()))
+    
     date_results = [
         DailySentimentDistributionResponse(
-            year=row.date.year,
-            month=row.date.month,
-            day=row.date.day,
-            sentiment_score=float(row.sentiment_score or 0.0),
+            year=date.year,
+            month=date.month,
+            day=date.day,
+            positive_count=counts_dict.get(date, {}).get("positive_count", 0),
+            negative_count=counts_dict.get(date, {}).get("negative_count", 0),
+            neutral_count=counts_dict.get(date, {}).get("neutral_count", 0),
+            mixed_count=counts_dict.get(date, {}).get("mixed_count", 0),
+            sentiment_score=float(score_dict.get(date, 0.0) or 0.0),
         )
-        for row in sentiment_results
+        for date in sorted(all_dates)
     ]
 
     return date_results
