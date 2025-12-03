@@ -633,27 +633,48 @@ async def get_topic_sentiment_score(
 
     # Build base query with filters
     base_query, joined_tables, _ = build_optimized_query(db, filter_dict)
-    # Add SurveyTopics join if not already present (required for sentiment aggregation)
-    positive_topic_count = base_query.filter(
-        Survey.topic_sentiment == TopicSentiment.POSITIVE
-    ).count()
-    negative_topic_count = base_query.filter(
-        Survey.topic_sentiment == TopicSentiment.NEGATIVE
-    ).count()
-    neutral_topic_count = base_query.filter(
-        Survey.topic_sentiment == TopicSentiment.NEUTRAL
-    ).count()
-    mix_topic_count = base_query.filter(
-        Survey.topic_sentiment == TopicSentiment.MIXED
-    ).count()
+    
+    # Create a subquery with distinct survey IDs to avoid counting duplicates from many-to-many joins
+    distinct_survey_ids_subquery = (
+        base_query.with_entities(func.distinct(Survey.id).label("survey_id"))
+        .subquery()
+    )
+    
+    # Join back to Survey table to get sentiment and score information for distinct surveys only
+    distinct_surveys_query = db.query(Survey).join(
+        distinct_survey_ids_subquery,
+        Survey.id == distinct_survey_ids_subquery.c.survey_id,
+    )
+    
+    # Count distinct surveys by topic_sentiment
+    positive_topic_count = (
+        distinct_surveys_query.filter(Survey.topic_sentiment == TopicSentiment.POSITIVE)
+        .count()
+    )
+    negative_topic_count = (
+        distinct_surveys_query.filter(Survey.topic_sentiment == TopicSentiment.NEGATIVE)
+        .count()
+    )
+    neutral_topic_count = (
+        distinct_surveys_query.filter(Survey.topic_sentiment == TopicSentiment.NEUTRAL)
+        .count()
+    )
+    mix_topic_count = (
+        distinct_surveys_query.filter(Survey.topic_sentiment == TopicSentiment.MIXED)
+        .count()
+    )
+    
+    # Calculate averages using distinct surveys
     average_mix_topic_score = (
-        base_query.filter(Survey.topic_sentiment == TopicSentiment.MIXED)
+        distinct_surveys_query.filter(Survey.topic_sentiment == TopicSentiment.MIXED)
         .with_entities(func.avg(Survey.topic_sentiment_score))
         .scalar()
     )
-    average_overall_topic_score = base_query.with_entities(
-        func.avg(Survey.topic_sentiment_score)
-    ).scalar()
+    
+    average_overall_topic_score = (
+        distinct_surveys_query.with_entities(func.avg(Survey.topic_sentiment_score))
+        .scalar()
+    )
 
     return TopicSentimentScoreResponse(
         positive_topic_count=positive_topic_count or 0,

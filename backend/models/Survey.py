@@ -41,9 +41,7 @@ class Survey(Base):
         DateTime(timezone=True), default=func.now(), onupdate=func.now(), nullable=False
     )
     is_deleted = Column(Boolean, default=False)
-    topic_sentiment = Column(
-        Enum(TopicSentiment, name="topic_sentiment_enum")
-    )  
+    topic_sentiment = Column(Enum(TopicSentiment, name="topic_sentiment_enum"))
     # Insert this column in the database, sql commands for PostgreSQL:
     # ALTER TABLE surveys ADD COLUMN IF NOT EXISTS topic_sentiment topic_sentiment_enum;
     topic_sentiment_score = Column(
@@ -192,12 +190,12 @@ class Survey(Base):
         """Helper function to format sentiment enum values for CSV export."""
         if not sentiment:
             return "N/A"
-        if hasattr(sentiment, 'value'):
+        if hasattr(sentiment, "value"):
             return sentiment.value.title()  # "POSITIVE" -> "Positive"
         # Fallback: extract value from string representation like "Sentiment.NEUTRAL"
         sentiment_str = str(sentiment)
-        if '.' in sentiment_str:
-            return sentiment_str.split('.')[-1].title()
+        if "." in sentiment_str:
+            return sentiment_str.split(".")[-1].title()
         return sentiment_str.title()
 
     def to_csv(self):
@@ -234,7 +232,9 @@ class Survey(Base):
             "reported_at": self.reported_at,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
-            "sentiment": self._format_sentiment_value(self.topic_sentiment), # use topic_sentiment instead of sentiment
+            "sentiment": self._format_sentiment_value(
+                self.topic_sentiment
+            ),  # use topic_sentiment instead of sentiment
             "sentiment_score": self.topic_sentiment_score,
             # department1 (positive), department2 (negative), department3 (neutral)
             "departments": [
@@ -307,6 +307,14 @@ def update_topic_sentiment(mapper, connection, target):
         # If survey has no topics, return neutral
         topic_sentiment_score = 0.0
         topic_sentiment_value = TopicSentiment.NEUTRAL
+    # If survey has only positive topics, return positive
+    elif positive_count == total_count:
+        topic_sentiment_score = 1.0
+        topic_sentiment_value = TopicSentiment.POSITIVE
+    # If survey has only negative topics, return negative
+    elif negative_count == total_count:
+        topic_sentiment_score = -1.0
+        topic_sentiment_value = TopicSentiment.NEGATIVE
     # If survey has only neutral topics, return neutral
     elif neutral_count == total_count:
         topic_sentiment_score = 0.0
