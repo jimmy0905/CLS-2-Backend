@@ -13,6 +13,8 @@ from utils.llm.generate_strategy import (
 from pydantic import BaseModel, Field
 from models.Store import Store
 from models.Hierarchy import Hierarchy
+from models.Channel import Channel
+from models.DeliveryService import DeliveryService
 from sqlalchemy import or_, func, case
 from utils.conditionFilter import FilterRequest, get_filter_params
 
@@ -268,6 +270,177 @@ async def get_strategy_for_hierarchy_by_ids(
 ) -> str:
     filter_dict = {
         f"hierarchy_level_{request.level}_ids": request.hierarchy_ids,
+        "sentiments": ["positive"],
+    }
+    filtered_query, _, _ = build_optimized_query(db, filter_dict)
+    surveys = (
+        filtered_query.order_by(func.length(Survey.comment).desc()).limit(30).all()
+    )
+    strategy, _ = await generate_region_strategy(surveys)
+    return strategy
+
+class ChannelResponse(BaseModel):
+    id: int
+    name: str
+
+class TopKPerformanceChannelsResponse(BaseModel):
+    channel: ChannelResponse
+    score: float
+    positive_count: int
+    negative_count: int
+    neutral_count: int
+
+
+@router.get("/get_top_k_performance_channels")
+async def get_top_k_performance_channels(
+    db: Session = Depends(get_db),
+    filter_params: FilterRequest = Depends(get_filter_params),
+    k: int = Query(
+        default=10,
+        description="The number of top performing channels to return",
+    ),
+):
+    filter_dict = filter_params.model_dump()
+    sentiment_query, sentiment_joins, _ = build_optimized_query(db, filter_dict)
+    if "store" not in sentiment_joins:
+        sentiment_query = sentiment_query.join(Store, Survey.store_id == Store.id)
+
+    sentiment_results = (
+        sentiment_query.with_entities(
+            Channel.id.label("channel_id"),
+            Channel.name.label("channel_name"),
+            func.count(case((Survey.sentiment == "neutral", Survey.id))).label(
+                "neutral_count"
+            ),
+            func.count(case((Survey.sentiment == "positive", Survey.id))).label(
+                "positive_count"
+            ),
+            func.count(case((Survey.sentiment == "negative", Survey.id))).label(
+                "negative_count"
+            ),
+        )
+        .group_by(Channel.id, Channel.name)
+        .all()
+    )
+    channel_with_sentiment: List[TopKPerformanceChannelsResponse] = []
+    for channel in sentiment_results:
+        score = (channel.positive_count - channel.negative_count) / (
+            channel.positive_count + channel.negative_count + channel.neutral_count
+        )
+        channel_with_sentiment.append(
+            TopKPerformanceChannelsResponse(
+                channel={
+                    "id": channel.channel_id,
+                    "name": channel.channel_name,
+                },
+                score=score,
+                positive_count=channel.positive_count,
+                negative_count=channel.negative_count,
+                neutral_count=channel.neutral_count,
+            )
+        )
+    channel_with_sentiment.sort(key=lambda x: x.score, reverse=True)
+    channel_with_sentiment = channel_with_sentiment[:k]
+    return channel_with_sentiment
+
+class TopKPerformanceByChannelIdsRequest(BaseModel):
+    channel_ids: List[int] = Field(
+        default_factory=list,
+        description="The channel ids to get the top performing channels",
+    )
+
+@router.post("/get_strategy_for_channel_by_ids")
+async def get_top_k_performance_channels_by_ids(
+    request: TopKPerformanceByChannelIdsRequest,
+    db: Session = Depends(get_db),
+) -> str:
+    filter_dict = {
+        "channel_ids": request.channel_ids,
+        "sentiments": ["positive"],
+    }
+    filtered_query, _, _ = build_optimized_query(db, filter_dict)
+    surveys = (
+        filtered_query.order_by(func.length(Survey.comment).desc()).limit(30).all()
+    )
+    strategy, _ = await generate_region_strategy(surveys)
+    return strategy
+
+class DeliveryServiceResponse(BaseModel):
+    id: int
+    name: str
+
+class TopKPerformanceDeliveryServicesResponse(BaseModel):
+    delivery_service: DeliveryServiceResponse
+    score: float
+    positive_count: int
+    negative_count: int
+    neutral_count: int
+
+@router.get("/get_top_k_performance_delivery_services")
+async def get_top_k_performance_delivery_services(
+    db: Session = Depends(get_db),
+    filter_params: FilterRequest = Depends(get_filter_params),
+    k: int = Query(
+        default=10,
+        description="The number of top performing delivery services to return",
+    ),
+):
+    filter_dict = filter_params.model_dump()
+    sentiment_query, sentiment_joins, _ = build_optimized_query(db, filter_dict)
+    if "store" not in sentiment_joins:
+        sentiment_query = sentiment_query.join(Store, Survey.store_id == Store.id)
+
+    sentiment_results = (
+        sentiment_query.with_entities(
+            DeliveryService.id.label("delivery_service_id"),
+            DeliveryService.name.label("delivery_service_name"),
+            func.count(case((Survey.sentiment == "neutral", Survey.id))).label(
+                "neutral_count"
+            ),
+            func.count(case((Survey.sentiment == "positive", Survey.id))).label(
+                "positive_count"
+            ),
+            func.count(case((Survey.sentiment == "negative", Survey.id))).label(
+                "negative_count"
+            ),
+        )
+        .group_by(DeliveryService.id, DeliveryService.name)
+        .all()
+    )
+    delivery_service_with_sentiment: List[TopKPerformanceDeliveryServicesResponse] = []
+    for delivery_service in sentiment_results:
+        score = (delivery_service.positive_count - delivery_service.negative_count) / (
+            delivery_service.positive_count + delivery_service.negative_count + delivery_service.neutral_count
+        )
+        delivery_service_with_sentiment.append(
+            TopKPerformanceDeliveryServicesResponse(
+                delivery_service={
+                    "id": delivery_service.delivery_service_id,
+                    "name": delivery_service.delivery_service_name,
+                },
+                score=score,
+                positive_count=delivery_service.positive_count,
+                negative_count=delivery_service.negative_count,
+                neutral_count=delivery_service.neutral_count,
+            )
+        )
+    delivery_service_with_sentiment.sort(key=lambda x: x.score, reverse=True)
+    delivery_service_with_sentiment = delivery_service_with_sentiment[:k]
+    return delivery_service_with_sentiment 
+
+class TopKPerformanceByDeliveryServiceIdsRequest(BaseModel):
+    delivery_service_ids: List[int] = Field(
+        default_factory=list,
+        description="The delivery service ids to get the top performing delivery services",
+    )
+
+@router.post("/get_strategy_for_delivery_service_by_ids")
+async def get_top_k_performance_delivery_services_by_ids(
+    request: TopKPerformanceByDeliveryServiceIdsRequest,
+    db: Session = Depends(get_db),
+) -> str:
+    filter_dict = {
+        "delivery_service_ids": request.delivery_service_ids,
         "sentiments": ["positive"],
     }
     filtered_query, _, _ = build_optimized_query(db, filter_dict)
