@@ -9,6 +9,8 @@ from typing import List, Optional
 from utils.llm.generate_strategy import (
     generate_store_strategy,
     generate_region_strategy,
+    generate_channel_strategy,
+    generate_delivery_service_strategy,
 )
 from pydantic import BaseModel, Field
 from models.Store import Store
@@ -362,7 +364,7 @@ async def get_top_k_performance_channels_by_ids(
     surveys = (
         filtered_query.order_by(func.length(Survey.comment).desc()).limit(30).all()
     )
-    strategy, _ = await generate_region_strategy(surveys)
+    strategy, _ = await generate_channel_strategy(surveys)
     return strategy
 
 class DeliveryServiceResponse(BaseModel):
@@ -447,5 +449,5 @@ async def get_top_k_performance_delivery_services_by_ids(
     surveys = (
         filtered_query.order_by(func.length(Survey.comment).desc()).limit(30).all()
     )
-    strategy, _ = await generate_region_strategy(surveys)
+    strategy, _ = await generate_delivery_service_strategy(surveys)
     return strategy
