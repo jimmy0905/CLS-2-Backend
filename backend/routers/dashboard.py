@@ -175,7 +175,7 @@ async def get_hierarchy_distribution(
     db: Session = Depends(get_db),
 ) -> List[HierarchyDistributionResponse]:
     filter_dict = filter_params.model_dump()
-    
+
     # Map level to Store hierarchy column
     hierarchy_columns = {
         1: Store.hierarchy_level_1_id,
@@ -184,36 +184,36 @@ async def get_hierarchy_distribution(
         4: Store.hierarchy_level_4_id,
         5: Store.hierarchy_level_5_id,
     }
-    
+
     hierarchy_col = hierarchy_columns[level]
 
     # Single query to get sentiment counts with hierarchy filter
-    sentiment_query, sentiment_joins, sentiment_hierarchy_aliases = build_optimized_query(db, filter_dict)
+    sentiment_query, sentiment_joins, sentiment_hierarchy_aliases = (
+        build_optimized_query(db, filter_dict)
+    )
 
     # Add necessary joins if not already present
     if "store" not in sentiment_joins:
         sentiment_query = sentiment_query.join(Store, Survey.store_id == Store.id)
-    
+
     # Check if the requested level's hierarchy join exists, if not, create it
     sentiment_hierarchy_alias = sentiment_hierarchy_aliases.get(level)
     if f"hierarchy_level_{level}" not in sentiment_joins:
         from sqlalchemy.orm import aliased
+
         sentiment_hierarchy_alias = aliased(Hierarchy)
         sentiment_query = sentiment_query.join(
             sentiment_hierarchy_alias, hierarchy_col == sentiment_hierarchy_alias.id
         )
 
     sentiment_results = build_Survey_sentiment_aggregation_query(
-        sentiment_query, 
+        sentiment_query,
         sentiment_hierarchy_alias.id.label("hierarchy_id"),
-        sentiment_hierarchy_alias.name.label("hierarchy_name")
+        sentiment_hierarchy_alias.name.label("hierarchy_name"),
     ).all()
 
     # Total count query: Apply ALL filters EXCEPT hierarchy level filters for the requested level, but keep other hierarchy filters
-    exclude_filters = [
-        f"hierarchy_level_{level}_ids",
-        f"hierarchy_level_{level}_names"
-    ]
+    exclude_filters = [f"hierarchy_level_{level}_ids", f"hierarchy_level_{level}_names"]
     total_query, total_joins, total_hierarchy_aliases = build_optimized_query(
         db, filter_dict, exclude_filters=exclude_filters
     )
@@ -221,19 +221,22 @@ async def get_hierarchy_distribution(
     # Always add necessary joins for total counts
     if "store" not in total_joins:
         total_query = total_query.join(Store, Survey.store_id == Store.id)
-    
+
     # Check if the requested level's hierarchy join exists for total query
     total_hierarchy_alias = total_hierarchy_aliases.get(level)
     if f"hierarchy_level_{level}" not in total_joins:
         from sqlalchemy.orm import aliased
+
         total_hierarchy_alias = aliased(Hierarchy)
-        total_query = total_query.join(total_hierarchy_alias, hierarchy_col == total_hierarchy_alias.id)
+        total_query = total_query.join(
+            total_hierarchy_alias, hierarchy_col == total_hierarchy_alias.id
+        )
 
     total_results = (
         total_query.with_entities(
             total_hierarchy_alias.id.label("hierarchy_id"),
             total_hierarchy_alias.name.label("hierarchy_name"),
-            func.count(Survey.id).label("total_count")
+            func.count(Survey.id).label("total_count"),
         )
         .group_by(total_hierarchy_alias.id, total_hierarchy_alias.name)
         .all()
@@ -247,13 +250,18 @@ async def get_hierarchy_distribution(
     for hierarchy_id in set(list(sentiment_dict.keys()) + list(total_dict.keys())):
         sentiment_row = sentiment_dict.get(hierarchy_id)
         total_count = total_dict.get(hierarchy_id, 0)
-        
+
         # Get hierarchy name from either sentiment or total results
         hierarchy_name = (
             sentiment_row.hierarchy_name
             if sentiment_row
             else next(
-                (row.hierarchy_name for row in total_results if row.hierarchy_id == hierarchy_id), ""
+                (
+                    row.hierarchy_name
+                    for row in total_results
+                    if row.hierarchy_id == hierarchy_id
+                ),
+                "",
             )
         )
 
@@ -414,8 +422,6 @@ async def get_sentiment_distribution(
     return date_results
 
 
-
-
 class StoreResponse(BaseModel):
     id: int
     name: str
@@ -493,8 +499,6 @@ async def get_store_distribution(
         )
 
     return store_distribution
-
-
 
 
 class ChannelAndDeliveryServiceDistributionResponse(BaseModel):
@@ -604,145 +608,153 @@ class TopicSentimentScoreResponse(BaseModel):
     average_mix_topic_score: float
     average_overall_topic_score: float
 
+
 @router.get("/topic-sentiment-score")
 async def get_topic_sentiment_score(
     filter_params: FilterRequest = Depends(get_filter_params),
     db: Session = Depends(get_db),
 ) -> TopicSentimentScoreResponse:
     filter_dict = filter_params.model_dump()
-    
+
     # Build base query with filters
     base_query, joined_tables, _ = build_optimized_query(db, filter_dict)
-    
+
     # Add topic joins if not already present
     if "topic" not in joined_tables:
         base_query = base_query.outerjoin(
             SurveyTopics, Survey.id == SurveyTopics.survey_id
         )
-    
+
     # Create CTE for topic counts per survey
     positive_count = func.sum(
-        case((SurveyTopics.sentiment == 'POSITIVE', 1), else_=0)
-    ).label('positive_count')
-    
+        case((SurveyTopics.sentiment == "POSITIVE", 1), else_=0)
+    ).label("positive_count")
+
     negative_count = func.sum(
-        case((SurveyTopics.sentiment == 'NEGATIVE', 1), else_=0)
-    ).label('negative_count')
-    
+        case((SurveyTopics.sentiment == "NEGATIVE", 1), else_=0)
+    ).label("negative_count")
+
     neutral_count = func.sum(
-        case((SurveyTopics.sentiment == 'NEUTRAL', 1), else_=0)
-    ).label('neutral_count')
-    
-    total_topics = func.count(SurveyTopics.id).label('total_topics')
-    
+        case((SurveyTopics.sentiment == "NEUTRAL", 1), else_=0)
+    ).label("neutral_count")
+
+    total_topics = func.count(SurveyTopics.id).label("total_topics")
+
     # Build subquery with topic counts
     topic_counts_subquery = (
-        base_query
-        .with_entities(
-            Survey.id.label('survey_id'),
+        base_query.with_entities(
+            Survey.id.label("survey_id"),
             positive_count,
             negative_count,
             neutral_count,
-            total_topics
+            total_topics,
         )
         .group_by(Survey.id)
         .subquery()
     )
-    
+
     # Calculate sentiment score and category for each survey
     sentiment_score_expr = case(
-        # If survey has no topics, return 1
-        (topic_counts_subquery.c.total_topics == 0, 1.0),
-        # If only neutral topics, return 1
+        # If survey has no topics, return 0
+        (topic_counts_subquery.c.total_topics == 0, 0.0),
+        # If only neutral topics, return 0 , neutral
         (
-            (topic_counts_subquery.c.positive_count == 0) & 
-            (topic_counts_subquery.c.negative_count == 0), 
-            1.0
+            (topic_counts_subquery.c.positive_count == 0)
+            & (topic_counts_subquery.c.negative_count == 0),
+            0.0,
         ),
-        # If only positive and neutral (no negative), return 0
+        # If only positive and neutral (no negative), return 1 , positive
         (
-            (topic_counts_subquery.c.positive_count > 0) & 
-            (topic_counts_subquery.c.negative_count == 0), 
-            0.0
+            (topic_counts_subquery.c.positive_count > 0)
+            & (topic_counts_subquery.c.negative_count == 0),
+            1.0,
         ),
-        # If only negative and neutral (no positive), return -1
+        # If only negative and neutral (no positive), return -1 , negative
         (
-            (topic_counts_subquery.c.positive_count == 0) & 
-            (topic_counts_subquery.c.negative_count > 0), 
-            -1.0
+            (topic_counts_subquery.c.positive_count == 0)
+            & (topic_counts_subquery.c.negative_count > 0),
+            -1.0,
         ),
         # Otherwise, calculate (Positive - Negative) / Total
         else_=(
             cast(
-                topic_counts_subquery.c.positive_count - topic_counts_subquery.c.negative_count,
-                Float
-            ) / topic_counts_subquery.c.total_topics
-        )
-    ).label('sentiment_score')
-    
+                topic_counts_subquery.c.positive_count
+                - topic_counts_subquery.c.negative_count,
+                Float,
+            )
+            / topic_counts_subquery.c.total_topics
+        ),
+    ).label("sentiment_score")
+
     category_expr = case(
         # Only neutral topics
         (
-            (topic_counts_subquery.c.positive_count == 0) & 
-            (topic_counts_subquery.c.negative_count == 0), 
-            'neutral_only'
+            (topic_counts_subquery.c.positive_count == 0)
+            & (topic_counts_subquery.c.negative_count == 0),
+            "neutral_only",
         ),
         # Only positive and neutral (no negative)
         (
-            (topic_counts_subquery.c.positive_count > 0) & 
-            (topic_counts_subquery.c.negative_count == 0), 
-            'positive_only'
+            (topic_counts_subquery.c.positive_count > 0)
+            & (topic_counts_subquery.c.negative_count == 0),
+            "positive_only",
         ),
         # Only negative and neutral (no positive)
         (
-            (topic_counts_subquery.c.positive_count == 0) & 
-            (topic_counts_subquery.c.negative_count > 0), 
-            'negative_only'
+            (topic_counts_subquery.c.positive_count == 0)
+            & (topic_counts_subquery.c.negative_count > 0),
+            "negative_only",
         ),
         # Mixed: both positive and negative
-        else_='mixed'
-    ).label('category')
-    
+        else_="mixed",
+    ).label("category")
+
     # Create categories subquery
-    categories_subquery = (
-        db.query(
-            topic_counts_subquery.c.survey_id,
-            sentiment_score_expr,
-            category_expr
-        )
-        .subquery()
-    )
-    
+    categories_subquery = db.query(
+        topic_counts_subquery.c.survey_id, sentiment_score_expr, category_expr
+    ).subquery()
+
     # Final aggregation query
-    # Calculate weighted sum using sentiment_score directly from subquery
-    # This ensures each survey counts equally in the average
-    weighted_sum = func.sum(categories_subquery.c.sentiment_score)
-    total_count = func.count(categories_subquery.c.survey_id)
-    
+
     result = db.query(
         func.sum(
-            case((categories_subquery.c.category == 'positive_only', 1), else_=0)
-        ).label('positive_topic_count'),
+            case((categories_subquery.c.category == "positive_only", 1), else_=0)
+        ).label("positive_topic_count"),
         func.sum(
-            case((categories_subquery.c.category == 'negative_only', 1), else_=0)
-        ).label('negative_topic_count'),
+            case((categories_subquery.c.category == "negative_only", 1), else_=0)
+        ).label("negative_topic_count"),
         func.sum(
-            case((categories_subquery.c.category == 'neutral_only', 1), else_=0)
-        ).label('neutral_topic_count'),
-        func.sum(
-            case((categories_subquery.c.category == 'mixed', 1), else_=0)
-        ).label('mix_topic_count'),
+            case((categories_subquery.c.category == "neutral_only", 1), else_=0)
+        ).label("neutral_topic_count"),
+        func.sum(case((categories_subquery.c.category == "mixed", 1), else_=0)).label(
+            "mix_topic_count"
+        ),
         func.avg(
-            case((categories_subquery.c.category == 'mixed', categories_subquery.c.sentiment_score))
-        ).label('average_mix_topic_score'),
-        (weighted_sum / total_count).label('average_overall_topic_score')
+            case(
+                (
+                    categories_subquery.c.category == "mixed",
+                    categories_subquery.c.sentiment_score,
+                )
+            )
+        ).label("average_mix_topic_score"),
     ).first()
-    
+
+    average_overall_topic_score = (
+        (result.mix_topic_count * result.average_mix_topic_score)
+        + (result.positive_topic_count * 1.0)
+        + (result.negative_topic_count * -1.0)
+        + (result.neutral_topic_count * 0.0)
+    ) / (
+        result.mix_topic_count
+        + result.positive_topic_count
+        + result.negative_topic_count
+        + result.neutral_topic_count
+    )
     return TopicSentimentScoreResponse(
         positive_topic_count=result.positive_topic_count or 0,
         negative_topic_count=result.negative_topic_count or 0,
         neutral_topic_count=result.neutral_topic_count or 0,
         mix_topic_count=result.mix_topic_count or 0,
         average_mix_topic_score=float(result.average_mix_topic_score or 0.0),
-        average_overall_topic_score=float(result.average_overall_topic_score or 0.0)
+        average_overall_topic_score=float(average_overall_topic_score or 0.0),
     )
