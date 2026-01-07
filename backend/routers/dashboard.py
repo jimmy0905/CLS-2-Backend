@@ -25,9 +25,6 @@ from utils.conditionFilter import (
 )
 from typing import List, Optional
 from utils.security import get_current_user
-import logging
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/dashboard",
