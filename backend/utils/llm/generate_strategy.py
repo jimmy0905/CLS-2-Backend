@@ -92,7 +92,7 @@ Chain‑of‑thought guidance:
     )
     response_content = response.choices[0].message.content
     if response_content is None:
-        raise Exception("Failed to generate strategy")
+        raise Exception("Failed to generate strategy for store")
     return response_content, response.usage.model_dump()
 
 
@@ -228,9 +228,235 @@ Chain‑of‑thought guidance:
     )
     response_content = response.choices[0].message.content
     if response_content is None:
-        raise Exception("Failed to generate strategy")
+        raise Exception("Failed to generate strategy for region")
     return response_content, response.usage.model_dump()
 
 
 async def generate_region_strategy(data: list[Survey]) -> tuple[str, dict]:
     return await run_in_threadpool(_generate_region_strategy_sync, data)
+
+def _generate_channel_strategy_sync(data: list[Survey]) -> tuple[str, dict]:
+    system_prompt = """
+You are given a JSON object with an "items" array of customer comments. Each item has these fields:
+- id
+- store: { id, name, hierarchy_level_1..5 }
+- channel: { id, name }  (Channel for this analysis, e.g., App / Website)
+- delivery_service: { id, name } (Delivery Mode, e.g., CCE / HDS / HDE)
+- departments: [{ department_id, name, sentiment }]
+- topics: [{ topic_id, topic, sentiment }]
+- keywords: [{ keyword_id, keyword, sentiment }]
+- comment (string)
+- sentiment (string)
+- reported_at, created_at, updated_at
+
+Definition:
+- "Channel" = channel.name
+(Do NOT aggregate by delivery_service in this version.)
+
+Your tasks:
+1. Aggregate comments by Channel and identify the core positive themes (or improvement needs if sentiment is neutral/negative) for each Channel.
+2. Compare across Channels to highlight common themes that indicate cross-channel strengths or systemic issues.
+3. Infer the channel-level operating practices that likely produced those outcomes, focusing on:
+   - checkout and order placement flow
+   - clarity of delivery options presented in the channel UI
+   - order status communication and tracking visibility within the channel
+   - cancellation/change-order capability within the channel
+   - payment accuracy and payment options presentation
+   - customer support accessibility and responsiveness initiated from the channel
+4. From those inferences, formulate practical, actionable strategies that a central eCommerce/product operations team can roll out per Channel to replicate successes or fix root causes.
+5. Present strategies at two levels:
+   - Cross-Channel Playbook (scalable practices applicable across App and Website).
+   - Channel-Specific Playbooks (tailored actions for App vs Website).
+6. Return only the final Summary and Strategy body text in markdown — no JSON, no extra commentary.
+7. All returned content (headings, subtitles, etc.) must be in English, please use 1234 for those numbers.
+8. Each recommendation must be channel-level or central-ops-level (UI standards, product rules, policy configuration, support workflows). Do not suggest one-store-only actions.
+
+--- FORMAT RULES ---
+- Use bullet points (-) for the Summary section.
+- For the Strategy section:
+  * Number each inferred action sequentially: 1, 2, 3, ...
+  * Each action must follow this exact structure:
+    ## (Number) **Action Name**
+    ### **Observation**:
+
+    "Quoted sentence explaining inference."
+    ### **Recommendation:**
+
+    - Bullet point recommendation 1
+    - Bullet point recommendation 2
+    - Bullet point recommendation 3
+- Always keep **Observation** and **Recommendation** as bold headings with colons.
+- Use `\n` line breaks exactly as shown in the template.
+- No extra commentary, explanations, or JSON output.
+- Do NOT include <Start> and <End> markers.
+
+Output in Markdown format, following this template:
+
+# Summary
+
+- Shared factors across Channels (App vs Website)
+- Distinctive strengths / pain points unique to each Channel
+- Channel operating practices implied by customer feedback
+
+# Strategy
+
+## 1. **Checkout: Inferred Action A**
+### **Observation**:
+
+“Quoted sentence explaining inference.”
+### **Recommendation:**
+
+- Bullet point recommendation 1
+- Bullet point recommendation 2
+- Bullet point recommendation 3
+
+## 2. **Tracking: Inferred Action B**
+### **Observation**:
+
+“Quoted sentence explaining inference.”
+### **Recommendation:**
+
+- Bullet point recommendation 1
+- Bullet point recommendation 2
+- Bullet point recommendation 3
+
+[Add further actions if more channel strengths or systemic issues are identified]
+
+Guidance:
+- Cluster comments using topics[].topic and keywords[].keyword, then validate with comment text.
+- Observations must quote actual customer sentences.
+- Delivery Mode (delivery_service) can be mentioned only as context inside observations if directly present in the quoted comment, but do NOT use it to group results.
+"""
+    user_prompt = f"""
+    {json.dumps(data, indent=4, ensure_ascii=False, default=str)}
+"""
+    response = client.chat.completions.create(
+        model=GENERATE_STRATEGY_MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=GENERATE_STRATEGY_TEMPERATURE,
+        max_tokens=GENERATE_STRATEGY_MAX_TOKENS,
+    )
+    response_content = response.choices[0].message.content
+    if response_content is None:
+        raise Exception("Failed to generate strategy for channel")
+    return response_content, response.usage.model_dump()
+
+
+async def generate_channel_strategy(data: list[Survey]) -> tuple[str, dict]:
+    return await run_in_threadpool(_generate_channel_strategy_sync, data)
+
+def _generate_delivery_service_strategy_sync(data: list[Survey]) -> tuple[str, dict]:
+    system_prompt = """
+You are given a JSON object with an "items" array of customer comments. Each item has these fields:
+- id
+- store: { id, name, hierarchy_level_1..5 }
+- channel: { id, name }  (Channel, e.g., App / Website)
+- delivery_service: { id, name } (Delivery Mode for this analysis, e.g., CCE / HDS / HDE)
+- departments: [{ department_id, name, sentiment }]
+- topics: [{ topic_id, topic, sentiment }]
+- keywords: [{ keyword_id, keyword, sentiment }]
+- comment (string)
+- sentiment (string)
+- reported_at, created_at, updated_at
+
+Definition:
+- "Delivery Mode" = delivery_service.name
+(Do NOT aggregate by channel in this version.)
+
+Your tasks:
+1. Aggregate comments by Delivery Mode and identify the core positive themes (or improvement needs if sentiment is neutral/negative) for each Delivery Mode.
+2. Compare across Delivery Modes to highlight common themes that indicate cross-mode strengths or systemic issues.
+3. Infer the mode-level operating practices that likely produced those outcomes, focusing on:
+   - SLA/on-time performance governance
+   - tracking integration reliability and status event quality
+   - pickup handoff SOP (if pickup is part of the mode)
+   - packing/handling standards and damage prevention
+   - exception handling (failed delivery, missing items) and refund governance
+   - partner/3PL management routines and service scorecards
+4. From those inferences, formulate practical, actionable strategies that a delivery operations team can roll out per Delivery Mode to replicate successes or fix root causes.
+5. Present strategies at two levels:
+   - Cross-Mode Playbook (scalable practices applicable across multiple delivery modes).
+   - Mode-Specific Playbooks (tailored actions per delivery mode, e.g., CCE vs HDS vs HDE).
+6. Return only the final Summary and Strategy body text in markdown — no JSON, no extra commentary.
+7. All returned content (headings, subtitles, etc.) must be in English, please use 1234 for those numbers.
+8. Each recommendation must be mode-level or central-ops-level (SOPs, SLAs, partner governance, routing rules, support workflows). Do not suggest one-store-only actions.
+
+--- FORMAT RULES ---
+- Use bullet points (-) for the Summary section.
+- For the Strategy section:
+  * Number each inferred action sequentially: 1, 2, 3, ...
+  * Each action must follow this exact structure:
+    ## (Number) **Action Name**
+    ### **Observation**:
+
+    "Quoted sentence explaining inference."
+    ### **Recommendation:**
+
+    - Bullet point recommendation 1
+    - Bullet point recommendation 2
+    - Bullet point recommendation 3
+- Always keep **Observation** and **Recommendation** as bold headings with colons.
+- Use `\n` line breaks exactly as shown in the template.
+- No extra commentary, explanations, or JSON output.
+- Do NOT include <Start> and <End> markers.
+
+Output in Markdown format, following this template:
+
+# Summary
+
+- Shared factors across Delivery Modes
+- Distinctive strengths / pain points unique to each Delivery Mode
+- Mode operating practices implied by customer feedback
+
+# Strategy
+
+## 1. **SLA: Inferred Action A**
+### **Observation**:
+
+“Quoted sentence explaining inference.”
+### **Recommendation:**
+
+- Bullet point recommendation 1
+- Bullet point recommendation 2
+- Bullet point recommendation 3
+
+## 2. **Exceptions: Inferred Action B**
+### **Observation**:
+
+“Quoted sentence explaining inference.”
+### **Recommendation:**
+
+- Bullet point recommendation 1
+- Bullet point recommendation 2
+- Bullet point recommendation 3
+
+[Add further actions if more mode strengths or systemic issues are identified]
+
+Guidance:
+- Cluster comments using topics[].topic and keywords[].keyword, then validate with comment text.
+- Observations must quote actual customer sentences.
+- Ordering Channel (channel) can be mentioned only as context inside observations if directly present in the quoted comment, but do NOT use it to group results.
+- Do not recommend actions that violate pharmacy regulations; compliance-related requests should be routed to a compliance review workflow.
+"""
+    user_prompt = f"""
+    {json.dumps(data, indent=4, ensure_ascii=False, default=str)}
+"""
+    response = client.chat.completions.create(
+        model=GENERATE_STRATEGY_MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=GENERATE_STRATEGY_TEMPERATURE,
+        max_tokens=GENERATE_STRATEGY_MAX_TOKENS,
+    )
+    response_content = response.choices[0].message.content
+    if response_content is None:
+        raise Exception("Failed to generate strategy for delivery service")
+    return response_content, response.usage.model_dump()
+
+async def generate_delivery_service_strategy(data: list[Survey]) -> tuple[str, dict]:
+    return await run_in_threadpool(_generate_delivery_service_strategy_sync, data)
