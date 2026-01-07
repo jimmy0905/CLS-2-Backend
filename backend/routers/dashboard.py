@@ -659,11 +659,11 @@ async def get_topic_sentiment_score(
             (topic_counts_subquery.c.negative_count == 0), 
             1.0
         ),
-        # If only positive and neutral (no negative), return 1
+        # If only positive and neutral (no negative), return 0
         (
             (topic_counts_subquery.c.positive_count > 0) & 
             (topic_counts_subquery.c.negative_count == 0), 
-            1.0
+            0.0
         ),
         # If only negative and neutral (no positive), return -1
         (
