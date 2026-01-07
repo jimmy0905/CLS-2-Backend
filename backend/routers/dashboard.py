@@ -714,6 +714,11 @@ async def get_topic_sentiment_score(
     )
     
     # Final aggregation query
+    # Calculate weighted sum using sentiment_score directly from subquery
+    # This ensures each survey counts equally in the average
+    weighted_sum = func.sum(categories_subquery.c.sentiment_score)
+    total_count = func.count(categories_subquery.c.survey_id)
+    
     result = db.query(
         func.sum(
             case((categories_subquery.c.category == 'positive_only', 1), else_=0)
@@ -730,7 +735,7 @@ async def get_topic_sentiment_score(
         func.avg(
             case((categories_subquery.c.category == 'mixed', categories_subquery.c.sentiment_score))
         ).label('average_mix_topic_score'),
-        func.avg(categories_subquery.c.sentiment_score).label('average_overall_topic_score')
+        (weighted_sum / total_count).label('average_overall_topic_score')
     ).first()
     
     return TopicSentimentScoreResponse(
