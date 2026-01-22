@@ -740,7 +740,7 @@ async def get_topic_sentiment_score(
     ).first()
 
     average_overall_topic_score = (
-        (result.mix_topic_count * result.average_mix_topic_score)
+        (result.mix_topic_count * (result.average_mix_topic_score or 0.0))
         + (result.positive_topic_count * 1.0)
         + (result.negative_topic_count * -1.0)
         + (result.neutral_topic_count * 0.0)
