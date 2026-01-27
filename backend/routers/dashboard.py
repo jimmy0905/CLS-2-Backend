@@ -25,6 +25,7 @@ from utils.conditionFilter import (
 )
 from typing import List, Optional
 from utils.security import get_current_user
+from datetime import timezone
 
 router = APIRouter(
     prefix="/dashboard",
@@ -758,3 +759,21 @@ async def get_topic_sentiment_score(
         average_mix_topic_score=float(result.average_mix_topic_score or 0.0),
         average_overall_topic_score=float(average_overall_topic_score or 0.0),
     )
+
+@router.get("/last-updated-date")
+async def get_last_updated_date(
+    db: Session = Depends(get_db),
+) -> str:
+    last_updated_date = db.query(func.max(Survey.updated_at)).first()
+    if last_updated_date[0] is None:
+        return ""
+    return last_updated_date[0].astimezone(timezone.utc).isoformat()
+
+@router.get("/last-data-due-date")
+async def get_last_data_due_date(
+    db: Session = Depends(get_db),
+) -> str:
+    last_data_due_date = db.query(func.max(Survey.reported_at)).first()
+    if last_data_due_date[0] is None:
+        return ""
+    return last_data_due_date[0].astimezone(timezone.utc).isoformat()
