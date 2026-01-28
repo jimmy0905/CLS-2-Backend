@@ -760,6 +760,7 @@ async def get_topic_sentiment_score(
         average_overall_topic_score=float(average_overall_topic_score or 0.0),
     )
 
+
 @router.get("/last-updated-date")
 async def get_last_updated_date(
     db: Session = Depends(get_db),
@@ -769,9 +770,11 @@ async def get_last_updated_date(
         return ""
     return last_updated_date[0].astimezone(timezone.utc).isoformat()
 
+
 class DataCoverageResponse(BaseModel):
     last_data_reported_date: str
     first_data_reported_date: str
+
 
 @router.get("/data-coverage")
 async def get_data_coverage(
@@ -782,6 +785,10 @@ async def get_data_coverage(
     if last_data_reported_date[0] is None or first_data_reported_date[0] is None:
         raise HTTPException(status_code=404, detail="No data reported")
     return DataCoverageResponse(
-        last_data_reported_date=last_data_reported_date[0].astimezone(timezone.utc).isoformat(),
-        first_data_reported_date=first_data_reported_date[0].astimezone(timezone.utc).isoformat(),
+        last_data_reported_date=last_data_reported_date[0]
+        .astimezone(timezone.utc)
+        .isoformat(),
+        first_data_reported_date=first_data_reported_date[0]
+        .astimezone(timezone.utc)
+        .isoformat(),
     )
