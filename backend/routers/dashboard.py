@@ -769,11 +769,19 @@ async def get_last_updated_date(
         return ""
     return last_updated_date[0].astimezone(timezone.utc).isoformat()
 
-@router.get("/last-data-due-date")
-async def get_last_data_due_date(
+class DataCoverageResponse(BaseModel):
+    last_data_reported_date: str
+    first_data_reported_date: str
+
+@router.get("/data-coverage")
+async def get_data_coverage(
     db: Session = Depends(get_db),
-) -> str:
-    last_data_due_date = db.query(func.max(Survey.reported_at)).first()
-    if last_data_due_date[0] is None:
-        return ""
-    return last_data_due_date[0].astimezone(timezone.utc).isoformat()
+) -> DataCoverageResponse:
+    last_data_reported_date = db.query(func.max(Survey.reported_at)).first()
+    first_data_reported_date = db.query(func.min(Survey.reported_at)).first()
+    if last_data_reported_date[0] is None or first_data_reported_date[0] is None:
+        raise HTTPException(status_code=404, detail="No data reported")
+    return DataCoverageResponse(
+        last_data_reported_date=last_data_reported_date[0].astimezone(timezone.utc).isoformat(),
+        first_data_reported_date=first_data_reported_date[0].astimezone(timezone.utc).isoformat(),
+    )
