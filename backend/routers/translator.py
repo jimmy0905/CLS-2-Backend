@@ -45,7 +45,7 @@ async def translate(
     translation_request: TranslationRequest,
     current_user: User = Depends(get_current_user),
 ) -> TranslationResponse:
-    url = f"{endpoint}/translate"
+    url = f"{endpoint}translate"
     params = {
         'api-version': '3.0',
         'to': [translation_request.target_language]
