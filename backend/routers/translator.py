@@ -45,7 +45,9 @@ async def translate(
     translation_request: TranslationRequest,
     current_user: User = Depends(get_current_user),
 ) -> TranslationResponse:
-    url = f"{endpoint}translate"
+    # Ensure endpoint ends with / for proper URL construction
+    endpoint_url = endpoint if endpoint.endswith('/') else f"{endpoint}/"
+    url = f"{endpoint_url}translate"
     params = {
         'api-version': '3.0',
         'to': [translation_request.target_language]
@@ -64,8 +66,19 @@ async def translate(
     # Configure timeout (30 seconds for connect, 60 seconds for read)
     timeout = httpx.Timeout(30.0, read=60.0)
     
-    # httpx will automatically use HTTP_PROXY and HTTPS_PROXY environment variables
-    # when trust_env is True (default)
+    # Check for proxy configuration
+    proxy_url = os.getenv('HTTP_PROXY') or os.getenv('HTTPS_PROXY') or os.getenv('ASW_PROXY_URL')
+    
+    if proxy_url:
+        print(f"Using proxy: {proxy_url}")
+        # Explicitly set both HTTP_PROXY and HTTPS_PROXY if not already set
+        if not os.getenv('HTTP_PROXY'):
+            os.environ['HTTP_PROXY'] = proxy_url
+        if not os.getenv('HTTPS_PROXY'):
+            os.environ['HTTPS_PROXY'] = proxy_url
+    else:
+        print("No proxy configured")
+    
     print(f"HTTP_PROXY: {os.getenv('HTTP_PROXY')}")
     print(f"HTTPS_PROXY: {os.getenv('HTTPS_PROXY')}")
     
