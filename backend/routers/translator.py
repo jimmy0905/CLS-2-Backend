@@ -64,10 +64,13 @@ async def translate(
     proxy_url = os.getenv("ASW_PROXY_URL")
     transport = None
     if proxy_url:
-        transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0", proxy=proxy_url)
+        transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0", proxy=proxy_url, verify=False)
 
     async with httpx.AsyncClient(transport=transport, verify=False) as client:
         try:
+            print(f"Proxy URL: {proxy_url}")
+            print(f"Transport: {transport}")
+            print(f"Sending request to {url} with params {params}, headers {headers}, and body {body}")
             request = await client.post(url, params=params, headers=headers, json=body)
             request.raise_for_status()
         except httpx.HTTPError as e:
