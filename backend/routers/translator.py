@@ -73,11 +73,8 @@ async def translate(
     }
     
     if proxy_url:
-        # Use proxies parameter instead of transport for better compatibility
-        client_kwargs["proxies"] = {
-            "http://": proxy_url,
-            "https://": proxy_url,
-        }
+        # Use proxy parameter for httpx (singular, not plural)
+        client_kwargs["proxy"] = proxy_url
         print(f"Using proxy: {proxy_url}")
     
     async with httpx.AsyncClient(**client_kwargs) as client:
