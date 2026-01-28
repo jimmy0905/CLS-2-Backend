@@ -7,7 +7,6 @@ from azure.ai.translation.text import TextTranslationClient, TranslatorCredentia
 from azure.ai.translation.text.models import InputTextItem
 from azure.core.exceptions import HttpResponseError
 import os
-from azure.core.pipeline.transport import RequestsTransport
 from models.User import User
 
 router = APIRouter(
@@ -21,17 +20,23 @@ endpoint = os.getenv("AZURE_TRANSLATOR_ENDPOINT")
 region = os.getenv("AZURE_TRANSLATOR_REGION")
 credential = TranslatorCredential(key, region)
 
-# Configure proxy if needed
+# Configure proxy via environment variables
+# This allows the underlying requests library to handle it automatically
 proxy_url = os.getenv("ASW_PROXY_URL")
 if proxy_url:
-    # Use RequestsTransport (synchronous) with proxy settings
-    # connection_verify=False helps if proxy intercepts SSL (common in corporate networks)
-    transport = RequestsTransport(proxies={"http": proxy_url, "https": proxy_url})
+    # Remove trailing slash if present
+    if proxy_url.endswith("/"):
+        proxy_url = proxy_url[:-1]
+    
+    os.environ["HTTP_PROXY"] = proxy_url
+    os.environ["HTTPS_PROXY"] = proxy_url
+    
+    # Initialize client - requests will pick up the env vars
+    # connection_verify=False to handle potential SSL interception
     text_translator = TextTranslationClient(
         endpoint=endpoint,
         credential=credential,
-        transport=transport,
-        connection_verify=False 
+        connection_verify=False
     )
 else:
     text_translator = TextTranslationClient(
