@@ -7,7 +7,7 @@ from models.User import User
 import os
 from azure.ai.translation.text import TextTranslationClient, TranslatorCredential
 import uuid
-import requests
+import httpx
 
 key = os.getenv("AZURE_TRANSLATOR_KEY")
 endpoint = os.getenv("AZURE_TRANSLATOR_ENDPOINT")
@@ -61,10 +61,14 @@ async def translate(
     'text': translation_request.text
     }]
 
-    request = requests.post(url, params=params, headers=headers, json=body, proxies={
-        'http': os.getenv("ASW_PROXY_URL"),
-        'https': os.getenv("ASW_PROXY_URL"),
-    })
+    proxy_url = os.getenv("ASW_PROXY_URL")
+    transport = None
+    if proxy_url:
+        transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0", proxy=proxy_url)
+
+    async with httpx.AsyncClient(transport=transport) as client:
+        request = await client.post(url, params=params, headers=headers, json=body)
+    
     response = request.json()
 
     if isinstance(response, list) and len(response) > 0:
