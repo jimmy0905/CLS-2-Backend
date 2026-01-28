@@ -62,17 +62,35 @@ async def translate(
     }]
 
     proxy_url = os.getenv("ASW_PROXY_URL")
-    transport = None
+    
+    # Configure timeout (30 seconds for connect, 60 seconds for read)
+    timeout = httpx.Timeout(30.0, read=60.0)
+    
+    # Configure client based on proxy availability
+    client_kwargs = {
+        "verify": False,
+        "timeout": timeout,
+    }
+    
     if proxy_url:
-        transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0", proxy=proxy_url, verify=False)
-
-    async with httpx.AsyncClient(transport=transport, verify=False) as client:
+        # Use proxies parameter instead of transport for better compatibility
+        client_kwargs["proxies"] = {
+            "http://": proxy_url,
+            "https://": proxy_url,
+        }
+        print(f"Using proxy: {proxy_url}")
+    
+    async with httpx.AsyncClient(**client_kwargs) as client:
         try:
-            print(f"Proxy URL: {proxy_url}")
-            print(f"Transport: {transport}")
             print(f"Sending request to {url} with params {params}, headers {headers}, and body {body}")
             request = await client.post(url, params=params, headers=headers, json=body)
             request.raise_for_status()
+        except httpx.TimeoutException as e:
+            print(f"Request timeout: {e}")
+            raise HTTPException(status_code=504, detail="Translation service timeout")
+        except httpx.ProxyError as e:
+            print(f"Proxy error: {e}")
+            raise HTTPException(status_code=502, detail=f"Proxy error: {str(e)}")
         except httpx.HTTPError as e:
             print(f"HTTP Request failed: {e}")
             raise HTTPException(status_code=500, detail=f"Translation service error: {str(e)}")
