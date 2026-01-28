@@ -81,7 +81,12 @@ async def translate(
     # Configure timeout (30 seconds for connect, 60 seconds for read)
 
     print(f"Sending request to {url} with params {params}, headers {headers}, and body {body}")
-    request = requests.post(url, params=params, headers=headers, json=body)
+    try:
+        request = requests.post(url, params=params, headers=headers, json=body, proxies=proxies, timeout=(30, 60))
+        request.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print(f"Request failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
     response_data = request.json()
 
