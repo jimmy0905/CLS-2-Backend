@@ -7,7 +7,7 @@ from azure.ai.translation.text import TextTranslationClient, TranslatorCredentia
 from azure.ai.translation.text.models import InputTextItem
 from azure.core.exceptions import HttpResponseError
 import os
-from azure.core.pipeline.transport import RequestsTransport
+import httpx
 from models.User import User
 
 router = APIRouter(
@@ -24,7 +24,16 @@ credential = TranslatorCredential(key, region)
 # Configure proxy if needed
 proxy_url = os.getenv("ASW_PROXY_URL")
 if proxy_url:
-    transport = RequestsTransport(proxies={"http": proxy_url, "https": proxy_url})
+    # Create httpx client with proxy configuration
+    from azure.core.pipeline.transport import HttpXTransport
+    
+    httpx_client = httpx.Client(
+        proxies=proxy_url,
+        verify=True,
+        timeout=30.0,
+    )
+    
+    transport = HttpXTransport(client=httpx_client)
     text_translator = TextTranslationClient(
         endpoint=endpoint,
         credential=credential,
