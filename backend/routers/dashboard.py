@@ -25,6 +25,7 @@ from utils.conditionFilter import (
 )
 from typing import List, Optional
 from utils.security import get_current_user
+from datetime import timezone
 
 router = APIRouter(
     prefix="/dashboard",
@@ -757,4 +758,37 @@ async def get_topic_sentiment_score(
         mix_topic_count=result.mix_topic_count or 0,
         average_mix_topic_score=float(result.average_mix_topic_score or 0.0),
         average_overall_topic_score=float(average_overall_topic_score or 0.0),
+    )
+
+
+@router.get("/last-updated-date")
+async def get_last_updated_date(
+    db: Session = Depends(get_db),
+) -> str:
+    last_updated_date = db.query(func.max(Survey.updated_at)).first()
+    if last_updated_date[0] is None:
+        return ""
+    return last_updated_date[0].astimezone(timezone.utc).isoformat()
+
+
+class DataCoverageResponse(BaseModel):
+    last_data_reported_date: str
+    first_data_reported_date: str
+
+
+@router.get("/data-coverage")
+async def get_data_coverage(
+    db: Session = Depends(get_db),
+) -> DataCoverageResponse:
+    last_data_reported_date = db.query(func.max(Survey.reported_at)).first()
+    first_data_reported_date = db.query(func.min(Survey.reported_at)).first()
+    if last_data_reported_date[0] is None or first_data_reported_date[0] is None:
+        raise HTTPException(status_code=404, detail="No data reported")
+    return DataCoverageResponse(
+        last_data_reported_date=last_data_reported_date[0]
+        .astimezone(timezone.utc)
+        .isoformat(),
+        first_data_reported_date=first_data_reported_date[0]
+        .astimezone(timezone.utc)
+        .isoformat(),
     )
