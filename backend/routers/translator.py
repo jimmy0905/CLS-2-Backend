@@ -11,9 +11,6 @@ import requests
 from requests.exceptions import RequestException, ProxyError, Timeout
 import urllib3
 
-# Disable SSL warnings when using verify=False
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
 key = os.getenv("AZURE_TRANSLATOR_KEY")
 endpoint = os.getenv("AZURE_TRANSLATOR_ENDPOINT")
 region = os.getenv("AZURE_TRANSLATOR_REGION")
@@ -82,36 +79,11 @@ async def translate(
         print("No proxy configured")
     
     # Configure timeout (30 seconds for connect, 60 seconds for read)
-    timeout = (30, 60)
-    
-    try:
-        print(f"Sending request to {url} with params {params}, headers {headers}, and body {body}")
-        
-        # Use requests library which handles corporate proxies better
-        response = requests.post(
-            url,
-            params=params,
-            headers=headers,
-            json=body,
-            proxies=proxies,
-            verify=False,  # Disable SSL verification
-            timeout=timeout
-        )
-        
-        print(f"Request successful! Status: {response.status_code}")
-        response.raise_for_status()
-        
-    except Timeout as e:
-        print(f"Request timeout: {e}")
-        raise HTTPException(status_code=504, detail="Translation service timeout")
-    except ProxyError as e:
-        print(f"Proxy error: {e}")
-        raise HTTPException(status_code=502, detail=f"Proxy error: {str(e)}")
-    except RequestException as e:
-        print(f"HTTP Request failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Translation service error: {str(e)}")
-    
-    response_data = response.json()
+
+    print(f"Sending request to {url} with params {params}, headers {headers}, and body {body}")
+    request = requests.post(url, params=params, headers=headers, json=body)
+
+    response_data = request.json()
 
     if isinstance(response_data, list) and len(response_data) > 0:
         first_result = response_data[0]
