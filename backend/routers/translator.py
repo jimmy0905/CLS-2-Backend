@@ -66,8 +66,13 @@ async def translate(
     if proxy_url:
         transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0", proxy=proxy_url)
 
-    async with httpx.AsyncClient(transport=transport) as client:
-        request = await client.post(url, params=params, headers=headers, json=body)
+    async with httpx.AsyncClient(transport=transport, verify=False) as client:
+        try:
+            request = await client.post(url, params=params, headers=headers, json=body)
+            request.raise_for_status()
+        except httpx.HTTPError as e:
+            print(f"HTTP Request failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Translation service error: {str(e)}")
     
     response = request.json()
 
