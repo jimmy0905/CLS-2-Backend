@@ -7,8 +7,7 @@ from azure.ai.translation.text import TextTranslationClient, TranslatorCredentia
 from azure.ai.translation.text.models import InputTextItem
 from azure.core.exceptions import HttpResponseError
 import os
-import httpx
-from openai import DefaultHttpxClient
+from azure.core.pipeline.transport import RequestsTransport
 from models.User import User
 
 router = APIRouter(
@@ -21,18 +20,21 @@ key = os.getenv("AZURE_TRANSLATOR_KEY")
 endpoint = os.getenv("AZURE_TRANSLATOR_ENDPOINT")
 region = os.getenv("AZURE_TRANSLATOR_REGION")
 credential = TranslatorCredential(key, region)
-text_translator = TextTranslationClient(
-    endpoint=endpoint,
-    credential=credential,
-    http_client=(
-        DefaultHttpxClient(
-            proxy=os.getenv("ASW_PROXY_URL"),
-            transport=httpx.HTTPTransport(local_address="0.0.0.0"),
-        )
-        if os.getenv("ASW_PROXY_URL")
-        else None
-    ),
-)
+
+# Configure proxy if needed
+proxy_url = os.getenv("ASW_PROXY_URL")
+if proxy_url:
+    transport = RequestsTransport(proxies={"http": proxy_url, "https": proxy_url})
+    text_translator = TextTranslationClient(
+        endpoint=endpoint,
+        credential=credential,
+        transport=transport,
+    )
+else:
+    text_translator = TextTranslationClient(
+        endpoint=endpoint,
+        credential=credential,
+    )
 
 
 class DetectedLanguage(BaseModel):
