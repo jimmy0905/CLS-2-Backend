@@ -590,4 +590,10 @@ async def get_strategy_v2(
     ('file',('surveys.xlsx',excel_buffer,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
     ]
     response = requests.request("POST", url, data=payload, files=files)
+    
+    if response.status_code != 200:
+        print(f"Error from analysis API: {response.status_code}")
+        print(f"Response content: {response.text}")
+        raise HTTPException(status_code=response.status_code, detail=f"Analysis API error: {response.text}")
+
     return response.json()
