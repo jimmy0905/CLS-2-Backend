@@ -580,6 +580,7 @@ async def get_strategy_v2(
     excel_buffer = generate_excel_file()
     # Await the whole excel file is generated
     url = os.getenv("ANALYZE_FEEDBACK_API_URL") + "/analyze-feedback"
+    print("url", url)
     payload = {'analysis_mode': 'STAT',
     'sampling_method': 'DIRECT',
     'top_n_stores': '10',
@@ -596,4 +597,9 @@ async def get_strategy_v2(
         print(f"Response content: {response.text}")
         raise HTTPException(status_code=response.status_code, detail=f"Analysis API error: {response.text}")
 
-    return response.json()
+    try:
+        return response.json()
+    except Exception as e:
+        print(f"Failed to parse JSON response: {e}")
+        print(f"Raw response: {response.text}")
+        raise HTTPException(status_code=500, detail=f"Analysis API returned invalid JSON: {response.text[:200]}")
