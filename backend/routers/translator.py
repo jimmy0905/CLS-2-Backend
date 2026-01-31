@@ -7,7 +7,9 @@ from models.User import User
 import os
 from azure.ai.translation.text import TextTranslationClient, TranslatorCredential
 import uuid
-import httpx
+import requests
+from requests.exceptions import RequestException, ProxyError, Timeout
+import urllib3
 
 key = os.getenv("AZURE_TRANSLATOR_KEY")
 endpoint = os.getenv("AZURE_TRANSLATOR_ENDPOINT")
@@ -45,7 +47,9 @@ async def translate(
     translation_request: TranslationRequest,
     current_user: User = Depends(get_current_user),
 ) -> TranslationResponse:
-    url = f"{endpoint}/translate"
+    # Ensure endpoint ends with / for proper URL construction
+    endpoint_url = endpoint if endpoint.endswith('/') else f"{endpoint}/"
+    url = f"{endpoint_url}translate"
     params = {
         'api-version': '3.0',
         'to': [translation_request.target_language]
@@ -58,29 +62,36 @@ async def translate(
         'X-ClientTraceId': str(uuid.uuid4())
     }
     body = [{
-    'text': translation_request.text
+        'text': translation_request.text
     }]
 
-    proxy_url = os.getenv("ASW_PROXY_URL")
-    transport = None
-    if proxy_url:
-        transport = httpx.AsyncHTTPTransport(local_address="0.0.0.0", proxy=proxy_url, verify=False)
-
-    async with httpx.AsyncClient(transport=transport, verify=False) as client:
-        try:
-            print(f"Proxy URL: {proxy_url}")
-            print(f"Transport: {transport}")
-            print(f"Sending request to {url} with params {params}, headers {headers}, and body {body}")
-            request = await client.post(url, params=params, headers=headers, json=body)
-            request.raise_for_status()
-        except httpx.HTTPError as e:
-            print(f"HTTP Request failed: {e}")
-            raise HTTPException(status_code=500, detail=f"Translation service error: {str(e)}")
+    # Check for proxy configuration
+    proxy_url = os.getenv('HTTP_PROXY') or os.getenv('HTTPS_PROXY') or os.getenv('ASW_PROXY_URL')
     
-    response = request.json()
+    proxies = None
+    if proxy_url:
+        proxies = {
+            'http': proxy_url,
+            'https': proxy_url
+        }
+        print(f"Using proxy: {proxy_url}")
+    else:
+        print("No proxy configured")
+    
+    # Configure timeout (30 seconds for connect, 60 seconds for read)
 
-    if isinstance(response, list) and len(response) > 0:
-        first_result = response[0]
+    print(f"Sending request to {url} with params {params}, headers {headers}, and body {body}")
+    try:
+        request = requests.post(url, params=params, headers=headers, json=body, proxies=proxies, timeout=(30, 60))
+        request.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print(f"Request failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    response_data = request.json()
+
+    if isinstance(response_data, list) and len(response_data) > 0:
+        first_result = response_data[0]
         return TranslationResponse(
             detected_language=DetectedLanguage(
                 language=first_result['detectedLanguage']['language'],
@@ -96,5 +107,5 @@ async def translate(
         )
     else:
         # Handle error or empty response
-        print(f"Unexpected response format: {response}")
+        print(f"Unexpected response format: {response_data}")
         raise HTTPException(status_code=400, detail="Translation failed or unexpected response")
