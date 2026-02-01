@@ -19,6 +19,7 @@ from routers import (
     channels,
     delivery_services,
     topics,
+    translator,
 )
 import os
 from fastapi_pagination import add_pagination
@@ -83,6 +84,7 @@ app.include_router(users.router)
 app.include_router(channels.router)
 app.include_router(delivery_services.router)
 app.include_router(topics.router)
+app.include_router(translator.router)
 
 
 if __name__ == "__main__":

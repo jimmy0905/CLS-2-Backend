@@ -19,6 +19,11 @@ from models.Channel import Channel
 from models.DeliveryService import DeliveryService
 from sqlalchemy import or_, func, case
 from utils.conditionFilter import FilterRequest, get_filter_params
+from datetime import datetime
+from io import BytesIO
+import requests
+from openpyxl import Workbook
+import os
 
 router = APIRouter(
     prefix="/strategy",
@@ -451,3 +456,168 @@ async def get_top_k_performance_delivery_services_by_ids(
     )
     strategy, _ = await generate_delivery_service_strategy(surveys)
     return strategy
+
+@router.get("/get_strategy_v2")
+async def get_strategy_v2(
+    db: Session = Depends(get_db),
+    filter_params: FilterRequest = Depends(get_filter_params),
+) -> dict:
+    filter_dict = filter_params.model_dump()
+    filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
+    def calculate_sentiment(survey):
+        """Calculate sentiment based on topics using the same logic as frontend."""
+        # Get topics with sentiment from the survey
+        topics = [
+            {"topic": survey_topic.topic.topic, "sentiment": survey_topic.sentiment}
+            for survey_topic in survey.survey_topics
+        ]
+        
+        # Safety check: ensure topics is an array
+        if not topics or len(topics) == 0:
+            return {"sentiment": "neutral", "score": 0}
+        
+        # if there are only neutral, return "neutral"
+        if all(topic["sentiment"] == "neutral" for topic in topics):
+            return {"sentiment": "neutral", "score": 0}
+        
+        # if there are only positive or neutral, return "positive"
+        if all(topic["sentiment"] in ["positive", "neutral"] for topic in topics):
+            return {"sentiment": "positive", "score": 1}
+        
+        # if there are only negative or neutral, return "negative"
+        if all(topic["sentiment"] in ["negative", "neutral"] for topic in topics):
+            return {"sentiment": "negative", "score": -1}
+        
+        # if there are both positive and negative, return "mix"
+        positive_count = sum(1 for topic in topics if topic["sentiment"] == "positive")
+        negative_count = sum(1 for topic in topics if topic["sentiment"] == "negative")
+        neutral_count = sum(1 for topic in topics if topic["sentiment"] == "neutral")
+        
+        if positive_count > 0 and negative_count > 0:
+            total_count = positive_count + negative_count + neutral_count
+            score = round((positive_count - negative_count) / total_count, 2)
+            return {"sentiment": "mix", "score": score}
+        
+        return {"sentiment": "neutral", "score": 0}
+
+    def format_excel_value(value):
+        if value is None:
+            return ""
+        elif isinstance(value, list):
+            return "; ".join(str(item) for item in value)
+        elif isinstance(value, datetime):
+            return value.isoformat()
+        else:
+            return str(value)
+
+    def generate_excel_file():
+        # Create a workbook and worksheet
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Surveys"
+
+        # Define headers
+        headers = [
+            "id",
+            "store_id",
+            "store_name",
+            "hierarchy_level_1_name",
+            "hierarchy_level_2_name",
+            "hierarchy_level_3_name",
+            "hierarchy_level_4_name",
+            "hierarchy_level_5_name",
+            "departments",
+            "topics",
+            "keywords",
+            "comment",
+            "channel",
+            "delivery_service",
+            "sentiment",
+            "sentiment_score",
+            "reported_at",
+            "created_at",
+            "updated_at",
+        ]
+
+        # Write headers to first row
+        for col_idx, header in enumerate(headers, start=1):
+            ws.cell(row=1, column=col_idx, value=header)
+
+        # Stream surveys in batches using offset
+        batch_size = 100
+        offset = 0
+        row_num = 2  # Start from row 2 (row 1 is headers)
+
+        while True:
+            # Get surveys
+            surveys = (
+                filtered_query.order_by(Survey.reported_at.asc())
+                .offset(offset)
+                .limit(batch_size)
+                .all()
+            )
+            if not surveys:
+                break
+            for survey in surveys:
+                csv_value = survey.to_csv()
+                # Calculate sentiment based on topics
+                sentiment_result = calculate_sentiment(survey)
+                csv_value["sentiment"] = sentiment_result["sentiment"]
+                csv_value["sentiment_score"] = sentiment_result["score"]
+                
+                # Write row values
+                for col_idx, header in enumerate(headers, start=1):
+                    value = format_excel_value(csv_value[header])
+                    ws.cell(row=row_num, column=col_idx, value=value)
+                row_num += 1
+            offset += batch_size
+
+        # Save workbook to BytesIO buffer
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        return buffer
+    excel_buffer = generate_excel_file()
+    # Await the whole excel file is generated
+    url = os.getenv("ANALYZE_FEEDBACK_API_URL")
+    if not url:
+        raise HTTPException(status_code=500, detail="ANALYZE_FEEDBACK_API_URL is not set")
+    
+    url = url.rstrip('/') + "/analyze-feedback"
+    print("url", url)
+    payload = {'analysis_mode': 'STAT',
+    'sampling_method': 'DIRECT',
+    'top_n_stores': '10',
+    'bottom_n_stores': '10',
+    'top_n_topics': '10',
+    'quote_sample_size': '5'}
+    files=[
+    ('file',('surveys.xlsx',excel_buffer,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
+    ]
+    
+    # Define headers to look like a standard request and bypass potential firewall blocks
+    request_headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+
+    try:
+        # Added timeout and session with trust_env=False to bypass system proxies
+        session = requests.Session()
+        session.trust_env = False  # This prevents requests from using system-level proxies
+        response = session.post(url, data=payload, files=files, headers=request_headers, timeout=300)
+    except requests.exceptions.Timeout:
+        raise HTTPException(status_code=504, detail="Analysis API request timed out")
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=500, detail=f"Failed to connect to Analysis API: {str(e)}")
+    
+    if response.status_code != 200:
+        print(f"Error from analysis API: {response.status_code}")
+        print(f"Response content: {response.text}")
+        raise HTTPException(status_code=response.status_code, detail=f"Analysis API error: {response.text[:500]}")
+
+    try:
+        return response.json()
+    except Exception as e:
+        print(f"Failed to parse JSON response: {e}")
+        print(f"Raw response: {response.text}")
+        raise HTTPException(status_code=500, detail=f"Analysis API returned invalid JSON: {response.text[:200]}")
