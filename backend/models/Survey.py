@@ -261,10 +261,9 @@ class Survey(Base):
         }
 
 
-@event.listens_for(Survey, "after_insert")
 @event.listens_for(Survey, "before_update")
 def update_topic_sentiment(mapper, connection, target):
-    """Triggered when the survey itself is created or updated."""
+    """Triggered when the survey itself is updated (not on insert)."""
     _recalculate_survey_sentiment(connection, target.id, target)
 
 
