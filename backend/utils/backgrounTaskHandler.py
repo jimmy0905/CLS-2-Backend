@@ -198,8 +198,8 @@ def process_single_row(
             channel_name = row["channel"]
 
         delivery_service_name = None
-        if "delivery_mode_details" in row and pd.notna(row["delivery_mode_details"]):
-            delivery_service_name = row["delivery_mode_details"]
+        if "delivery_mode" in row and pd.notna(row["delivery_mode"]):
+            delivery_service_name = row["delivery_mode"]
 
         # Check if the store_id (store_key) is valid
         # Check if the store_id is empty
