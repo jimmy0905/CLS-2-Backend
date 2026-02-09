@@ -26,6 +26,9 @@ class Survey(Base):
     __tablename__ = "surveys"
 
     id = Column(Integer, primary_key=True)
+    # Source ID
+    survey_id=Column(Text, nullable=False)
+    respondent_id=Column(Text, nullable=False)
     # Foreign keys
     store_id = Column(Integer, ForeignKey("stores.id"), nullable=False)
     channel_id = Column(Integer, ForeignKey("channels.id"), nullable=True)

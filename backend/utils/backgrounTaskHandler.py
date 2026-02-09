@@ -177,6 +177,8 @@ def process_single_row(
         store_id = row["store_key"] if pd.notna(row["store_key"]) else None
         comment = row["answer"] if pd.notna(row["answer"]) else None
         reported_at = row["survey_order_date"] if pd.notna(row["survey_order_date"]) else None
+        survey_id = row["survey_id"] if pd.notna(row["survey_id"]) else None
+        respondent_id = row["respondent_id"] if pd.notna(row["respondent_id"]) else None
         if is_comment_valid(comment) is False:
             logger.warning(f"Row {index + 1}: Comment is invalid, skipping row")
             # Create an error for the upload task
@@ -504,6 +506,8 @@ def process_single_row(
 
         # Create a new survey
         survey = Survey(
+            survey_id=survey_id,
+            respondent_id=respondent_id,
             store_id=store_id,
             comment=comment,
             reported_at=reported_at,
@@ -645,7 +649,8 @@ async def process_upload_task(file_path, db, upload_task_id):
             on_bad_lines="warn",  # Warn about bad lines but continue
             engine="python",  # Use Python engine for more flexible parsing
             quotechar='"',
-            escapechar='\\'
+            escapechar='\\',
+            na_values=['']
         )
         logger.info(f"Successfully parsed CSV file with {len(df)} rows for processing")
     except Exception as e:
