@@ -177,8 +177,8 @@ def process_single_row(
         store_id = row["store_key"] if pd.notna(row["store_key"]) else None
         comment = row["answer"] if pd.notna(row["answer"]) else None
         reported_at = row["survey_order_date"] if pd.notna(row["survey_order_date"]) else None
-        survey_id = row["survey_id"] if pd.notna(row["survey_id"]) else None
-        respondent_id = row["respondent_id"] if pd.notna(row["respondent_id"]) else None
+        survey_id = str(int(row["survey_id"])) if pd.notna(row["survey_id"]) else None
+        respondent_id = str(int(row["respondent_id"])) if pd.notna(row["respondent_id"]) else None
         if is_comment_valid(comment) is False:
             logger.warning(f"Row {index + 1}: Comment is invalid, skipping row")
             # Create an error for the upload task
@@ -501,7 +501,7 @@ def process_single_row(
             return result
         total_topics = total.topics
         total_departments = total.departments
-        total_sentiment = total.overall_sentiment
+        total_sentiment = total.overall_sentiment.upper() if total.overall_sentiment else None
         total_keywords = total.keywords
 
         # Create a new survey
@@ -513,7 +513,7 @@ def process_single_row(
             reported_at=reported_at,
             sentiment=total_sentiment,
             channel_id=channel_id,
-            delivery_service_id=delivery_service_id,
+            delivery_service_id=delivery_service_id
         )
         db.add(survey)
         db.commit()
@@ -545,7 +545,7 @@ def process_single_row(
             survey_keyword = SurveyKeywords(
                 survey_id=survey.id,
                 keyword_id=keyword.id,
-                sentiment=keyword_obj.sentiment,
+                sentiment=keyword_obj.sentiment.upper() if keyword_obj.sentiment else None,
             )
             db.add(survey_keyword)
 
@@ -564,7 +564,9 @@ def process_single_row(
 
             # Create survey-topic relationship
             survey_topic = SurveyTopics(
-                survey_id=survey.id, topic_id=topic.id, sentiment=topic_obj.sentiment
+                survey_id=survey.id,
+                topic_id=topic.id,
+                sentiment=topic_obj.sentiment.upper() if topic_obj.sentiment else None,
             )
             db.add(survey_topic)
 
@@ -593,7 +595,7 @@ def process_single_row(
             survey_department = SurveyDepartments(
                 survey_id=survey.id,
                 department_id=department.id,
-                sentiment=department_obj.sentiment,
+                sentiment=department_obj.sentiment.upper() if department_obj.sentiment else None,
             )
             db.add(survey_department)
 

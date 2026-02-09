@@ -22,3 +22,19 @@ class SurveyTopics(Base):
             "topic": self.topic.to_dict(),
             "sentiment": self.sentiment,
         }
+
+
+from sqlalchemy import event
+
+
+@event.listens_for(SurveyTopics, "after_insert")
+@event.listens_for(SurveyTopics, "after_update")
+@event.listens_for(SurveyTopics, "after_delete")
+def update_survey_sentiment_on_topic_change(mapper, connection, target):
+    """Triggered when a survey topic is created, updated, or deleted."""
+    from models.Survey import _recalculate_survey_sentiment
+    
+    # Access the survey through the relationship
+    survey = target.survey
+    if survey:
+        _recalculate_survey_sentiment(connection, target.survey_id, survey)

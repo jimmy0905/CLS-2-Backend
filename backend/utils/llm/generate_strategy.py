@@ -89,6 +89,7 @@ Chain‑of‑thought guidance:
         ],
         temperature=GENERATE_STRATEGY_TEMPERATURE,
         max_tokens=GENERATE_STRATEGY_MAX_TOKENS,
+        response_format={"type": "json_object"},
     )
     response_content = response.choices[0].message.content
     if response_content is None:
@@ -225,6 +226,7 @@ Chain‑of‑thought guidance:
         ],
         temperature=GENERATE_STRATEGY_TEMPERATURE,
         max_tokens=GENERATE_STRATEGY_MAX_TOKENS,
+        response_format={"type": "json_object"},
     )
     response_content = response.choices[0].message.content
     if response_content is None:
@@ -338,6 +340,7 @@ Guidance:
         ],
         temperature=GENERATE_STRATEGY_TEMPERATURE,
         max_tokens=GENERATE_STRATEGY_MAX_TOKENS,
+        response_format={"type": "json_object"},
     )
     response_content = response.choices[0].message.content
     if response_content is None:
@@ -452,6 +455,7 @@ Guidance:
         ],
         temperature=GENERATE_STRATEGY_TEMPERATURE,
         max_tokens=GENERATE_STRATEGY_MAX_TOKENS,
+        response_format={"type": "json_object"},
     )
     response_content = response.choices[0].message.content
     if response_content is None:
