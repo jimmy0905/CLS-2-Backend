@@ -1,13 +1,7 @@
 from utils.database import Base
 from sqlalchemy import Column, Integer, ForeignKey, Enum
 from sqlalchemy.orm import relationship
-import enum
-
-
-class Sentiment(str, enum.Enum):
-    POSITIVE = "positive"
-    NEGATIVE = "negative"
-    NEUTRAL = "neutral"
+from models.enum.Sentiment import Sentiment
 
 
 class SurveyKeywords(Base):
