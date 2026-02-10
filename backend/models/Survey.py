@@ -13,6 +13,7 @@ from sqlalchemy import (
     case,
     select,
     text,
+    JSON,
 )
 import enum
 import datetime
@@ -73,6 +74,7 @@ class Survey(Base):
     )
     channel = relationship("Channel", back_populates="surveys")
     delivery_service = relationship("DeliveryService", back_populates="surveys")
+    raw_row_data = Column(JSON, nullable=True)
     # Indexes for filtered columns
     __table_args__ = (
         Index("idx_survey_reported_at", reported_at),
