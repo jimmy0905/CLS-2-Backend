@@ -583,11 +583,6 @@ async def get_strategy_v2(
             )
             for survey in surveys:
                 csv_value = survey.to_csv()
-                # Calculate sentiment based on topics
-                sentiment_result = calculate_sentiment(survey)
-                csv_value["sentiment"] = sentiment_result["sentiment"]
-                csv_value["sentiment_score"] = sentiment_result["score"]
-                
                 # Write row values
                 for col_idx, header in enumerate(headers, start=1):
                     value = format_excel_value(csv_value[header])

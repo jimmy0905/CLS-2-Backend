@@ -78,8 +78,10 @@ Chain‑of‑thought guidance:
 * Group similar actions under thematic subheadings in the Strategy section.
 * For content inside the each Recommendation, please show in bullet points.
 """
+    # Convert Survey objects to dictionaries (excludes raw_row_data)
+    survey_dicts = [survey.to_dict() for survey in data]
     user_prompt = f"""
-    {json.dumps(data, indent=4, ensure_ascii=False, default=str)}
+    {json.dumps(survey_dicts, indent=4, ensure_ascii=False, default=str)}
 """
     response = client.chat.completions.create(
         model=GENERATE_STRATEGY_MODEL,
@@ -89,7 +91,6 @@ Chain‑of‑thought guidance:
         ],
         temperature=GENERATE_STRATEGY_TEMPERATURE,
         max_tokens=GENERATE_STRATEGY_MAX_TOKENS,
-        response_format={"type": "json_object"},
     )
     response_content = response.choices[0].message.content
     if response_content is None:
@@ -215,8 +216,10 @@ Chain‑of‑thought guidance:
 * Group similar actions under thematic subheadings in the Strategy section.
 * For content inside the each Recommendation, please show in bullet points.
 """
+    # Convert Survey objects to dictionaries (excludes raw_row_data)
+    survey_dicts = [survey.to_dict() for survey in data]
     user_prompt = f"""
-    {json.dumps(data, indent=4, ensure_ascii=False, default=str)}
+    {json.dumps(survey_dicts, indent=4, ensure_ascii=False, default=str)}
 """
     response = client.chat.completions.create(
         model=GENERATE_STRATEGY_MODEL,
@@ -226,7 +229,6 @@ Chain‑of‑thought guidance:
         ],
         temperature=GENERATE_STRATEGY_TEMPERATURE,
         max_tokens=GENERATE_STRATEGY_MAX_TOKENS,
-        response_format={"type": "json_object"},
     )
     response_content = response.choices[0].message.content
     if response_content is None:
@@ -329,8 +331,10 @@ Guidance:
 - Observations must quote actual customer sentences.
 - Delivery Mode (delivery_service) can be mentioned only as context inside observations if directly present in the quoted comment, but do NOT use it to group results.
 """
+    # Convert Survey objects to dictionaries (excludes raw_row_data)
+    survey_dicts = [survey.to_dict() for survey in data]
     user_prompt = f"""
-    {json.dumps(data, indent=4, ensure_ascii=False, default=str)}
+    {json.dumps(survey_dicts, indent=4, ensure_ascii=False, default=str)}
 """
     response = client.chat.completions.create(
         model=GENERATE_STRATEGY_MODEL,
@@ -340,7 +344,6 @@ Guidance:
         ],
         temperature=GENERATE_STRATEGY_TEMPERATURE,
         max_tokens=GENERATE_STRATEGY_MAX_TOKENS,
-        response_format={"type": "json_object"},
     )
     response_content = response.choices[0].message.content
     if response_content is None:
@@ -444,8 +447,10 @@ Guidance:
 - Ordering Channel (channel) can be mentioned only as context inside observations if directly present in the quoted comment, but do NOT use it to group results.
 - Do not recommend actions that violate pharmacy regulations; compliance-related requests should be routed to a compliance review workflow.
 """
+    # Convert Survey objects to dictionaries (excludes raw_row_data)
+    survey_dicts = [survey.to_dict() for survey in data]
     user_prompt = f"""
-    {json.dumps(data, indent=4, ensure_ascii=False, default=str)}
+    {json.dumps(survey_dicts, indent=4, ensure_ascii=False, default=str)}
 """
     response = client.chat.completions.create(
         model=GENERATE_STRATEGY_MODEL,
@@ -455,7 +460,6 @@ Guidance:
         ],
         temperature=GENERATE_STRATEGY_TEMPERATURE,
         max_tokens=GENERATE_STRATEGY_MAX_TOKENS,
-        response_format={"type": "json_object"},
     )
     response_content = response.choices[0].message.content
     if response_content is None:
