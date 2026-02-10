@@ -1,6 +1,7 @@
 from models.UploadTask import UploadTask
 from models.Survey import Survey
 import pandas as pd
+import json
 from models.Store import Store
 from models.UploadTaskError import UploadTaskError
 from models.Department import Department
@@ -170,6 +171,15 @@ def process_single_row(
         db = get_thread_db_session()
         index = row_data["index"]
         row = row_data["row"]
+
+        # Serialize row data
+        try:
+            row_dict = row.to_dict()
+            json_row_data = json.dumps({"index": index, "row": row_dict}, default=str)
+        except Exception as e:
+            logger.warning(f"Row {index + 1}: Failed to serialize row data: {e}")
+            json_row_data = json.dumps({"index": index, "error": str(e)})
+
         have_to_retry = False
         result = {"index": index, "success": False, "error": None}
 
@@ -397,7 +407,7 @@ def process_single_row(
                         input_comment=comment,
                         input_reported_at=reported_at,
                         error_message="Cannot classified in AI Analysis after retrying",
-                        raw_row_data=row_data,
+                        raw_row_data=json_row_data,
                     )
                     db.add(error)
                     db.commit()
@@ -412,7 +422,7 @@ def process_single_row(
                         input_comment=comment,
                         input_reported_at=reported_at,
                         error_message="Topics are empty after retrying",
-                        raw_row_data=row_data,
+                        raw_row_data=json_row_data,
                     )
                     db.add(error)
                     db.commit()
@@ -427,7 +437,7 @@ def process_single_row(
                         input_comment=comment,
                         input_reported_at=reported_at,
                         error_message="Departments are empty after retrying",
-                        raw_row_data=row_data,
+                        raw_row_data=json_row_data,
                     )
                     db.add(error)
                     db.commit()
@@ -442,7 +452,7 @@ def process_single_row(
                         input_comment=comment,
                         input_reported_at=reported_at,
                         error_message="Keywords are empty after retrying",
-                        raw_row_data=row_data,
+                        raw_row_data=json_row_data,
                     )
                     db.add(error)
                     db.commit()
@@ -460,7 +470,7 @@ def process_single_row(
                             input_comment=comment,
                             input_reported_at=reported_at,
                             error_message=f"Topic {topic.text} is not valid after retrying",
-                            raw_row_data=row_data,
+                            raw_row_data=json_row_data,
                         )
                         db.add(error)
                         db.commit()
@@ -480,7 +490,7 @@ def process_single_row(
                             input_comment=comment,
                             input_reported_at=reported_at,
                             error_message=f"Department {department.text} is not valid after retrying",
-                            raw_row_data=row_data,
+                            raw_row_data=json_row_data,
                         )
                         db.add(error)
                         db.commit()
@@ -500,7 +510,7 @@ def process_single_row(
                 input_comment=comment,
                 input_reported_at=reported_at,
                 error_message=f"Error conducting AI Analysis for topics: {e}",
-                raw_row_data=row_data,
+                raw_row_data=json_row_data,
             )
             db.add(error)
             db.commit()
@@ -521,7 +531,7 @@ def process_single_row(
             sentiment=total_sentiment,
             channel_id=channel_id,
             delivery_service_id=delivery_service_id,
-            raw_row_data=row_data,
+            raw_row_data=json_row_data,
         )
         db.add(survey)
         db.commit()
