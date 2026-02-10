@@ -397,6 +397,7 @@ def process_single_row(
                         input_comment=comment,
                         input_reported_at=reported_at,
                         error_message="Cannot classified in AI Analysis after retrying",
+                        raw_row_data=row_data,
                     )
                     db.add(error)
                     db.commit()
@@ -411,6 +412,7 @@ def process_single_row(
                         input_comment=comment,
                         input_reported_at=reported_at,
                         error_message="Topics are empty after retrying",
+                        raw_row_data=row_data,
                     )
                     db.add(error)
                     db.commit()
@@ -425,6 +427,7 @@ def process_single_row(
                         input_comment=comment,
                         input_reported_at=reported_at,
                         error_message="Departments are empty after retrying",
+                        raw_row_data=row_data,
                     )
                     db.add(error)
                     db.commit()
@@ -439,6 +442,7 @@ def process_single_row(
                         input_comment=comment,
                         input_reported_at=reported_at,
                         error_message="Keywords are empty after retrying",
+                        raw_row_data=row_data,
                     )
                     db.add(error)
                     db.commit()
@@ -456,6 +460,7 @@ def process_single_row(
                             input_comment=comment,
                             input_reported_at=reported_at,
                             error_message=f"Topic {topic.text} is not valid after retrying",
+                            raw_row_data=row_data,
                         )
                         db.add(error)
                         db.commit()
@@ -475,6 +480,7 @@ def process_single_row(
                             input_comment=comment,
                             input_reported_at=reported_at,
                             error_message=f"Department {department.text} is not valid after retrying",
+                            raw_row_data=row_data,
                         )
                         db.add(error)
                         db.commit()
@@ -494,6 +500,7 @@ def process_single_row(
                 input_comment=comment,
                 input_reported_at=reported_at,
                 error_message=f"Error conducting AI Analysis for topics: {e}",
+                raw_row_data=row_data,
             )
             db.add(error)
             db.commit()
@@ -513,7 +520,8 @@ def process_single_row(
             reported_at=reported_at,
             sentiment=total_sentiment,
             channel_id=channel_id,
-            delivery_service_id=delivery_service_id
+            delivery_service_id=delivery_service_id,
+            raw_row_data=row_data,
         )
         db.add(survey)
         db.commit()
