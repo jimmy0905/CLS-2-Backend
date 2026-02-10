@@ -19,7 +19,7 @@ from models.Channel import Channel
 from models.DeliveryService import DeliveryService
 from sqlalchemy import or_, func, case
 from utils.conditionFilter import FilterRequest, get_filter_params
-from models.enum.Sentiment import TopicSentiment
+from models.enum.Sentiment import TopicSentiment, Sentiment
 from datetime import datetime
 from io import BytesIO
 import requests
@@ -90,6 +90,7 @@ async def get_top_k_performance_stores(
             func.count(
                 case((Survey.topic_sentiment == TopicSentiment.MIXED, Survey.id))
             ).label("mixed_count"),
+            func.avg(Survey.topic_sentiment_score).label("average_sentiment_score"),
         )
         .group_by(Store.id, Store.name)
         .all()
@@ -116,12 +117,7 @@ async def get_top_k_performance_stores(
     store_with_sentiment = []
     for store in sentiment_results:
         store_obj = store_details_map[store.store_id]
-        score = (store.positive_count - store.negative_count + store.mixed_count) / (
-            store.positive_count
-            + store.negative_count
-            + store.neutral_count
-            + store.mixed_count
-        )
+        average_sentiment_score = store.average_sentiment_score if store.average_sentiment_score is not None else 0
         store_with_sentiment.append(
             TopKPerformanceStoresResponse(
                 store={
@@ -173,7 +169,7 @@ async def get_top_k_performance_stores(
                         else None
                     ),
                 },
-                score=score,
+                score=average_sentiment_score,
                 positive_count=store.positive_count,
                 negative_count=store.negative_count,
                 neutral_count=store.neutral_count,
@@ -199,7 +195,7 @@ async def get_strategy_for_store_by_ids(
 ) -> str:
     filter_dict = {
         "store_ids": request.store_ids,
-        "topic_sentiments": ["POSITIVE"],
+        "topic_sentiments": [TopicSentiment.POSITIVE],
     }
     filtered_query, _, _ = build_optimized_query(db, filter_dict)
     surveys = (
@@ -274,20 +270,14 @@ async def get_top_k_performance_hierarchies(
             func.count(
                 case((Survey.topic_sentiment == TopicSentiment.MIXED, Survey.id))
             ).label("mixed_count"),
+            func.avg(Survey.topic_sentiment_score).label("average_sentiment_score"),
         )
         .group_by(hierarchy_alias.id, hierarchy_alias.name, hierarchy_alias.level)
         .all()
     )
     hierarchy_with_sentiment = []
     for hierarchy in sentiment_results:
-        score = (
-            hierarchy.positive_count - hierarchy.negative_count + hierarchy.mixed_count
-        ) / (
-            hierarchy.positive_count
-            + hierarchy.negative_count
-            + hierarchy.neutral_count
-            + hierarchy.mixed_count
-        )
+        average_sentiment_score = hierarchy.average_sentiment_score if hierarchy.average_sentiment_score is not None else 0
         hierarchy_with_sentiment.append(
             TopKPerformanceHierarchyResponse(
                 hierarchy={
@@ -295,7 +285,7 @@ async def get_top_k_performance_hierarchies(
                     "name": hierarchy.hierarchy_name,
                     "level": hierarchy.hierarchy_level,
                 },
-                score=score,
+                score=average_sentiment_score,
                 positive_count=hierarchy.positive_count,
                 negative_count=hierarchy.negative_count,
                 neutral_count=hierarchy.neutral_count,
@@ -322,7 +312,7 @@ async def get_strategy_for_hierarchy_by_ids(
 ) -> str:
     filter_dict = {
         f"hierarchy_level_{request.level}_ids": request.hierarchy_ids,
-        "topic_sentiments": ["POSITIVE"],
+        "topic_sentiments": [TopicSentiment.POSITIVE],
     }
     filtered_query, _, _ = build_optimized_query(db, filter_dict)
     surveys = (
@@ -341,6 +331,7 @@ class TopKPerformanceChannelsResponse(BaseModel):
     positive_count: int
     negative_count: int
     neutral_count: int
+    mixed_count: int
 
 
 @router.get("/get_top_k_performance_channels")
@@ -361,34 +352,37 @@ async def get_top_k_performance_channels(
         sentiment_query.with_entities(
             Channel.id.label("channel_id"),
             Channel.name.label("channel_name"),
-            func.count(case((Survey.sentiment == "neutral", Survey.id))).label(
+            func.count(case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id))).label(
                 "neutral_count"
             ),
-            func.count(case((Survey.sentiment == "positive", Survey.id))).label(
+            func.count(case((Survey.topic_sentiment == TopicSentiment.POSITIVE, Survey.id))).label(
                 "positive_count"
             ),
-            func.count(case((Survey.sentiment == "negative", Survey.id))).label(
+            func.count(case((Survey.topic_sentiment == TopicSentiment.NEGATIVE, Survey.id))).label(
                 "negative_count"
             ),
+            func.count(case((Survey.topic_sentiment == TopicSentiment.MIXED, Survey.id))).label(
+                "mixed_count"
+            ),
+            func.avg(Survey.topic_sentiment_score).label("average_sentiment_score"),
         )
         .group_by(Channel.id, Channel.name)
         .all()
     )
     channel_with_sentiment: List[TopKPerformanceChannelsResponse] = []
     for channel in sentiment_results:
-        score = (channel.positive_count - channel.negative_count) / (
-            channel.positive_count + channel.negative_count + channel.neutral_count
-        )
+        average_sentiment_score = channel.average_sentiment_score if channel.average_sentiment_score is not None else 0
         channel_with_sentiment.append(
             TopKPerformanceChannelsResponse(
                 channel={
                     "id": channel.channel_id,
                     "name": channel.channel_name,
                 },
-                score=score,
+                score=average_sentiment_score,
                 positive_count=channel.positive_count,
                 negative_count=channel.negative_count,
                 neutral_count=channel.neutral_count,
+                mixed_count=channel.mixed_count,
             )
         )
     channel_with_sentiment.sort(key=lambda x: x.score, reverse=True)
@@ -408,7 +402,7 @@ async def get_top_k_performance_channels_by_ids(
 ) -> str:
     filter_dict = {
         "channel_ids": request.channel_ids,
-        "sentiments": ["positive"],
+        "topic_sentiments": [TopicSentiment.POSITIVE],
     }
     filtered_query, _, _ = build_optimized_query(db, filter_dict)
     surveys = (
@@ -427,6 +421,7 @@ class TopKPerformanceDeliveryServicesResponse(BaseModel):
     positive_count: int
     negative_count: int
     neutral_count: int
+    mixed_count: int
 
 @router.get("/get_top_k_performance_delivery_services")
 async def get_top_k_performance_delivery_services(
@@ -446,34 +441,37 @@ async def get_top_k_performance_delivery_services(
         sentiment_query.with_entities(
             DeliveryService.id.label("delivery_service_id"),
             DeliveryService.name.label("delivery_service_name"),
-            func.count(case((Survey.sentiment == "neutral", Survey.id))).label(
+            func.count(case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id))).label(
                 "neutral_count"
             ),
-            func.count(case((Survey.sentiment == "positive", Survey.id))).label(
+            func.count(case((Survey.topic_sentiment == TopicSentiment.POSITIVE, Survey.id))).label(
                 "positive_count"
             ),
-            func.count(case((Survey.sentiment == "negative", Survey.id))).label(
+            func.count(case((Survey.topic_sentiment == TopicSentiment.NEGATIVE, Survey.id))).label(
                 "negative_count"
             ),
+            func.count(case((Survey.topic_sentiment == TopicSentiment.MIXED, Survey.id))).label(
+                "mixed_count"
+            ),
+            func.avg(Survey.topic_sentiment_score).label("average_sentiment_score"),
         )
         .group_by(DeliveryService.id, DeliveryService.name)
         .all()
     )
     delivery_service_with_sentiment: List[TopKPerformanceDeliveryServicesResponse] = []
     for delivery_service in sentiment_results:
-        score = (delivery_service.positive_count - delivery_service.negative_count) / (
-            delivery_service.positive_count + delivery_service.negative_count + delivery_service.neutral_count
-        )
+        average_sentiment_score = delivery_service.average_sentiment_score if delivery_service.average_sentiment_score is not None else 0
         delivery_service_with_sentiment.append(
             TopKPerformanceDeliveryServicesResponse(
                 delivery_service={
                     "id": delivery_service.delivery_service_id,
                     "name": delivery_service.delivery_service_name,
                 },
-                score=score,
+                score=average_sentiment_score,
                 positive_count=delivery_service.positive_count,
                 negative_count=delivery_service.negative_count,
                 neutral_count=delivery_service.neutral_count,
+                mixed_count=delivery_service.mixed_count,
             )
         )
     delivery_service_with_sentiment.sort(key=lambda x: x.score, reverse=True)
@@ -493,7 +491,7 @@ async def get_top_k_performance_delivery_services_by_ids(
 ) -> str:
     filter_dict = {
         "delivery_service_ids": request.delivery_service_ids,
-        "sentiments": ["positive"],
+        "topic_sentiments": [TopicSentiment.POSITIVE],
     }
     filtered_query, _, _ = build_optimized_query(db, filter_dict)
     surveys = (
@@ -513,42 +511,6 @@ async def get_strategy_v2(
     id_query = build_survey_query(db.query(Survey.id).distinct(), filter_dict)
     survey_ids = [row[0] for row in id_query.all()]
     
-    def calculate_sentiment(survey):
-        """Calculate sentiment based on topics using the same logic as frontend."""
-        # Get topics with sentiment from the survey
-        topics = [
-            {"topic": survey_topic.topic.topic, "sentiment": survey_topic.sentiment}
-            for survey_topic in survey.survey_topics
-        ]
-        
-        # Safety check: ensure topics is an array
-        if not topics or len(topics) == 0:
-            return {"sentiment": "neutral", "score": 0}
-        
-        # if there are only neutral, return "neutral"
-        if all(topic["sentiment"] == "neutral" for topic in topics):
-            return {"sentiment": "neutral", "score": 0}
-        
-        # if there are only positive or neutral, return "positive"
-        if all(topic["sentiment"] in ["positive", "neutral"] for topic in topics):
-            return {"sentiment": "positive", "score": 1}
-        
-        # if there are only negative or neutral, return "negative"
-        if all(topic["sentiment"] in ["negative", "neutral"] for topic in topics):
-            return {"sentiment": "negative", "score": -1}
-        
-        # if there are both positive and negative, return "mix"
-        positive_count = sum(1 for topic in topics if topic["sentiment"] == "positive")
-        negative_count = sum(1 for topic in topics if topic["sentiment"] == "negative")
-        neutral_count = sum(1 for topic in topics if topic["sentiment"] == "neutral")
-        
-        if positive_count > 0 and negative_count > 0:
-            total_count = positive_count + negative_count + neutral_count
-            score = round((positive_count - negative_count) / total_count, 2)
-            return {"sentiment": "mix", "score": score}
-        
-        return {"sentiment": "neutral", "score": 0}
-
     def format_excel_value(value):
         if value is None:
             return ""
@@ -568,6 +530,8 @@ async def get_strategy_v2(
         # Define headers
         headers = [
             "id",
+            "survey_id",
+            "respondent_id",
             "store_id",
             "store_name",
             "hierarchy_level_1_name",
