@@ -267,14 +267,6 @@ def build_survey_query(query: Query, filter_dict) -> Query:
         query = query.join(DeliveryService, Survey.delivery_service_id == DeliveryService.id)
         joins_added.add("delivery_service")
 
-    # Optimize loading of relationships
-    query = query.options(
-        joinedload(Survey.survey_topics).joinedload(SurveyTopics.topic),
-        joinedload(Survey.survey_keywords).joinedload(SurveyKeywords.keyword),
-        joinedload(Survey.store),
-        joinedload(Survey.survey_departments).joinedload(SurveyDepartments.department),
-    )
-
     # Apply the filter conditions
     filter_conditions = merge_filter_conditions(
         survey_conditions,

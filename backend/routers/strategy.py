@@ -508,7 +508,11 @@ async def get_strategy_v2(
     filter_params: FilterRequest = Depends(get_filter_params),
 ) -> dict:
     filter_dict = filter_params.model_dump()
-    filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
+    
+    # Get distinct survey IDs that match the filters
+    id_query = build_survey_query(db.query(Survey.id).distinct(), filter_dict)
+    survey_ids = [row[0] for row in id_query.all()]
+    
     def calculate_sentiment(survey):
         """Calculate sentiment based on topics using the same logic as frontend."""
         # Get topics with sentiment from the survey
@@ -594,15 +598,25 @@ async def get_strategy_v2(
         row_num = 2  # Start from row 2 (row 1 is headers)
 
         while True:
-            # Get surveys
+            # Get surveys for the current batch of IDs
+            batch_ids = survey_ids[offset:offset + batch_size]
+            if not batch_ids:
+                break
+                
             surveys = (
-                filtered_query.order_by(Survey.reported_at.asc())
-                .offset(offset)
-                .limit(batch_size)
+                db.query(Survey)
+                .filter(Survey.id.in_(batch_ids))
+                .options(
+                    joinedload(Survey.store),
+                    joinedload(Survey.survey_topics),
+                    joinedload(Survey.survey_keywords),
+                    joinedload(Survey.survey_departments),
+                    joinedload(Survey.channel),
+                    joinedload(Survey.delivery_service)
+                )
+                .order_by(Survey.reported_at.asc())
                 .all()
             )
-            if not surveys:
-                break
             for survey in surveys:
                 csv_value = survey.to_csv()
                 # Calculate sentiment based on topics

@@ -206,6 +206,8 @@ class Survey(Base):
     def to_csv(self):
         return {
             "id": self.id,
+            "survey_id": self.survey_id,
+            "respondent_id": self.respondent_id,
             "store_id": self.store.id,
             "store_name": self.store.name,
             "hierarchy_level_1_name": (

@@ -111,17 +111,34 @@ async def get_surveys(
     db: Session = Depends(get_db),
 ) -> Page[SurveyResponse]:
     filter_dict = filter_params.model_dump()
-    filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
-
-    # Apply ordering
-    ordered_query = filtered_query.order_by(Survey.reported_at.desc())
-
+    
+    # First get distinct survey IDs that match the filters
+    # Include reported_at in select for ORDER BY compatibility with DISTINCT
+    id_query = build_survey_query(db.query(Survey.id, Survey.reported_at).distinct(), filter_dict)
+    id_query = id_query.order_by(Survey.reported_at.desc())
+    
     # Calculate total count
-    total = ordered_query.count()
-
-    # Apply pagination
+    total = id_query.count()
+    
+    # Apply pagination to get survey IDs
     offset = (page - 1) * size
-    surveys = ordered_query.offset(offset).limit(size).all()
+    survey_ids = [row[0] for row in id_query.offset(offset).limit(size).all()]
+    
+    # Now fetch full survey objects for these IDs with proper eager loading
+    surveys = (
+        db.query(Survey)
+        .filter(Survey.id.in_(survey_ids))
+        .options(
+            joinedload(Survey.store),
+            joinedload(Survey.survey_topics),
+            joinedload(Survey.survey_keywords),
+            joinedload(Survey.survey_departments),
+            joinedload(Survey.channel),
+            joinedload(Survey.delivery_service)
+        )
+        .order_by(Survey.reported_at.desc())
+        .all()
+    ) if survey_ids else []
 
     # Convert to response models
     survey_responses = [
@@ -268,7 +285,10 @@ async def download_surveys(
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     filter_dict = filter_params.model_dump()
-    filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
+    
+    # Get distinct survey IDs that match the filters
+    id_query = build_survey_query(db.query(Survey.id).distinct(), filter_dict)
+    survey_ids = [row[0] for row in id_query.all()]
     
     def format_excel_value(value):
         """Format a value for Excel export, handling None, lists, dates, enums, and strings."""
@@ -333,15 +353,25 @@ async def download_surveys(
         row_num = 2  # Start from row 2 (row 1 is headers)
 
         while True:
-            # Get surveys
+            # Get surveys for the current batch of IDs
+            batch_ids = survey_ids[offset:offset + batch_size]
+            if not batch_ids:
+                break
+                
             surveys = (
-                filtered_query.order_by(Survey.reported_at.asc())
-                .offset(offset)
-                .limit(batch_size)
+                db.query(Survey)
+                .filter(Survey.id.in_(batch_ids))
+                .options(
+                    joinedload(Survey.store),
+                    joinedload(Survey.survey_topics),
+                    joinedload(Survey.survey_keywords),
+                    joinedload(Survey.survey_departments),
+                    joinedload(Survey.channel),
+                    joinedload(Survey.delivery_service)
+                )
+                .order_by(Survey.reported_at.asc())
                 .all()
             )
-            if not surveys:
-                break
             for survey in surveys:
                 csv_value = survey.to_csv()
                 # Write row values
@@ -368,7 +398,15 @@ async def download_surveys(
 @router.get("/{survey_id}")
 async def get_survey(survey_id: int, db: Session = Depends(get_db)) -> SurveyResponse:
     filter_dict = {"ids": [survey_id]}
-    query = build_survey_query(db.query(Survey).distinct(), filter_dict)
+    query = build_survey_query(db.query(Survey), filter_dict)
+    query = query.options(
+        joinedload(Survey.store),
+        joinedload(Survey.survey_topics),
+        joinedload(Survey.survey_keywords),
+        joinedload(Survey.survey_departments),
+        joinedload(Survey.channel),
+        joinedload(Survey.delivery_service)
+    )
     survey = query.first()
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
@@ -408,7 +446,15 @@ async def update_survey(
 ) -> SurveyResponse:
     try:
         filter_dict = {"ids": [survey_id]}
-        query = build_survey_query(db.query(Survey).distinct(), filter_dict)
+        query = build_survey_query(db.query(Survey), filter_dict)
+        query = query.options(
+            joinedload(Survey.store),
+            joinedload(Survey.survey_topics),
+            joinedload(Survey.survey_keywords),
+            joinedload(Survey.survey_departments),
+            joinedload(Survey.channel),
+            joinedload(Survey.delivery_service)
+        )
         survey = query.first()
         if not survey:
             raise HTTPException(status_code=404, detail="Survey not found")
@@ -495,7 +541,15 @@ async def delete_survey(
 ) -> SurveyResponse:
     try:
         filter_dict = {"ids": [survey_id]}
-        query = build_survey_query(db.query(Survey).distinct(), filter_dict)
+        query = build_survey_query(db.query(Survey), filter_dict)
+        query = query.options(
+            joinedload(Survey.store),
+            joinedload(Survey.survey_topics),
+            joinedload(Survey.survey_keywords),
+            joinedload(Survey.survey_departments),
+            joinedload(Survey.channel),
+            joinedload(Survey.delivery_service)
+        )
         survey = query.first()
         if not survey:
             raise HTTPException(status_code=404, detail="Survey not found")
