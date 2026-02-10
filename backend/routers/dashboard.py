@@ -885,7 +885,9 @@ async def get_topic_sentiment_score(
 async def get_last_updated_date(
     db: Session = Depends(get_db),
 ) -> str:
-    last_updated_date = db.query(func.max(Survey.updated_at)).first()
+    last_updated_date = (
+        db.query(func.max(Survey.updated_at)).first()
+    )
     if last_updated_date[0] is None:
         return ""
     return last_updated_date[0].astimezone(timezone.utc).isoformat()
@@ -900,8 +902,16 @@ class DataCoverageResponse(BaseModel):
 async def get_data_coverage(
     db: Session = Depends(get_db),
 ) -> DataCoverageResponse:
-    last_data_reported_date = db.query(func.max(Survey.reported_at)).first()
-    first_data_reported_date = db.query(func.min(Survey.reported_at)).first()
+    last_data_reported_date = (
+        db.query(func.max(Survey.reported_at))
+        .filter(Survey.is_deleted == False)
+        .first()
+    )
+    first_data_reported_date = (
+        db.query(func.min(Survey.reported_at))
+        .filter(Survey.is_deleted == False)
+        .first()
+    )
     if last_data_reported_date[0] is None or first_data_reported_date[0] is None:
         raise HTTPException(status_code=404, detail="No data reported")
     return DataCoverageResponse(

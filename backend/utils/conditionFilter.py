@@ -25,6 +25,9 @@ def build_survey_filter_conditions(filter_dict):
     """Build filter conditions based on the filter dictionary"""
     conditions = []
 
+    # Add is_deleted check
+    conditions.append(Survey.is_deleted == False)
+
     # Date range filter
     if filter_dict.get("from_date"):
         conditions.append(Survey.reported_at >= filter_dict["from_date"])
