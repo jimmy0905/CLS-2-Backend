@@ -198,6 +198,7 @@ def process_single_row(
                 input_comment=comment,
                 input_reported_at=reported_at,
                 error_message="Comment is invalid",
+                raw_row_data=json_row_data,
             )
             db.add(error)
             db.commit()
@@ -224,6 +225,7 @@ def process_single_row(
                 input_comment=comment,
                 input_reported_at=reported_at,
                 error_message="Store ID is required",
+                raw_row_data=json_row_data,
             )
             db.add(error)
             db.commit()
@@ -242,6 +244,7 @@ def process_single_row(
                 input_comment=comment,
                 input_reported_at=reported_at,
                 error_message="Store ID is not valid",
+                raw_row_data=json_row_data,
             )
             db.add(error)
             db.commit()
@@ -259,6 +262,7 @@ def process_single_row(
                 input_comment=comment,
                 input_reported_at=reported_at,
                 error_message="Comment is required",
+                raw_row_data=json_row_data,
             )
             db.add(error)
             db.commit()
@@ -275,6 +279,7 @@ def process_single_row(
                 input_comment=comment,
                 input_reported_at=reported_at,
                 error_message="Reported at is required",
+                raw_row_data=json_row_data,
             )
             db.add(error)
             db.commit()
@@ -294,6 +299,7 @@ def process_single_row(
                 input_comment=comment,
                 input_reported_at=str(reported_at),
                 error_message=f"Could not parse date format: {reported_at}",
+                raw_row_data=json_row_data,
             )
             db.add(error)
             db.commit()
@@ -309,6 +315,17 @@ def process_single_row(
                 logger.warning(
                     f"Row {index + 1}: Channel {channel_name} not found in database, skipping row"
                 )
+                error = UploadTaskError(
+                    upload_task_id=upload_task_id,
+                    input_store_id=store_id,
+                    input_comment=comment,
+                    input_reported_at=reported_at,
+                    error_message="Channel is not valid",
+                    raw_row_data=json_row_data,
+                )
+                db.add(error)
+                db.commit()
+                result["error"] = "Channel is not valid"
                 return result
             channel_id = channel.id
         else:
@@ -324,6 +341,17 @@ def process_single_row(
                 logger.warning(
                     f"Row {index + 1}: Delivery service {delivery_service_name} not found in database, skipping row"
                 )
+                error = UploadTaskError(
+                    upload_task_id=upload_task_id,
+                    input_store_id=store_id,
+                    input_comment=comment,
+                    input_reported_at=reported_at,
+                    error_message="Delivery service is not valid",
+                    raw_row_data=json_row_data,
+                )
+                db.add(error)
+                db.commit()
+                result["error"] = "Delivery service is not valid"
                 return result
             delivery_service_id = delivery_service.id
         else:
