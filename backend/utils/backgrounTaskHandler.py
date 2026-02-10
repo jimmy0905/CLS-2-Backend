@@ -347,15 +347,15 @@ def process_single_row(
                 logger.warning(f"Row {index + 1}: Cannot classified in AI Analysis after first try, retrying...")
                 have_to_retry = True
             # Check if the topics are not empty
-            if total.topics is None:
+            if total.topics is None or len(total.topics) == 0:
                 logger.warning(f"Row {index + 1}: Topics are empty after first try, skipping row")
                 have_to_retry = True
             # Check if the departments are not empty
-            if total.departments is None:
+            if total.departments is None or len(total.departments) == 0:
                 logger.warning(f"Row {index + 1}: Departments are empty after first try, skipping row")
                 have_to_retry = True
             # Check if the keywords are not empty
-            if total.keywords is None:
+            if total.keywords is None or len(total.keywords) == 0:
                 logger.warning(f"Row {index + 1}: Keywords are empty after first try, skipping row")
                 have_to_retry = True
             # Check if the topics are valid

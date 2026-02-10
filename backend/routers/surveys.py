@@ -301,6 +301,8 @@ async def download_surveys(
         # Define headers
         headers = [
             "id",
+            "survey_id",
+            "respondent_id",
             "store_id",
             "store_name",
             "hierarchy_level_1_name",
