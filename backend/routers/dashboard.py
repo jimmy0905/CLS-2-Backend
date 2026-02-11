@@ -648,81 +648,107 @@ async def get_channel_and_delivery_service_distribution(
     all_delivery_services = db.query(DeliveryService).all()
 
     # Single query to get sentiment counts with channel and delivery service filter
-    sentiment_query, sentiment_joins, _ = build_optimized_query(db, filter_dict)
+    base_query, _joined_tables, _ = build_optimized_query(db, filter_dict)
 
     # Add necessary joins if not already present
-    if "channel" not in sentiment_joins:
-        sentiment_query = sentiment_query.join(Channel, Survey.channel_id == Channel.id)
-    if "delivery_service" not in sentiment_joins:
-        sentiment_query = sentiment_query.join(
+    if "channel" not in _joined_tables:
+        base_query = base_query.join(Channel, Survey.channel_id == Channel.id)
+    if "delivery_service" not in _joined_tables:
+        base_query = base_query.join(
             DeliveryService, Survey.delivery_service_id == DeliveryService.id
         )
-
-    sentiment_results = build_Survey_sentiment_aggregation_query(
-        sentiment_query,
+    # Get sentiment counts grouped by channel and delivery service
+    results_grouped_by_channel_and_delivery_service=base_query.with_entities(
+        Channel.id.label("channel_id"),
         Channel.name.label("channel"),
+        DeliveryService.id.label("delivery_service_id"),
         DeliveryService.name.label("delivery_service"),
-    ).all()
+        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id)))).label(
+            "neutral_count"
+        ), 
+        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.POSITIVE, Survey.id)))).label(
+            "positive_count"
+        ),
+        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.NEGATIVE, Survey.id)))).label(
+            "negative_count"
+        ),
+        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.MIXED, Survey.id)))).label(
+            "mixed_count"
+        ),
+        func.avg(Survey.topic_sentiment_score).label("sentiment_score"),
+    ).group_by(Channel.id, DeliveryService.id).all()
 
-    # Total count query: Apply ALL filters EXCEPT channel and delivery service filters, but group by channel and delivery service
-    total_query, total_joins, _ = build_optimized_query(
-        db,
-        filter_dict,
-        exclude_filters=[
-            "channel_ids",
-            "channel_names",
-            "delivery_service_ids",
-            "delivery_service_names",
-        ],
-    )
-
-    # Always add necessary joins for total counts since we need to group by channel and delivery service
-    if "channel" not in total_joins:
-        total_query = total_query.join(Channel, Survey.channel_id == Channel.id)
-    if "delivery_service" not in total_joins:
-        total_query = total_query.join(
+    # Total count query: Apply ALL filters EXCEPT channel and delivery service filters, group by channel and delivery service
+    total_count_query, total_count_joins, _ = build_optimized_query(db, filter_dict, exclude_filters=["channel_ids", "channel_names", "delivery_service_ids", "delivery_service_names"])
+    
+    # Add necessary joins if not already present
+    if "channel" not in total_count_joins:
+        total_count_query = total_count_query.join(Channel, Survey.channel_id == Channel.id)
+    if "delivery_service" not in total_count_joins:
+        total_count_query = total_count_query.join(
             DeliveryService, Survey.delivery_service_id == DeliveryService.id
         )
-
-    total_results = (
-        total_query.with_entities(
-            Channel.name.label("channel"),
-            DeliveryService.name.label("delivery_service"),
+    
+    total_count_results = (
+        total_count_query.with_entities(
+            Channel.id.label("channel_id"),
+            DeliveryService.id.label("delivery_service_id"),
             func.count(func.distinct(Survey.id)).label("total_count"),
         )
-        .group_by(Channel.id, Channel.name, DeliveryService.id, DeliveryService.name)
+        .group_by(Channel.id, DeliveryService.id)
         .all()
     )
 
     # Combine results
+    # Create dictionaries keyed by (channel_id, delivery_service_id)
     sentiment_dict = {
-        (row.channel, row.delivery_service): row for row in sentiment_results
+        (row.channel_id, row.delivery_service_id): row 
+        for row in results_grouped_by_channel_and_delivery_service
     }
-    total_dict = {
-        (row.channel, row.delivery_service): row.total_count for row in total_results
+    
+    total_count_dict = {
+        (row.channel_id, row.delivery_service_id): row.total_count
+        for row in total_count_results
     }
-
-    # Generate all possible combinations
+    
+    # Iterate through ALL possible channel and delivery service combinations
     channel_and_delivery_service_distribution = []
     for channel in all_channels:
         for delivery_service in all_delivery_services:
-            channel_name = channel.name
-            delivery_service_name = delivery_service.name
-
-            sentiment_row = sentiment_dict.get((channel_name, delivery_service_name))
-            total_count = total_dict.get((channel_name, delivery_service_name), 0)
-
+            # Look up sentiment data for this channel/delivery service combination
+            sentiment_data = sentiment_dict.get((channel.id, delivery_service.id))
+            
+            if sentiment_data:
+                # Use actual sentiment counts
+                neutral_count = sentiment_data.neutral_count
+                positive_count = sentiment_data.positive_count
+                negative_count = sentiment_data.negative_count
+                mixed_count = sentiment_data.mixed_count
+                sentiment_score = float(sentiment_data.sentiment_score or 0.0)
+            else:
+                # No sentiment data found, use 0
+                neutral_count = 0
+                positive_count = 0
+                negative_count = 0
+                mixed_count = 0
+                sentiment_score = 0.0
+            
+            # Get total count (from query with all filters)
+            total_count = total_count_dict.get((channel.id, delivery_service.id), 0)
+            
             channel_and_delivery_service_distribution.append(
                 ChannelAndDeliveryServiceDistributionResponse(
-                    channel=channel_name,
-                    delivery_service=delivery_service_name,
-                    neutral_count=sentiment_row.neutral_count if sentiment_row else 0,
-                    positive_count=sentiment_row.positive_count if sentiment_row else 0,
-                    negative_count=sentiment_row.negative_count if sentiment_row else 0,
+                    channel=channel.name,
+                    delivery_service=delivery_service.name,
+                    neutral_count=neutral_count,
+                    positive_count=positive_count,
+                    negative_count=negative_count,
+                    mixed_count=mixed_count,
+                    sentiment_score=sentiment_score,
                     total_count_for_option=total_count,
                 )
             )
-
+    
     return channel_and_delivery_service_distribution
 
 
