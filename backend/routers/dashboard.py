@@ -59,23 +59,50 @@ async def get_department_distribution(
         )
         _joined_tables.add("department")
 
-    sentiment_results = base_query.with_entities(
-        Department.id.label("department_id"),
-        Department.name.label("department"),
-        func.count(func.distinct(case((SurveyDepartments.sentiment == Sentiment.NEUTRAL, SurveyDepartments.id)))).label(
-            "neutral_count"
-        ),
-        func.count(func.distinct(case((SurveyDepartments.sentiment == Sentiment.POSITIVE, SurveyDepartments.id)))).label(
-            "positive_count"
-        ),
-        func.count(func.distinct(case((SurveyDepartments.sentiment == Sentiment.NEGATIVE, SurveyDepartments.id)))).label(
-            "negative_count"
+    sentiment_results = (
+        base_query.with_entities(
+            Department.id.label("department_id"),
+            Department.name.label("department"),
+            func.count(
+                func.distinct(
+                    case(
+                        (
+                            SurveyDepartments.sentiment == Sentiment.NEUTRAL,
+                            SurveyDepartments.id,
+                        )
+                    )
+                )
+            ).label("neutral_count"),
+            func.count(
+                func.distinct(
+                    case(
+                        (
+                            SurveyDepartments.sentiment == Sentiment.POSITIVE,
+                            SurveyDepartments.id,
+                        )
+                    )
+                )
+            ).label("positive_count"),
+            func.count(
+                func.distinct(
+                    case(
+                        (
+                            SurveyDepartments.sentiment == Sentiment.NEGATIVE,
+                            SurveyDepartments.id,
+                        )
+                    )
+                )
+            ).label("negative_count"),
         )
-    ).group_by(Department.id, Department.name).all()
+        .group_by(Department.id, Department.name)
+        .all()
+    )
 
     # Total count query: Apply ALL filters EXCEPT department filters, group by department
-    total_count_query, total_count_joins, _ = build_optimized_query(db, filter_dict, exclude_filters=["department_ids", "department_names"])
-    
+    total_count_query, total_count_joins, _ = build_optimized_query(
+        db, filter_dict, exclude_filters=["department_ids", "department_names"]
+    )
+
     # Add department join if not already present
     if "department" not in total_count_joins:
         total_count_query = total_count_query.join(
@@ -100,11 +127,13 @@ async def get_department_distribution(
     all_departments = db.query(Department).all()
     # Combine results
     sentiment_dict = {row.department_id: row for row in sentiment_results}
-    total_count_dict = {row.department_id: row.total_count for row in total_count_results}
+    total_count_dict = {
+        row.department_id: row.total_count for row in total_count_results
+    }
     department_distribution = []
     for department in all_departments:
         sentiment_row = sentiment_dict.get(department.id)
-        
+
         if sentiment_row:
             neutral_count = sentiment_row.neutral_count
             positive_count = sentiment_row.positive_count
@@ -146,43 +175,77 @@ async def get_keyword_analysis(
     filter_dict = filter_params.model_dump()
 
     # Build base query with filters
-    base_query, joined_tables, _ = build_optimized_query(db, filter_dict)
+    base_query, _joined_tables, _ = build_optimized_query(db, filter_dict)
 
     # Check if keyword joins are already present, if not add them
-    if "keyword" not in joined_tables:
+    if "keyword" not in _joined_tables:
         base_query = base_query.join(
             SurveyKeywords, Survey.id == SurveyKeywords.survey_id
         )
         base_query = base_query.join(Keyword, SurveyKeywords.keyword_id == Keyword.id)
+        _joined_tables.add("keyword")
 
-    # Single optimized query for keyword analysis
-    keyword_query = build_SurveyKeywords_sentiment_aggregation_query(
-        base_query, Keyword.keyword.label("keyword")
-    )
-    
-    # Print the SQL query for debugging
-    from sqlalchemy.dialects import postgresql
-    print("Keyword Analysis Query:")
-    print(keyword_query.statement.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
-    
-    keyword_results = keyword_query.all()
-    
-    # Sort by total count (sum of all sentiment counts) and take top k
-    sorted_results = sorted(
-        keyword_results,
-        key=lambda row: row.neutral_count + row.positive_count + row.negative_count,
-        reverse=True
-    )[:k]
-
-    return [
-        KeywordAnalysisResponse(
-            keyword=row.keyword,
-            neutral_count=row.neutral_count,
-            positive_count=row.positive_count,
-            negative_count=row.negative_count,
+    sentiment_results = (
+        base_query.with_entities(
+            Keyword.keyword.label("keyword"),
+            func.count(
+                func.distinct(
+                    case(
+                        (
+                            SurveyKeywords.sentiment == Sentiment.NEUTRAL,
+                            SurveyKeywords.id,
+                        )
+                    )
+                )
+            ).label("neutral_count"),
+            func.count(
+                func.distinct(
+                    case(
+                        (
+                            SurveyKeywords.sentiment == Sentiment.POSITIVE,
+                            SurveyKeywords.id,
+                        )
+                    )
+                )
+            ).label("positive_count"),
+            func.count(
+                func.distinct(
+                    case(
+                        (
+                            SurveyKeywords.sentiment == Sentiment.NEGATIVE,
+                            SurveyKeywords.id,
+                        )
+                    )
+                )
+            ).label("negative_count"),
         )
-        for row in sorted_results
-    ]
+        .group_by(Keyword.id, Keyword.keyword)
+        .order_by(
+            func.count(
+                func.distinct(
+                    case(
+                        (
+                            SurveyKeywords.sentiment == Sentiment.NEUTRAL,
+                            SurveyKeywords.id,
+                        )
+                    )
+                )
+            ).desc(),
+            func.count(
+                func.distinct(
+                    case(
+                        (
+                            SurveyKeywords.sentiment == Sentiment.POSITIVE,
+                            SurveyKeywords.id,
+                        )
+                    )
+                )
+            ).desc(),
+        )
+        .limit(k)
+        .all()
+    )
+    return sentiment_results
 
 
 class HierarchyDistributionResponse(BaseModel):
@@ -217,8 +280,8 @@ async def get_hierarchy_distribution(
     hierarchy_col = hierarchy_columns[level]
 
     # Single query to get sentiment counts with hierarchy filter
-    base_query, _joined_tables, sentiment_hierarchy_aliases = (
-        build_optimized_query(db, filter_dict)
+    base_query, _joined_tables, sentiment_hierarchy_aliases = build_optimized_query(
+        db, filter_dict
     )
 
     # Add Store join if not already present
@@ -239,9 +302,7 @@ async def get_hierarchy_distribution(
 
     # Add SurveyTopics join if not already present (needed for sentiment aggregation)
     if "topic" not in _joined_tables:
-        base_query = base_query.join(
-            SurveyTopics, Survey.id == SurveyTopics.survey_id
-        )
+        base_query = base_query.join(SurveyTopics, Survey.id == SurveyTopics.survey_id)
         _joined_tables.add("topic")
 
     # Use distinct to avoid counting the same survey multiple times after many-to-many joins
@@ -254,14 +315,11 @@ async def get_hierarchy_distribution(
 
     # Get sentiment scores separately to avoid double counting
     # Create subquery with distinct survey IDs and their hierarchy IDs
-    distinct_surveys_subquery = (
-        base_query.with_entities(
-            func.distinct(Survey.id).label("survey_id"),
-            sentiment_hierarchy_alias.id.label("hierarchy_id"),
-        )
-        .subquery()
-    )
-    
+    distinct_surveys_subquery = base_query.with_entities(
+        func.distinct(Survey.id).label("survey_id"),
+        sentiment_hierarchy_alias.id.label("hierarchy_id"),
+    ).subquery()
+
     # Join back to Survey to get sentiment scores, grouped by hierarchy
     sentiment_score_results = (
         db.query(Survey)
@@ -348,7 +406,10 @@ async def get_hierarchy_distribution(
         )
         sentiment_score = sentiment_score_dict.get(hierarchy_id, 0.0)
         total_count = total_dict.get(hierarchy_id, 0)
-        hierarchy_name = hierarchy_name_dict.get(hierarchy_id, "") or sentiment_data["hierarchy_name"]
+        hierarchy_name = (
+            hierarchy_name_dict.get(hierarchy_id, "")
+            or sentiment_data["hierarchy_name"]
+        )
 
         hierarchy_distribution.append(
             HierarchyDistributionResponse(
@@ -385,36 +446,48 @@ async def get_topic_distribution(
     # Single query to get sentiment counts with topic filter
     base_query, _joined_tables, _ = build_optimized_query(db, filter_dict)
     if "topic" not in _joined_tables:
-        base_query = base_query.join(
-            SurveyTopics, Survey.id == SurveyTopics.survey_id
-        )
+        base_query = base_query.join(SurveyTopics, Survey.id == SurveyTopics.survey_id)
         base_query = base_query.join(Topic, SurveyTopics.topic_id == Topic.id)
         _joined_tables.add("topic")
 
-    sentiment_results = base_query.with_entities(
-        Topic.topic.label("topic"),
-        Topic.id.label("topic_id"),
-        func.count(func.distinct(case((Survey.topic_sentiment == Sentiment.NEUTRAL, Survey.id)))).label(
-            "neutral_count"
-        ),
-        func.count(func.distinct(case((Survey.topic_sentiment == Sentiment.POSITIVE, Survey.id)))).label(
-            "positive_count"
-        ),
-        func.count(func.distinct(case((Survey.topic_sentiment == Sentiment.NEGATIVE, Survey.id)))).label(
-            "negative_count"
+    sentiment_results = (
+        base_query.with_entities(
+            Topic.topic.label("topic"),
+            Topic.id.label("topic_id"),
+            func.count(
+                func.distinct(
+                    case((Survey.topic_sentiment == Sentiment.NEUTRAL, Survey.id))
+                )
+            ).label("neutral_count"),
+            func.count(
+                func.distinct(
+                    case((Survey.topic_sentiment == Sentiment.POSITIVE, Survey.id))
+                )
+            ).label("positive_count"),
+            func.count(
+                func.distinct(
+                    case((Survey.topic_sentiment == Sentiment.NEGATIVE, Survey.id))
+                )
+            ).label("negative_count"),
         )
-    ).group_by(Topic.id, Topic.topic).all()
-    
+        .group_by(Topic.id, Topic.topic)
+        .all()
+    )
+
     # Total count query: Apply ALL filters EXCEPT topic filters, group by topic
-    total_count_query, total_count_joins, _ = build_optimized_query(db, filter_dict, exclude_filters=["topics"])
-    
+    total_count_query, total_count_joins, _ = build_optimized_query(
+        db, filter_dict, exclude_filters=["topics"]
+    )
+
     # Add necessary joins for total count query
     if "topic" not in total_count_joins:
         total_count_query = total_count_query.join(
             SurveyTopics, Survey.id == SurveyTopics.survey_id
         )
-        total_count_query = total_count_query.join(Topic, SurveyTopics.topic_id == Topic.id)
-    
+        total_count_query = total_count_query.join(
+            Topic, SurveyTopics.topic_id == Topic.id
+        )
+
     total_count_results = (
         total_count_query.with_entities(
             Topic.id.label("topic_id"),
@@ -424,18 +497,18 @@ async def get_topic_distribution(
         .group_by(Topic.id, Topic.topic)
         .all()
     )
-    
+
     # Get all topics from database
     all_topics = db.query(Topic).all()
-    
+
     # Combine results
     sentiment_dict = {row.topic_id: row for row in sentiment_results}
     total_count_dict = {row.topic_id: row.total_count for row in total_count_results}
-    
+
     topic_distribution = []
     for topic in all_topics:
         sentiment_row = sentiment_dict.get(topic.id)
-        
+
         if sentiment_row:
             neutral_count = sentiment_row.neutral_count
             positive_count = sentiment_row.positive_count
@@ -444,9 +517,9 @@ async def get_topic_distribution(
             neutral_count = 0
             positive_count = 0
             negative_count = 0
-        
+
         total_count = total_count_dict.get(topic.id, 0)
-        
+
         topic_distribution.append(
             TopicDistributionResponse(
                 topic=topic.topic,
@@ -456,7 +529,7 @@ async def get_topic_distribution(
                 total_count_for_option=total_count,
             )
         )
-    
+
     return topic_distribution
 
 
@@ -481,28 +554,40 @@ async def get_sentiment_distribution(
     # Single query to get sentiment counts and score by date
     base_query, _joined_tables, _ = build_optimized_query(db, filter_dict)
 
-    date_results = base_query.with_entities(
-        extract('year', Survey.reported_at).label("year"),
-        extract('month', Survey.reported_at).label("month"),
-        extract('day', Survey.reported_at).label("day"),
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id)))).label(
-            "neutral_count"
-        ),
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.POSITIVE, Survey.id)))).label(
-            "positive_count"
-        ),
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.NEGATIVE, Survey.id)))).label(
-            "negative_count"
-        ),
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.MIXED, Survey.id)))).label(
-            "mixed_count"
-        ),
-        func.avg(Survey.topic_sentiment_score).label("sentiment_score"),
-    ).group_by(
-        extract('year', Survey.reported_at),
-        extract('month', Survey.reported_at),
-        extract('day', Survey.reported_at)
-    ).all()
+    date_results = (
+        base_query.with_entities(
+            extract("year", Survey.reported_at).label("year"),
+            extract("month", Survey.reported_at).label("month"),
+            extract("day", Survey.reported_at).label("day"),
+            func.count(
+                func.distinct(
+                    case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id))
+                )
+            ).label("neutral_count"),
+            func.count(
+                func.distinct(
+                    case((Survey.topic_sentiment == TopicSentiment.POSITIVE, Survey.id))
+                )
+            ).label("positive_count"),
+            func.count(
+                func.distinct(
+                    case((Survey.topic_sentiment == TopicSentiment.NEGATIVE, Survey.id))
+                )
+            ).label("negative_count"),
+            func.count(
+                func.distinct(
+                    case((Survey.topic_sentiment == TopicSentiment.MIXED, Survey.id))
+                )
+            ).label("mixed_count"),
+            func.avg(Survey.topic_sentiment_score).label("sentiment_score"),
+        )
+        .group_by(
+            extract("year", Survey.reported_at),
+            extract("month", Survey.reported_at),
+            extract("day", Survey.reported_at),
+        )
+        .all()
+    )
 
     return date_results
 
@@ -532,31 +617,45 @@ async def get_store_distribution(
     if "store" not in _joined_tables:
         base_query = base_query.join(Store, Survey.store_id == Store.id)
 
-    results_grouped_by_store=base_query.with_entities(
-        Store.id.label("store_id"),
-        Store.name.label("store"),
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id)))).label(
-            "neutral_count"
-        ),
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.POSITIVE, Survey.id)))).label(
-            "positive_count"
-        ),
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.NEGATIVE, Survey.id)))).label(
-            "negative_count"
-        ),
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.MIXED, Survey.id)))).label(
-            "mixed_count"
-        ),
-        func.avg(Survey.topic_sentiment_score).label("sentiment_score"),
-    ).group_by(Store.id, Store.name).all()
+    results_grouped_by_store = (
+        base_query.with_entities(
+            Store.id.label("store_id"),
+            Store.name.label("store"),
+            func.count(
+                func.distinct(
+                    case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id))
+                )
+            ).label("neutral_count"),
+            func.count(
+                func.distinct(
+                    case((Survey.topic_sentiment == TopicSentiment.POSITIVE, Survey.id))
+                )
+            ).label("positive_count"),
+            func.count(
+                func.distinct(
+                    case((Survey.topic_sentiment == TopicSentiment.NEGATIVE, Survey.id))
+                )
+            ).label("negative_count"),
+            func.count(
+                func.distinct(
+                    case((Survey.topic_sentiment == TopicSentiment.MIXED, Survey.id))
+                )
+            ).label("mixed_count"),
+            func.avg(Survey.topic_sentiment_score).label("sentiment_score"),
+        )
+        .group_by(Store.id, Store.name)
+        .all()
+    )
 
     # Total count query: Apply ALL filters EXCEPT store filters, group by store
-    total_count_query, total_count_joins, _ = build_optimized_query(db, filter_dict, exclude_filters=["store_ids", "store_names"])
-    
+    total_count_query, total_count_joins, _ = build_optimized_query(
+        db, filter_dict, exclude_filters=["store_ids", "store_names"]
+    )
+
     # Add store join if not already present
     if "store" not in total_count_joins:
         total_count_query = total_count_query.join(Store, Survey.store_id == Store.id)
-    
+
     total_count_results = (
         total_count_query.with_entities(
             Store.id.label("store_id"),
@@ -578,7 +677,7 @@ async def get_store_distribution(
     store_distribution = []
     for store in all_stores:
         sentiment_row = sentiment_dict.get(store.id)
-        
+
         if sentiment_row:
             neutral_count = sentiment_row.neutral_count
             positive_count = sentiment_row.positive_count
@@ -591,7 +690,7 @@ async def get_store_distribution(
             negative_count = 0
             mixed_count = 0
             sentiment_score = 0.0
-        
+
         total_count = total_count_dict.get(store.id, 0)
 
         store_distribution.append(
@@ -643,37 +742,60 @@ async def get_channel_and_delivery_service_distribution(
             DeliveryService, Survey.delivery_service_id == DeliveryService.id
         )
     # Get sentiment counts grouped by channel and delivery service
-    results_grouped_by_channel_and_delivery_service=base_query.with_entities(
-        Channel.id.label("channel_id"),
-        Channel.name.label("channel"),
-        DeliveryService.id.label("delivery_service_id"),
-        DeliveryService.name.label("delivery_service"),
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id)))).label(
-            "neutral_count"
-        ), 
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.POSITIVE, Survey.id)))).label(
-            "positive_count"
-        ),
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.NEGATIVE, Survey.id)))).label(
-            "negative_count"
-        ),
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.MIXED, Survey.id)))).label(
-            "mixed_count"
-        ),
-        func.avg(Survey.topic_sentiment_score).label("sentiment_score"),
-    ).group_by(Channel.id, DeliveryService.id).all()
+    results_grouped_by_channel_and_delivery_service = (
+        base_query.with_entities(
+            Channel.id.label("channel_id"),
+            Channel.name.label("channel"),
+            DeliveryService.id.label("delivery_service_id"),
+            DeliveryService.name.label("delivery_service"),
+            func.count(
+                func.distinct(
+                    case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id))
+                )
+            ).label("neutral_count"),
+            func.count(
+                func.distinct(
+                    case((Survey.topic_sentiment == TopicSentiment.POSITIVE, Survey.id))
+                )
+            ).label("positive_count"),
+            func.count(
+                func.distinct(
+                    case((Survey.topic_sentiment == TopicSentiment.NEGATIVE, Survey.id))
+                )
+            ).label("negative_count"),
+            func.count(
+                func.distinct(
+                    case((Survey.topic_sentiment == TopicSentiment.MIXED, Survey.id))
+                )
+            ).label("mixed_count"),
+            func.avg(Survey.topic_sentiment_score).label("sentiment_score"),
+        )
+        .group_by(Channel.id, DeliveryService.id)
+        .all()
+    )
 
     # Total count query: Apply ALL filters EXCEPT channel and delivery service filters, group by channel and delivery service
-    total_count_query, total_count_joins, _ = build_optimized_query(db, filter_dict, exclude_filters=["channel_ids", "channel_names", "delivery_service_ids", "delivery_service_names"])
-    
+    total_count_query, total_count_joins, _ = build_optimized_query(
+        db,
+        filter_dict,
+        exclude_filters=[
+            "channel_ids",
+            "channel_names",
+            "delivery_service_ids",
+            "delivery_service_names",
+        ],
+    )
+
     # Add necessary joins if not already present
     if "channel" not in total_count_joins:
-        total_count_query = total_count_query.join(Channel, Survey.channel_id == Channel.id)
+        total_count_query = total_count_query.join(
+            Channel, Survey.channel_id == Channel.id
+        )
     if "delivery_service" not in total_count_joins:
         total_count_query = total_count_query.join(
             DeliveryService, Survey.delivery_service_id == DeliveryService.id
         )
-    
+
     total_count_results = (
         total_count_query.with_entities(
             Channel.id.label("channel_id"),
@@ -687,22 +809,22 @@ async def get_channel_and_delivery_service_distribution(
     # Combine results
     # Create dictionaries keyed by (channel_id, delivery_service_id)
     sentiment_dict = {
-        (row.channel_id, row.delivery_service_id): row 
+        (row.channel_id, row.delivery_service_id): row
         for row in results_grouped_by_channel_and_delivery_service
     }
-    
+
     total_count_dict = {
         (row.channel_id, row.delivery_service_id): row.total_count
         for row in total_count_results
     }
-    
+
     # Iterate through ALL possible channel and delivery service combinations
     channel_and_delivery_service_distribution = []
     for channel in all_channels:
         for delivery_service in all_delivery_services:
             # Look up sentiment data for this channel/delivery service combination
             sentiment_data = sentiment_dict.get((channel.id, delivery_service.id))
-            
+
             if sentiment_data:
                 # Use actual sentiment counts
                 neutral_count = sentiment_data.neutral_count
@@ -717,10 +839,10 @@ async def get_channel_and_delivery_service_distribution(
                 negative_count = 0
                 mixed_count = 0
                 sentiment_score = 0.0
-            
+
             # Get total count (from query with all filters)
             total_count = total_count_dict.get((channel.id, delivery_service.id), 0)
-            
+
             channel_and_delivery_service_distribution.append(
                 ChannelAndDeliveryServiceDistributionResponse(
                     channel=channel.name,
@@ -733,7 +855,7 @@ async def get_channel_and_delivery_service_distribution(
                     total_count_for_option=total_count,
                 )
             )
-    
+
     return channel_and_delivery_service_distribution
 
 
@@ -757,39 +879,62 @@ async def get_topic_sentiment_score(
     base_query, joined_tables, _ = build_optimized_query(db, filter_dict)
 
     neutral_count_result = base_query.with_entities(
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id)))).label(
-            "neutral_count"
-        )
+        func.count(
+            func.distinct(
+                case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id))
+            )
+        ).label("neutral_count")
     ).first()
     positive_count_result = base_query.with_entities(
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.POSITIVE, Survey.id)))).label(
-            "positive_count"
-        )
+        func.count(
+            func.distinct(
+                case((Survey.topic_sentiment == TopicSentiment.POSITIVE, Survey.id))
+            )
+        ).label("positive_count")
     ).first()
     negative_count_result = base_query.with_entities(
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.NEGATIVE, Survey.id)))).label(
-        "negative_count"
-    )).first()
+        func.count(
+            func.distinct(
+                case((Survey.topic_sentiment == TopicSentiment.NEGATIVE, Survey.id))
+            )
+        ).label("negative_count")
+    ).first()
     mixed_count_result = base_query.with_entities(
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.MIXED, Survey.id)))).label(
-            "mixed_count"
-        )
+        func.count(
+            func.distinct(
+                case((Survey.topic_sentiment == TopicSentiment.MIXED, Survey.id))
+            )
+        ).label("mixed_count")
     ).first()
     # Find the average sentiment score for surveys which have mixed sentiment
-    average_mix_topic_sentiment_score_result = base_query.with_entities(
-        func.avg(Survey.topic_sentiment_score).label("average_mix_topic_sentiment_score")
-    ).filter(Survey.topic_sentiment == TopicSentiment.MIXED).first()
+    average_mix_topic_sentiment_score_result = (
+        base_query.with_entities(
+            func.avg(Survey.topic_sentiment_score).label(
+                "average_mix_topic_sentiment_score"
+            )
+        )
+        .filter(Survey.topic_sentiment == TopicSentiment.MIXED)
+        .first()
+    )
     # Find the average sentiment score for surveys for all sentiment types
     average_overall_topic_sentiment_score_result = base_query.with_entities(
-        func.avg(Survey.topic_sentiment_score).label("average_overall_topic_sentiment_score")
+        func.avg(Survey.topic_sentiment_score).label(
+            "average_overall_topic_sentiment_score"
+        )
     ).first()
     return TopicSentimentScoreResponse(
         positive_topic_count=positive_count_result.positive_count or 0,
         negative_topic_count=negative_count_result.negative_count or 0,
         neutral_topic_count=neutral_count_result.neutral_count or 0,
         mix_topic_count=mixed_count_result.mixed_count or 0,
-        average_mix_topic_score=float(average_mix_topic_sentiment_score_result.average_mix_topic_sentiment_score or 0.0),
-        average_overall_topic_score=float(average_overall_topic_sentiment_score_result.average_overall_topic_sentiment_score or 0.0),
+        average_mix_topic_score=float(
+            average_mix_topic_sentiment_score_result.average_mix_topic_sentiment_score
+            or 0.0
+        ),
+        average_overall_topic_score=float(
+            average_overall_topic_sentiment_score_result.average_overall_topic_sentiment_score
+            or 0.0
+        ),
     )
 
 
@@ -797,9 +942,7 @@ async def get_topic_sentiment_score(
 async def get_last_updated_date(
     db: Session = Depends(get_db),
 ) -> str:
-    last_updated_date = (
-        db.query(func.max(Survey.updated_at)).first()
-    )
+    last_updated_date = db.query(func.max(Survey.updated_at)).first()
     if last_updated_date[0] is None:
         return ""
     return last_updated_date[0].astimezone(timezone.utc).isoformat()
@@ -834,4 +977,3 @@ async def get_data_coverage(
         .astimezone(timezone.utc)
         .isoformat(),
     )
-
