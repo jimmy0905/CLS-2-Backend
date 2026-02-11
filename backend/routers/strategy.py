@@ -602,7 +602,6 @@ async def get_strategy_v2(
         raise HTTPException(status_code=500, detail="ANALYZE_FEEDBACK_API_URL is not set")
     
     url = url.rstrip('/') + "/analyze-feedback"
-    print("url", url)
     payload = {'analysis_mode': 'STAT',
     'sampling_method': 'DIRECT',
     'top_n_stores': '10',
