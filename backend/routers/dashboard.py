@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_, distinct, case, and_, cast, Float
+from sqlalchemy import func, or_, distinct, case, and_, cast, Float, extract
 from models.Survey import Survey
 from models.Topic import Topic
 from models.Keyword import Keyword
@@ -432,66 +432,30 @@ async def get_sentiment_distribution(
     filter_dict = filter_params.model_dump()
 
     # Single query to get sentiment counts and score by date
-    sentiment_query, sentiment_joins, _ = build_optimized_query(db, filter_dict)
+    base_query, _joined_tables, _ = build_optimized_query(db, filter_dict)
 
-    # Get sentiment counts grouped by date
-    sentiment_counts_results = build_Survey_TopicSentiment_aggregation_query(
-        sentiment_query,
-        func.date(Survey.reported_at).label("date"),
-    ).group_by(func.date(Survey.reported_at)).all()
-
-    # Use distinct to avoid counting the same survey multiple times after many-to-many joins
-    # Create a subquery with distinct survey IDs
-    distinct_survey_ids_subquery = (
-        sentiment_query.with_entities(func.distinct(Survey.id).label("survey_id"))
-        .subquery()
-    )
-    
-    # Join back to Survey table to get sentiment scores for distinct surveys only
-    distinct_surveys_query = db.query(Survey).join(
-        distinct_survey_ids_subquery,
-        Survey.id == distinct_survey_ids_subquery.c.survey_id,
-    )
-
-    sentiment_score_results = (
-        distinct_surveys_query.with_entities(
-            func.date(Survey.reported_at).label("date"),
-            func.avg(Survey.topic_sentiment_score).label("sentiment_score"),
-        )
-        .group_by(func.date(Survey.reported_at))
-        .all()
-    )
-    
-    # Combine results
-    counts_dict = {
-        row.date: {
-            "positive_count": row.positive_count,
-            "negative_count": row.negative_count,
-            "neutral_count": row.neutral_count,
-            "mixed_count": row.mixed_count,
-        }
-        for row in sentiment_counts_results
-    }
-    score_dict = {
-        row.date: row.sentiment_score for row in sentiment_score_results
-    }
-    
-    # Get all unique dates
-    all_dates = set(list(counts_dict.keys()) + list(score_dict.keys()))
-    
-    date_results = [
-        DailySentimentDistributionResponse(
-            year=date.year,
-            month=date.month,
-            day=date.day,
-            positive_count=counts_dict.get(date, {}).get("positive_count", 0),
-            negative_count=counts_dict.get(date, {}).get("negative_count", 0),
-            neutral_count=counts_dict.get(date, {}).get("neutral_count", 0),
-            mixed_count=counts_dict.get(date, {}).get("mixed_count", 0),
-            sentiment_score=float(score_dict.get(date, 0.0) or 0.0),
-        )
-        for date in sorted(all_dates)
-    ]
+    date_results = base_query.with_entities(
+        extract('year', Survey.reported_at).label("year"),
+        extract('month', Survey.reported_at).label("month"),
+        extract('day', Survey.reported_at).label("day"),
+        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id)))).label(
+            "neutral_count"
+        ),
+        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.POSITIVE, Survey.id)))).label(
+            "positive_count"
+        ),
+        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.NEGATIVE, Survey.id)))).label(
+            "negative_count"
+        ),
+        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.MIXED, Survey.id)))).label(
+            "mixed_count"
+        ),
+        func.avg(Survey.topic_sentiment_score).label("sentiment_score"),
+    ).group_by(
+        extract('year', Survey.reported_at),
+        extract('month', Survey.reported_at),
+        extract('day', Survey.reported_at)
+    ).all()
 
     return date_results
 
