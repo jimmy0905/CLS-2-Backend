@@ -347,6 +347,10 @@ async def get_top_k_performance_channels(
     sentiment_query, sentiment_joins, _ = build_optimized_query(db, filter_dict)
     if "store" not in sentiment_joins:
         sentiment_query = sentiment_query.join(Store, Survey.store_id == Store.id)
+    
+    # Add Channel join if not already present
+    if "channel" not in sentiment_joins:
+        sentiment_query = sentiment_query.join(Channel, Survey.channel_id == Channel.id)
 
     sentiment_results = (
         sentiment_query.with_entities(
@@ -436,6 +440,10 @@ async def get_top_k_performance_delivery_services(
     sentiment_query, sentiment_joins, _ = build_optimized_query(db, filter_dict)
     if "store" not in sentiment_joins:
         sentiment_query = sentiment_query.join(Store, Survey.store_id == Store.id)
+    
+    # Add DeliveryService join if not already present
+    if "delivery_service" not in sentiment_joins:
+        sentiment_query = sentiment_query.join(DeliveryService, Survey.delivery_service_id == DeliveryService.id)
 
     sentiment_results = (
         sentiment_query.with_entities(
