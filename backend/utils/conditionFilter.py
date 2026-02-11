@@ -526,25 +526,6 @@ def build_SurveyTopics_sentiment_aggregation_query(base_query, *group_by_fields)
         ),
     ).group_by(*group_by_fields)
 
-def build_Survey_TopicSentiment_aggregation_query(base_query, *group_by_fields):
-    """Build a topic sentiment aggregation query with variable group by fields"""
-    return base_query.with_entities(
-        *group_by_fields,
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id)))).label(
-            "neutral_count"
-        ),
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.POSITIVE, Survey.id)))).label(
-            "positive_count"
-        ),
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.NEGATIVE, Survey.id)))).label(
-            "negative_count"
-        ),
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.MIXED, Survey.id)))).label(
-            "mixed_count"
-        ),
-    ).group_by(*group_by_fields)
-
-
 class FilterRequest(BaseModel):
     store_ids: List[int] = []
     store_names: List[str] = []

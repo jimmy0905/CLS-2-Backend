@@ -21,7 +21,6 @@ from utils.conditionFilter import (
     build_SurveyKeywords_sentiment_aggregation_query,
     build_SurveyDepartments_sentiment_aggregation_query,
     build_SurveyTopics_sentiment_aggregation_query,
-    build_Survey_TopicSentiment_aggregation_query,
     FilterRequest,
     get_filter_params,
 )
@@ -141,12 +140,16 @@ async def get_keyword_analysis(
         base_query = base_query.join(Keyword, SurveyKeywords.keyword_id == Keyword.id)
 
     # Single optimized query for keyword analysis
-    keyword_results = (
-        build_SurveyKeywords_sentiment_aggregation_query(
-            base_query, Keyword.keyword.label("keyword")
-        )
-        .all()
+    keyword_query = build_SurveyKeywords_sentiment_aggregation_query(
+        base_query, Keyword.keyword.label("keyword")
     )
+    
+    # Print the SQL query for debugging
+    from sqlalchemy.dialects import postgresql
+    print("Keyword Analysis Query:")
+    print(keyword_query.statement.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+    
+    keyword_results = keyword_query.all()
     
     # Sort by total count (sum of all sentiment counts) and take top k
     sorted_results = sorted(
@@ -218,7 +221,7 @@ async def get_hierarchy_distribution(
 
     # Use distinct to avoid counting the same survey multiple times after many-to-many joins
     # Get sentiment counts and score
-    sentiment_results = build_Survey_TopicSentiment_aggregation_query(
+    sentiment_results = build_SurveyTopics_sentiment_aggregation_query(
         sentiment_query,
         sentiment_hierarchy_alias.id.label("hierarchy_id"),
         sentiment_hierarchy_alias.name.label("hierarchy_name"),
@@ -628,6 +631,8 @@ class ChannelAndDeliveryServiceDistributionResponse(BaseModel):
     neutral_count: int
     positive_count: int
     negative_count: int
+    mixed_count: int
+    sentiment_score: float
     total_count_for_option: int
 
 
@@ -740,144 +745,40 @@ async def get_topic_sentiment_score(
     # Build base query with filters
     base_query, joined_tables, _ = build_optimized_query(db, filter_dict)
 
-    # Add topic joins if not already present
-    if "topic" not in joined_tables:
-        base_query = base_query.outerjoin(
-            SurveyTopics, Survey.id == SurveyTopics.survey_id
+    neutral_count_result = base_query.with_entities(
+        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id)))).label(
+            "neutral_count"
         )
-
-    # Create CTE for topic counts per survey
-    positive_count = func.sum(
-        case((SurveyTopics.sentiment == "POSITIVE", 1), else_=0)
-    ).label("positive_count")
-
-    negative_count = func.sum(
-        case((SurveyTopics.sentiment == "NEGATIVE", 1), else_=0)
-    ).label("negative_count")
-
-    neutral_count = func.sum(
-        case((SurveyTopics.sentiment == "NEUTRAL", 1), else_=0)
-    ).label("neutral_count")
-
-    total_topics = func.count(SurveyTopics.id).label("total_topics")
-
-    # Build subquery with topic counts
-    topic_counts_subquery = (
-        base_query.with_entities(
-            Survey.id.label("survey_id"),
-            positive_count,
-            negative_count,
-            neutral_count,
-            total_topics,
-        )
-        .group_by(Survey.id)
-        .subquery()
-    )
-
-    # Calculate sentiment score and category for each survey
-    sentiment_score_expr = case(
-        # If survey has no topics, return 0
-        (topic_counts_subquery.c.total_topics == 0, 0.0),
-        # If only neutral topics, return 0 , neutral
-        (
-            (topic_counts_subquery.c.positive_count == 0)
-            & (topic_counts_subquery.c.negative_count == 0),
-            0.0,
-        ),
-        # If only positive and neutral (no negative), return 1 , positive
-        (
-            (topic_counts_subquery.c.positive_count > 0)
-            & (topic_counts_subquery.c.negative_count == 0),
-            1.0,
-        ),
-        # If only negative and neutral (no positive), return -1 , negative
-        (
-            (topic_counts_subquery.c.positive_count == 0)
-            & (topic_counts_subquery.c.negative_count > 0),
-            -1.0,
-        ),
-        # Otherwise, calculate (Positive - Negative) / Total
-        else_=(
-            cast(
-                topic_counts_subquery.c.positive_count
-                - topic_counts_subquery.c.negative_count,
-                Float,
-            )
-            / topic_counts_subquery.c.total_topics
-        ),
-    ).label("sentiment_score")
-
-    category_expr = case(
-        # Only neutral topics
-        (
-            (topic_counts_subquery.c.positive_count == 0)
-            & (topic_counts_subquery.c.negative_count == 0),
-            "neutral_only",
-        ),
-        # Only positive and neutral (no negative)
-        (
-            (topic_counts_subquery.c.positive_count > 0)
-            & (topic_counts_subquery.c.negative_count == 0),
-            "positive_only",
-        ),
-        # Only negative and neutral (no positive)
-        (
-            (topic_counts_subquery.c.positive_count == 0)
-            & (topic_counts_subquery.c.negative_count > 0),
-            "negative_only",
-        ),
-        # Mixed: both positive and negative
-        else_="mixed",
-    ).label("category")
-
-    # Create categories subquery
-    categories_subquery = db.query(
-        topic_counts_subquery.c.survey_id, sentiment_score_expr, category_expr
-    ).subquery()
-
-    # Final aggregation query
-
-    result = db.query(
-        func.sum(
-            case((categories_subquery.c.category == "positive_only", 1), else_=0)
-        ).label("positive_topic_count"),
-        func.sum(
-            case((categories_subquery.c.category == "negative_only", 1), else_=0)
-        ).label("negative_topic_count"),
-        func.sum(
-            case((categories_subquery.c.category == "neutral_only", 1), else_=0)
-        ).label("neutral_topic_count"),
-        func.sum(case((categories_subquery.c.category == "mixed", 1), else_=0)).label(
-            "mix_topic_count"
-        ),
-        func.avg(
-            case(
-                (
-                    categories_subquery.c.category == "mixed",
-                    categories_subquery.c.sentiment_score,
-                )
-            )
-        ).label("average_mix_topic_score"),
     ).first()
-
-    average_overall_topic_score = (
-        (result.mix_topic_count * (result.average_mix_topic_score or 0.0))
-        + (result.positive_topic_count * 1.0)
-        + (result.negative_topic_count * -1.0)
-        + (result.neutral_topic_count * 0.0)
-    ) / (
-        result.mix_topic_count
-        + result.positive_topic_count
-        + result.negative_topic_count
-        + result.neutral_topic_count
-    )
+    positive_count_result = base_query.with_entities(
+        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.POSITIVE, Survey.id)))).label(
+            "positive_count"
+        )
+    ).first()
+    negative_count_result = base_query.with_entities(
+        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.NEGATIVE, Survey.id)))).label(
+        "negative_count"
+    )).first()
+    mixed_count_result = base_query.with_entities(
+        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.MIXED, Survey.id)))).label(
+            "mixed_count"
+        )
+    ).first()
+    # Find the average sentiment score for surveys which have mixed sentiment
+    average_mix_topic_sentiment_score_result = base_query.with_entities(
+        func.avg(Survey.topic_sentiment_score).label("average_mix_topic_sentiment_score")
+    ).filter(Survey.topic_sentiment == TopicSentiment.MIXED).first()
+    # Find the average sentiment score for surveys for all sentiment types
+    average_overall_topic_sentiment_score_result = base_query.with_entities(
+        func.avg(Survey.topic_sentiment_score).label("average_overall_topic_sentiment_score")
+    ).first()
     return TopicSentimentScoreResponse(
-        positive_topic_count=result.positive_topic_count or 0,
-        negative_topic_count=result.negative_topic_count or 0,
-        neutral_topic_count=result.neutral_topic_count or 0,
-        mix_topic_count=result.mix_topic_count or 0,
-        average_mix_topic_score=float(result.average_mix_topic_score or 0.0),
-        average_overall_topic_score=float(average_overall_topic_score or 0.0),
+        positive_topic_count=positive_count_result.positive_count or 0,
+        negative_topic_count=negative_count_result.negative_count or 0,
+        neutral_topic_count=neutral_count_result.neutral_count or 0,
+        mix_topic_count=mixed_count_result.mixed_count or 0,
+        average_mix_topic_score=float(average_mix_topic_sentiment_score_result.average_mix_topic_sentiment_score or 0.0),
+        average_overall_topic_score=float(average_overall_topic_sentiment_score_result.average_overall_topic_sentiment_score or 0.0),
     )
 
 
