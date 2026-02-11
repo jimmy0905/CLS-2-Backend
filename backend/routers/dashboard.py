@@ -59,26 +59,36 @@ async def get_department_distribution(
         )
         _joined_tables.add("department")
 
-    sentiment_results = build_SurveyDepartments_sentiment_aggregation_query(
-        base_query, Department.name.label("department")
-    ).all()
+    sentiment_results = base_query.with_entities(
+        Department.id.label("department_id"),
+        Department.name.label("department"),
+        func.count(func.distinct(case((SurveyDepartments.sentiment == Sentiment.NEUTRAL, SurveyDepartments.id)))).label(
+            "neutral_count"
+        ),
+        func.count(func.distinct(case((SurveyDepartments.sentiment == Sentiment.POSITIVE, SurveyDepartments.id)))).label(
+            "positive_count"
+        ),
+        func.count(func.distinct(case((SurveyDepartments.sentiment == Sentiment.NEGATIVE, SurveyDepartments.id)))).label(
+            "negative_count"
+        )
+    ).group_by(Department.id, Department.name).all()
 
-    # Total count query: Apply ALL filters EXCEPT department filters, but group by department
-    total_query, total_joins, _ = build_optimized_query(
-        db, filter_dict, exclude_filters=["department_ids", "department_names"]
-    )
-
-    # Always add department join for total counts since we need to group by department
-    if "department" not in total_joins:
-        total_query = total_query.join(
+    # Total count query: Apply ALL filters EXCEPT department filters, group by department
+    total_count_query, total_count_joins, _ = build_optimized_query(db, filter_dict, exclude_filters=["department_ids", "department_names"])
+    
+    # Add department join if not already present
+    if "department" not in total_count_joins:
+        total_count_query = total_count_query.join(
             SurveyDepartments, Survey.id == SurveyDepartments.survey_id
         )
-        total_query = total_query.join(
+        total_count_query = total_count_query.join(
             Department, SurveyDepartments.department_id == Department.id
         )
+        total_count_joins.add("department")
 
-    total_results = (
-        total_query.with_entities(
+    total_count_results = (
+        total_count_query.with_entities(
+            Department.id.label("department_id"),
             Department.name.label("department"),
             func.count(func.distinct(SurveyDepartments.id)).label("total_count"),
         )
@@ -86,21 +96,30 @@ async def get_department_distribution(
         .all()
     )
 
+    # Get all departments from database
+    all_departments = db.query(Department).all()
     # Combine results
-    sentiment_dict = {row.department: row for row in sentiment_results}
-    total_dict = {row.department: row.total_count for row in total_results}
-
+    sentiment_dict = {row.department_id: row for row in sentiment_results}
+    total_count_dict = {row.department_id: row.total_count for row in total_count_results}
     department_distribution = []
-    for dept_name in set(list(sentiment_dict.keys()) + list(total_dict.keys())):
-        sentiment_row = sentiment_dict.get(dept_name)
-        total_count = total_dict.get(dept_name, 0)
-
+    for department in all_departments:
+        sentiment_row = sentiment_dict.get(department.id)
+        
+        if sentiment_row:
+            neutral_count = sentiment_row.neutral_count
+            positive_count = sentiment_row.positive_count
+            negative_count = sentiment_row.negative_count
+        else:
+            neutral_count = 0
+            positive_count = 0
+            negative_count = 0
+        total_count = total_count_dict.get(department.id, 0)
         department_distribution.append(
             DepartmentDistributionResponse(
-                department=dept_name,
-                neutral_count=sentiment_row.neutral_count if sentiment_row else 0,
-                positive_count=sentiment_row.positive_count if sentiment_row else 0,
-                negative_count=sentiment_row.negative_count if sentiment_row else 0,
+                department=department.name,
+                neutral_count=neutral_count,
+                positive_count=positive_count,
+                negative_count=negative_count,
                 total_count_for_option=total_count,
             )
         )
