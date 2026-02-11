@@ -49,6 +49,9 @@ class ActionFilterRequest(BaseModel):
     from_date: Optional[str] = ""
     to_date: Optional[str] = ""
     sentiments: List[str] = []
+    topic_sentiments: List[str] = []
+    min_topic_sentiment_score: Optional[float] = None
+    max_topic_sentiment_score: Optional[float] = None
 
 
 class GetActionsResponse(BaseModel):
@@ -95,17 +98,35 @@ async def get_actions(
             status_code=400,
             detail="source_ids and source_names cannot be used together",
         )
-    # lowercase the sentiments
-    action_filter_request.sentiments = [
-        sentiment.lower() for sentiment in action_filter_request.sentiments
-    ]
+    # available topic_sentiments are POSITIVE, NEGATIVE, NEUTRAL, MIXED
+    valid_topic_sentiments = ["POSITIVE", "NEGATIVE", "NEUTRAL", "MIXED"]
+    if action_filter_request.topic_sentiments:
+        invalid_topic_sentiments = [
+            sentiment
+            for sentiment in action_filter_request.topic_sentiments
+            if sentiment not in valid_topic_sentiments
+        ]
+        if invalid_topic_sentiments:
+            raise HTTPException(
+                status_code=400,
+                detail=f"topic_sentiments must be one of {', '.join(valid_topic_sentiments)}. Invalid values: {', '.join(invalid_topic_sentiments)}",
+            )
+    # available sentiments are POSITIVE, NEGATIVE, NEUTRAL
+    valid_sentiments = ["POSITIVE", "NEGATIVE", "NEUTRAL"]
+    if action_filter_request.sentiments:
+        invalid_sentiments = [
+            sentiment
+            for sentiment in action_filter_request.sentiments
+            if sentiment not in valid_sentiments
+        ]
+        if invalid_sentiments:
+            raise HTTPException(
+                status_code=400,
+                detail=f"sentiments must be one of {', '.join(valid_sentiments)}. Invalid values: {', '.join(invalid_sentiments)}",
+            )
     filter_dict = action_filter_request.model_dump()
     filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
 
-    # convert sentiments to lowercase
-    filter_dict["sentiments"] = [
-        sentiment.lower() for sentiment in filter_dict["sentiments"]
-    ]
     # Execute the query
     surveys = (
         filtered_query.order_by(func.length(Survey.comment).desc()).limit(500).all()
@@ -158,7 +179,11 @@ async def generate_email_route(
     db: Session = Depends(get_db),
 ) -> EmailResponse:
 
-    action = db.query(ActionDatabaseModel).filter(ActionDatabaseModel.id == email_request.action_id).first()
+    action = (
+        db.query(ActionDatabaseModel)
+        .filter(ActionDatabaseModel.id == email_request.action_id)
+        .first()
+    )
     if action is None:
         raise HTTPException(status_code=404, detail="Action not found")
     # Convert EmailRequest to EmailData format
