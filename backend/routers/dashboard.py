@@ -307,124 +307,92 @@ async def get_hierarchy_distribution(
 
     # Use distinct to avoid counting the same survey multiple times after many-to-many joins
     # Get sentiment counts and score
-    sentiment_results = build_SurveyTopics_sentiment_aggregation_query(
-        base_query,
-        sentiment_hierarchy_alias.id.label("hierarchy_id"),
-        sentiment_hierarchy_alias.name.label("hierarchy_name"),
-    ).all()
-
-    # Get sentiment scores separately to avoid double counting
-    # Create subquery with distinct survey IDs and their hierarchy IDs
-    distinct_surveys_subquery = base_query.with_entities(
-        func.distinct(Survey.id).label("survey_id"),
-        sentiment_hierarchy_alias.id.label("hierarchy_id"),
-    ).subquery()
-
-    # Join back to Survey to get sentiment scores, grouped by hierarchy
-    sentiment_score_results = (
-        db.query(Survey)
-        .join(
-            distinct_surveys_subquery,
-            Survey.id == distinct_surveys_subquery.c.survey_id,
-        )
-        .with_entities(
-            distinct_surveys_subquery.c.hierarchy_id.label("hierarchy_id"),
+    sentiment_results = (
+        base_query.with_entities(
+            sentiment_hierarchy_alias.id.label("hierarchy_id"),
+            sentiment_hierarchy_alias.name.label("hierarchy_name"),
+            func.count(func.distinct(Survey.id)).label("total_count"),
+            func.count(
+                func.distinct(
+                    case((Survey.topic_sentiment == TopicSentiment.POSITIVE, Survey.id))
+                )
+            ).label("positive_count"),
+            func.count(
+                func.distinct(
+                    case((Survey.topic_sentiment == TopicSentiment.NEGATIVE, Survey.id))
+                )
+            ).label("negative_count"),
+            func.count(
+                func.distinct(
+                    case((Survey.topic_sentiment == TopicSentiment.MIXED, Survey.id))
+                )
+            ).label("mixed_count"),
             func.avg(Survey.topic_sentiment_score).label("sentiment_score"),
         )
-        .group_by(distinct_surveys_subquery.c.hierarchy_id)
+        .group_by(sentiment_hierarchy_alias.id, sentiment_hierarchy_alias.name)
         .all()
     )
 
-    # Total count query: Apply ALL filters EXCEPT hierarchy level filters for the requested level, but keep other hierarchy filters
-    exclude_filters = [f"hierarchy_level_{level}_ids", f"hierarchy_level_{level}_names"]
-    total_query, total_joins, total_hierarchy_aliases = build_optimized_query(
-        db, filter_dict, exclude_filters=exclude_filters
+    # Total count query: Apply ALL filters EXCEPT hierarchy filters, group by hierarchy
+    total_count_query, total_count_joins, _ = build_optimized_query(
+        db, filter_dict, exclude_filters=["hierarchy_ids", "hierarchy_names"]
     )
-
-    # Always add necessary joins for total counts
-    if "store" not in total_joins:
-        total_query = total_query.join(Store, Survey.store_id == Store.id)
-
-    # Check if the requested level's hierarchy join exists for total query
-    total_hierarchy_alias = total_hierarchy_aliases.get(level)
-    if f"hierarchy_level_{level}" not in total_joins:
-        from sqlalchemy.orm import aliased
-
-        total_hierarchy_alias = aliased(Hierarchy)
-        total_query = total_query.join(
-            total_hierarchy_alias, hierarchy_col == total_hierarchy_alias.id
+    # Add hierarchy join if not already present
+    if f"hierarchy_level_{level}" not in total_count_joins:
+        total_count_query = total_count_query.join(
+            sentiment_hierarchy_alias, hierarchy_col == sentiment_hierarchy_alias.id
         )
+        total_count_joins.add(f"hierarchy_level_{level}")
 
-    total_results = (
-        total_query.with_entities(
-            total_hierarchy_alias.id.label("hierarchy_id"),
-            total_hierarchy_alias.name.label("hierarchy_name"),
+    total_count_results = (
+        total_count_query.with_entities(
+            sentiment_hierarchy_alias.id.label("hierarchy_id"),
+            sentiment_hierarchy_alias.name.label("hierarchy_name"),
             func.count(func.distinct(Survey.id)).label("total_count"),
         )
-        .group_by(total_hierarchy_alias.id, total_hierarchy_alias.name)
+        .group_by(sentiment_hierarchy_alias.id, sentiment_hierarchy_alias.name)
         .all()
     )
 
+    # Get all hierarchies from database
+    all_hierarchies = db.query(Hierarchy).all()
+
     # Combine results
-    sentiment_dict = {
-        row.hierarchy_id: {
-            "positive_count": row.positive_count,
-            "negative_count": row.negative_count,
-            "neutral_count": row.neutral_count,
-            "mixed_count": row.mixed_count,
-            "hierarchy_name": row.hierarchy_name,
-        }
-        for row in sentiment_results
-    }
-    sentiment_score_dict = {
-        row.hierarchy_id: row.sentiment_score for row in sentiment_score_results
-    }
-    total_dict = {row.hierarchy_id: row.total_count for row in total_results}
-    hierarchy_name_dict = {
-        row.hierarchy_id: row.hierarchy_name for row in sentiment_results
-    }
-    # Add hierarchy names from total results if not in sentiment results
-    for row in total_results:
-        if row.hierarchy_id not in hierarchy_name_dict:
-            hierarchy_name_dict[row.hierarchy_id] = row.hierarchy_name
+    sentiment_dict = {row.hierarchy_id: row for row in sentiment_results}
+    total_count_dict = {row.hierarchy_id: row.total_count for row in total_count_results}
 
     hierarchy_distribution = []
-    for hierarchy_id in set(
-        list(sentiment_dict.keys())
-        + list(sentiment_score_dict.keys())
-        + list(total_dict.keys())
-    ):
-        sentiment_data = sentiment_dict.get(
-            hierarchy_id,
-            {
-                "positive_count": 0,
-                "negative_count": 0,
-                "neutral_count": 0,
-                "mixed_count": 0,
-                "hierarchy_name": "",
-            },
-        )
-        sentiment_score = sentiment_score_dict.get(hierarchy_id, 0.0)
-        total_count = total_dict.get(hierarchy_id, 0)
-        hierarchy_name = (
-            hierarchy_name_dict.get(hierarchy_id, "")
-            or sentiment_data["hierarchy_name"]
-        )
+    for hierarchy in all_hierarchies:
+        sentiment_row = sentiment_dict.get(hierarchy.id)
+
+        if sentiment_row:
+            neutral_count = sentiment_row.neutral_count
+            positive_count = sentiment_row.positive_count
+            negative_count = sentiment_row.negative_count
+            mixed_count = sentiment_row.mixed_count
+            sentiment_score = float(sentiment_row.sentiment_score or 0.0)
+        else:
+            neutral_count = 0
+            positive_count = 0
+            negative_count = 0
+            mixed_count = 0
+            sentiment_score = 0.0
+
+        total_count = total_count_dict.get(hierarchy.id, 0)
 
         hierarchy_distribution.append(
             HierarchyDistributionResponse(
-                id=hierarchy_id,
-                name=hierarchy_name,
+                id=hierarchy.id,
+                name=hierarchy.name,
                 level=level,
-                positive_count=sentiment_data["positive_count"],
-                negative_count=sentiment_data["negative_count"],
-                neutral_count=sentiment_data["neutral_count"],
-                mixed_count=sentiment_data["mixed_count"],
-                sentiment_score=float(sentiment_score or 0.0),
+                positive_count=positive_count,
+                negative_count=negative_count,
+                neutral_count=neutral_count,
+                mixed_count=mixed_count,
+                sentiment_score=sentiment_score,
                 total_count_for_option=total_count,
             )
         )
-
     return hierarchy_distribution
 
 
