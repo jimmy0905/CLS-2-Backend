@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from models.Survey import Survey
 from utils.conditionFilter import build_survey_query
 from utils.database import get_db
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel, Field
 from typing import Optional
 from utils.llm.models import (
@@ -125,12 +125,28 @@ async def get_actions(
                 detail=f"sentiments must be one of {', '.join(valid_sentiments)}. Invalid values: {', '.join(invalid_sentiments)}",
             )
     filter_dict = action_filter_request.model_dump()
-    filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
-
-    # Execute the query
+    
+    # First get distinct survey IDs that match the filters
+    # Include comment in select for ORDER BY compatibility with DISTINCT
+    id_query = build_survey_query(db.query(Survey.id, Survey.comment).distinct(), filter_dict)
+    id_query = id_query.order_by(func.length(Survey.comment).desc()).limit(500)
+    survey_ids = [row[0] for row in id_query.all()]
+    
+    # Execute the query to get full survey objects
     surveys = (
-        filtered_query.order_by(func.length(Survey.comment).desc()).limit(500).all()
-    )
+        db.query(Survey)
+        .filter(Survey.id.in_(survey_ids))
+        .options(
+            joinedload(Survey.store),
+            joinedload(Survey.survey_topics),
+            joinedload(Survey.survey_keywords),
+            joinedload(Survey.survey_departments),
+            joinedload(Survey.channel),
+            joinedload(Survey.delivery_service)
+        )
+        .order_by(func.length(Survey.comment).desc())
+        .all()
+    ) if survey_ids else []
 
     # Check the length of the surveys
     if len(surveys) == 0:

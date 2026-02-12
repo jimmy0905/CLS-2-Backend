@@ -25,6 +25,9 @@ def build_survey_filter_conditions(filter_dict):
     """Build filter conditions based on the filter dictionary"""
     conditions = []
 
+    # Add is_deleted check
+    conditions.append(Survey.is_deleted == False)
+
     # Date range filter
     if filter_dict.get("from_date"):
         conditions.append(Survey.reported_at >= filter_dict["from_date"])
@@ -264,14 +267,6 @@ def build_survey_query(query: Query, filter_dict) -> Query:
         query = query.join(DeliveryService, Survey.delivery_service_id == DeliveryService.id)
         joins_added.add("delivery_service")
 
-    # Optimize loading of relationships
-    query = query.options(
-        joinedload(Survey.survey_topics).joinedload(SurveyTopics.topic),
-        joinedload(Survey.survey_keywords).joinedload(SurveyKeywords.keyword),
-        joinedload(Survey.store),
-        joinedload(Survey.survey_departments).joinedload(SurveyDepartments.department),
-    )
-
     # Apply the filter conditions
     filter_conditions = merge_filter_conditions(
         survey_conditions,
@@ -466,89 +461,6 @@ def build_optimized_query(
         query = query.filter(filter_conditions)
 
     return query, joined_tables, hierarchy_aliases
-
-
-def build_Survey_sentiment_aggregation_query(base_query, *group_by_fields):
-    """Build a sentiment aggregation query with variable group by fields"""
-    return base_query.with_entities(
-        *group_by_fields,
-        func.count(func.distinct(case((Survey.sentiment == Sentiment.NEUTRAL, Survey.id)))).label(
-            "neutral_count"
-        ),
-        func.count(func.distinct(case((Survey.sentiment == Sentiment.POSITIVE, Survey.id)))).label(
-            "positive_count"
-        ),
-        func.count(func.distinct(case((Survey.sentiment == Sentiment.NEGATIVE, Survey.id)))).label(
-            "negative_count"
-        ),
-    ).group_by(*group_by_fields)
-
-
-def build_SurveyKeywords_sentiment_aggregation_query(base_query, *group_by_fields):
-    """Build a sentiment aggregation query with variable group by fields"""
-    return base_query.with_entities(
-        *group_by_fields,
-        func.count(func.distinct(case((SurveyKeywords.sentiment == Sentiment.NEUTRAL, SurveyKeywords.id)))).label(
-            "neutral_count"
-        ),
-        func.count(func.distinct(case((SurveyKeywords.sentiment == Sentiment.POSITIVE, SurveyKeywords.id)))).label(
-            "positive_count"
-        ),
-        func.count(func.distinct(case((SurveyKeywords.sentiment == Sentiment.NEGATIVE, SurveyKeywords.id)))).label(
-            "negative_count"
-        ),
-    ).group_by(*group_by_fields)
-
-
-def build_SurveyDepartments_sentiment_aggregation_query(base_query, *group_by_fields):
-    """Build a sentiment aggregation query with variable group by fields"""
-    return base_query.with_entities(
-        *group_by_fields,
-        func.count(func.distinct(case((SurveyDepartments.sentiment == Sentiment.NEUTRAL, SurveyDepartments.id)))).label(
-            "neutral_count"
-        ),
-        func.count(func.distinct(case((SurveyDepartments.sentiment == Sentiment.POSITIVE, SurveyDepartments.id)))).label(
-            "positive_count"
-        ),
-        func.count(func.distinct(case((SurveyDepartments.sentiment == Sentiment.NEGATIVE, SurveyDepartments.id)))).label(
-            "negative_count"
-        ),
-    ).group_by(*group_by_fields)
-
-
-def build_SurveyTopics_sentiment_aggregation_query(base_query, *group_by_fields):
-    """Build a sentiment aggregation query with variable group by fields"""
-    return base_query.with_entities(
-        *group_by_fields,
-        func.count(func.distinct(case((SurveyTopics.sentiment == Sentiment.NEUTRAL, SurveyTopics.id)))).label(
-            "neutral_count"
-        ),
-        func.count(func.distinct(case((SurveyTopics.sentiment == Sentiment.POSITIVE, SurveyTopics.id)))).label(
-            "positive_count"
-        ),
-        func.count(func.distinct(case((SurveyTopics.sentiment == Sentiment.NEGATIVE, SurveyTopics.id)))).label(
-            "negative_count"
-        ),
-    ).group_by(*group_by_fields)
-
-def build_Survey_TopicSentiment_aggregation_query(base_query, *group_by_fields):
-    """Build a topic sentiment aggregation query with variable group by fields"""
-    return base_query.with_entities(
-        *group_by_fields,
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id)))).label(
-            "neutral_count"
-        ),
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.POSITIVE, Survey.id)))).label(
-            "positive_count"
-        ),
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.NEGATIVE, Survey.id)))).label(
-            "negative_count"
-        ),
-        func.count(func.distinct(case((Survey.topic_sentiment == TopicSentiment.MIXED, Survey.id)))).label(
-            "mixed_count"
-        ),
-    ).group_by(*group_by_fields)
-
 
 class FilterRequest(BaseModel):
     store_ids: List[int] = []

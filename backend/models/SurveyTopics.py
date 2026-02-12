@@ -22,3 +22,27 @@ class SurveyTopics(Base):
             "topic": self.topic.to_dict(),
             "sentiment": self.sentiment,
         }
+
+
+from sqlalchemy import event
+
+
+@event.listens_for(SurveyTopics, "after_insert")
+@event.listens_for(SurveyTopics, "after_update")
+@event.listens_for(SurveyTopics, "after_delete")
+def update_survey_sentiment_on_topic_change(mapper, connection, target):
+    """Triggered when a survey topic is created, updated, or deleted."""
+    from models.Survey import _recalculate_survey_sentiment, Survey
+    from sqlalchemy.orm import object_session
+    
+    # Get the session from the target object
+    session = object_session(target)
+    if not session:
+        # If no session, we can't proceed
+        return
+    
+    # Fetch the Survey object using the session
+    survey = session.query(Survey).filter(Survey.id == target.survey_id).first()
+    
+    if survey:
+        _recalculate_survey_sentiment(connection, target.survey_id, survey)

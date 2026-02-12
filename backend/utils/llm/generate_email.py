@@ -111,6 +111,7 @@ Output requirements
         ],
         temperature=GENERATE_EMAILS_TEMPERATURE,
         max_tokens=GENERATE_EMAILS_MAX_TOKENS,
+        response_format={"type": "json_object"},
     )
     response_content = response.choices[0].message.content
     if response_content is None:

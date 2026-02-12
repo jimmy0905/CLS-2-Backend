@@ -13,6 +13,7 @@ from sqlalchemy import (
     case,
     select,
     text,
+    JSON,
 )
 import enum
 import datetime
@@ -26,6 +27,9 @@ class Survey(Base):
     __tablename__ = "surveys"
 
     id = Column(Integer, primary_key=True)
+    # Source ID
+    survey_id=Column(Text, nullable=False)
+    respondent_id=Column(Text, nullable=False)
     # Foreign keys
     store_id = Column(Integer, ForeignKey("stores.id"), nullable=False)
     channel_id = Column(Integer, ForeignKey("channels.id"), nullable=True)
@@ -70,6 +74,7 @@ class Survey(Base):
     )
     channel = relationship("Channel", back_populates="surveys")
     delivery_service = relationship("DeliveryService", back_populates="surveys")
+    raw_row_data = Column(JSON, nullable=True)
     # Indexes for filtered columns
     __table_args__ = (
         Index("idx_survey_reported_at", reported_at),
@@ -201,6 +206,8 @@ class Survey(Base):
     def to_csv(self):
         return {
             "id": self.id,
+            "survey_id": self.survey_id,
+            "respondent_id": self.respondent_id,
             "store_id": self.store.id,
             "store_name": self.store.name,
             "hierarchy_level_1_name": (
@@ -260,22 +267,33 @@ class Survey(Base):
 
 @event.listens_for(Survey, "before_update")
 def update_topic_sentiment(mapper, connection, target):
+    """Triggered when the survey itself is updated (not on insert)."""
+    _recalculate_survey_sentiment(connection, target.id, target)
+
+
+def _recalculate_survey_sentiment(connection, survey_id, target):
+    """Helper function to calculate and update survey sentiment based on its topics."""
     from models.SurveyTopics import SurveyTopics
+    from models.enum.Sentiment import Sentiment, TopicSentiment
 
     # Query the database to get counts for each sentiment type
     total_count = (
         connection.execute(
             select(func.count(SurveyTopics.id)).where(
-                SurveyTopics.survey_id == target.id
+                SurveyTopics.survey_id == survey_id
             )
         ).scalar()
         or 0
     )
 
+    if total_count == 0:
+        # If survey has no topics, we don't need to update or can set to default
+        return
+
     positive_count = (
         connection.execute(
             select(func.count(SurveyTopics.id)).where(
-                SurveyTopics.survey_id == target.id,
+                SurveyTopics.survey_id == survey_id,
                 SurveyTopics.sentiment == Sentiment.POSITIVE,
             )
         ).scalar()
@@ -285,7 +303,7 @@ def update_topic_sentiment(mapper, connection, target):
     negative_count = (
         connection.execute(
             select(func.count(SurveyTopics.id)).where(
-                SurveyTopics.survey_id == target.id,
+                SurveyTopics.survey_id == survey_id,
                 SurveyTopics.sentiment == Sentiment.NEGATIVE,
             )
         ).scalar()
@@ -295,7 +313,7 @@ def update_topic_sentiment(mapper, connection, target):
     neutral_count = (
         connection.execute(
             select(func.count(SurveyTopics.id)).where(
-                SurveyTopics.survey_id == target.id,
+                SurveyTopics.survey_id == survey_id,
                 SurveyTopics.sentiment == Sentiment.NEUTRAL,
             )
         ).scalar()
@@ -304,36 +322,27 @@ def update_topic_sentiment(mapper, connection, target):
 
     # Calculate sentiment score
     if total_count == 0:
-        # If survey has no topics, return neutral
         topic_sentiment_score = 0.0
         topic_sentiment_value = TopicSentiment.NEUTRAL
-    # If survey has only positive topics, return positive
     elif positive_count == total_count:
         topic_sentiment_score = 1.0
         topic_sentiment_value = TopicSentiment.POSITIVE
-    # If survey has only negative topics, return negative
     elif negative_count == total_count:
         topic_sentiment_score = -1.0
         topic_sentiment_value = TopicSentiment.NEGATIVE
-    # If survey has only neutral topics, return neutral
     elif neutral_count == total_count:
         topic_sentiment_score = 0.0
         topic_sentiment_value = TopicSentiment.NEUTRAL
-    # If survey has only positive topics and neutral topics, return positive
     elif positive_count > 0 and neutral_count > 0 and negative_count == 0:
         topic_sentiment_score = 1.0
         topic_sentiment_value = TopicSentiment.POSITIVE
-    # If survey has only negative topics and neutral topics, return negative
     elif negative_count > 0 and neutral_count > 0 and positive_count == 0:
         topic_sentiment_score = -1.0
         topic_sentiment_value = TopicSentiment.NEGATIVE
-    # else return mixed
     else:
         topic_sentiment_score = (positive_count - negative_count) / total_count
         topic_sentiment_value = TopicSentiment.MIXED
 
-    # Update the survey with calculated values using raw SQL
-    # Map enum member to uppercase string to match database enum definition
     sentiment_map = {
         TopicSentiment.POSITIVE: "POSITIVE",
         TopicSentiment.NEGATIVE: "NEGATIVE",
@@ -341,12 +350,8 @@ def update_topic_sentiment(mapper, connection, target):
         TopicSentiment.MIXED: "MIXED",
     }
 
-    # Get uppercase enum name for database
     enum_name = sentiment_map[topic_sentiment_value]
 
-    # Update via raw SQL with enum value embedded directly to avoid any parameter conversion
-    # This ensures we use uppercase values that match the database enum
-    # enum_name is safe to embed as it's always one of the 4 controlled uppercase strings
     connection.execute(
         text(
             f"""
@@ -357,7 +362,7 @@ def update_topic_sentiment(mapper, connection, target):
             WHERE id = :survey_id
         """
         ),
-        {"topic_sentiment_score": topic_sentiment_score, "survey_id": target.id},
+        {"topic_sentiment_score": topic_sentiment_score, "survey_id": survey_id},
     )
 
     # Update target object's score attribute

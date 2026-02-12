@@ -1,5 +1,5 @@
 from utils.database import Base
-from sqlalchemy import Column, ForeignKey, DateTime, CHAR, Text, Integer, event
+from sqlalchemy import Column, ForeignKey, DateTime, CHAR, Text, Integer, event, JSON
 import uuid
 from datetime import timezone
 from sqlalchemy.orm import relationship
@@ -17,6 +17,7 @@ class UploadTaskError(Base):
     input_reported_at = Column(Text)
     created_at = Column(DateTime(timezone=True), default=func.now())
     updated_at = Column(DateTime(timezone=True), default=func.now())
+    raw_row_data = Column(JSON, nullable=True)
 
     # Relationships
     upload_task = relationship("UploadTask", back_populates="errors")
@@ -31,6 +32,7 @@ class UploadTaskError(Base):
             "input_reported_at": self.input_reported_at,
             "created_at": self.created_at.astimezone(timezone.utc) if self.created_at else None,
             "updated_at": self.updated_at.astimezone(timezone.utc) if self.updated_at else None,
+            "raw_row_data": self.raw_row_data,
         }
 
 
