@@ -25,6 +25,35 @@ from functools import partial
 from sqlalchemy.orm import sessionmaker
 from utils.database import engine
 from config import MAX_WORKER_THREADS
+from utils.llm.models import TotalResponse
+
+
+# ONLY FOR WTCHKECLS PROJECT
+def is_total_valid(total: TotalResponse) -> tuple[bool, str]:
+    """
+    Check if the total is valid.
+    for these five topics, if dept select= Supply Chain only, then the topics chart should only show the topics below
+
+    Packaging/Condition of Delivered Items
+    Deliveryman Service
+    Communication of Order Status
+    Order Arrived at Promised Time
+    Store Staff’s Service
+    """
+    if total.departments == ["Supply Chain"]:
+        for topic in total.topics:
+            if topic.text not in [
+                "Packaging/Condition of Delivered Items",
+                "Deliveryman Service",
+                "Communication of Order Status",
+                "Order Arrived at Promised Time",
+                "Store Staff’s Service",
+            ]:
+                return (
+                    False,
+                    f"Department {total.departments} only, but Topic {topic.text} is not valid",
+                )
+    return True, ""
 
 
 def is_comment_valid(comment: str) -> bool:
@@ -101,7 +130,7 @@ def parse_flexible_date(
         date_str = str(date_input).strip()
 
         # Handle ISO format with Z (UTC timezone)
-        if date_str.endswith('Z'):
+        if date_str.endswith("Z"):
             try:
                 # Parse the ISO format and set UTC timezone
                 parsed_date = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S.%fZ")
@@ -110,7 +139,7 @@ def parse_flexible_date(
                 logger.debug(
                     f"{row_context}Failed to parse date '{date_str}' using ISO format with Z"
                 )
-        
+
         # Handle simple datetime format (assume UTC)
         try:
             parsed_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
@@ -380,9 +409,27 @@ def process_single_row(
                         upload_task.total_tokens += usage.get("total_tokens", 0)
                         db.commit()
 
+            # ONLY FOR WTCHKECLS PROJECT
+            # Check if the total is valid
+            is_valid, error_message = is_total_valid(total)
+            if not is_valid:
+                error = UploadTaskError(
+                    upload_task_id=upload_task_id,
+                    input_store_id=store_id,
+                    input_comment=comment,
+                    input_reported_at=reported_at,
+                    error_message=error_message,
+                )
+                db.add(error)
+                db.commit()
+                result["error"] = error_message
+                return result
+
             # if total.cannot_classified is True, set have_to_retry to True
             if total.cannot_classified:
-                logger.warning(f"Row {index + 1}: Cannot classified in AI Analysis after first try, retrying...")
+                logger.warning(
+                    f"Row {index + 1}: Cannot classified in AI Analysis after first try, retrying..."
+                )
                 have_to_retry = True
             # Check if the topics are not empty
             if total.topics is None or len(total.topics) == 0:
@@ -399,12 +446,16 @@ def process_single_row(
             # Check if the topics are valid
             for topic in total.topics:
                 if topic.text not in available_topics:
-                    logger.warning(f"Row {index + 1}: Topic {topic.text} is not valid after first try, retrying...")
+                    logger.warning(
+                        f"Row {index + 1}: Topic {topic.text} is not valid after first try, retrying..."
+                    )
                     have_to_retry = True
             # Check if the departments are valid
             for department in total.departments:
                 if department.text not in available_departments:
-                    logger.warning(f"Row {index + 1}: Department {department.text} is not valid after first try, retrying...")
+                    logger.warning(
+                        f"Row {index + 1}: Department {department.text} is not valid after first try, retrying..."
+                    )
                     have_to_retry = True
 
             if have_to_retry:
@@ -443,7 +494,9 @@ def process_single_row(
                     return result
                 # Check if the topics are not empty
                 if total.topics is None:
-                    logger.warning(f"Row {index + 1}: Topics are empty after retrying, skipping row")
+                    logger.warning(
+                        f"Row {index + 1}: Topics are empty after retrying, skipping row"
+                    )
                     error = UploadTaskError(
                         upload_task_id=upload_task_id,
                         input_store_id=store_id,
@@ -458,7 +511,9 @@ def process_single_row(
                     return result
                 # Check if the departments are not empty
                 if total.departments is None:
-                    logger.warning(f"Row {index + 1}: Departments are empty after retrying, skipping row")
+                    logger.warning(
+                        f"Row {index + 1}: Departments are empty after retrying, skipping row"
+                    )
                     error = UploadTaskError(
                         upload_task_id=upload_task_id,
                         input_store_id=store_id,
@@ -473,7 +528,9 @@ def process_single_row(
                     return result
                 # Check if the keywords are not empty
                 if total.keywords is None:
-                    logger.warning(f"Row {index + 1}: Keywords are empty after retrying, skipping row")
+                    logger.warning(
+                        f"Row {index + 1}: Keywords are empty after retrying, skipping row"
+                    )
                     error = UploadTaskError(
                         upload_task_id=upload_task_id,
                         input_store_id=store_id,
