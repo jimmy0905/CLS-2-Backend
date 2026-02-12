@@ -220,28 +220,7 @@ async def get_keyword_analysis(
             ).label("negative_count"),
         )
         .group_by(Keyword.id, Keyword.keyword)
-        .order_by(
-            func.count(
-                func.distinct(
-                    case(
-                        (
-                            SurveyKeywords.sentiment == Sentiment.NEUTRAL,
-                            SurveyKeywords.id,
-                        )
-                    )
-                )
-            ).desc(),
-            func.count(
-                func.distinct(
-                    case(
-                        (
-                            SurveyKeywords.sentiment == Sentiment.POSITIVE,
-                            SurveyKeywords.id,
-                        )
-                    )
-                )
-            ).desc(),
-        )
+        .order_by(func.count(func.distinct(SurveyKeywords.id)).desc())
         .limit(k)
         .all()
     )
@@ -334,8 +313,15 @@ async def get_hierarchy_distribution(
     )
 
     # Total count query: Apply ALL filters EXCEPT the specific hierarchy level's filters, group by hierarchy
-    total_count_query, total_count_joins, total_count_hierarchy_aliases = build_optimized_query(
-        db, filter_dict, exclude_filters=[f"hierarchy_level_{level}_ids", f"hierarchy_level_{level}_names"]
+    total_count_query, total_count_joins, total_count_hierarchy_aliases = (
+        build_optimized_query(
+            db,
+            filter_dict,
+            exclude_filters=[
+                f"hierarchy_level_{level}_ids",
+                f"hierarchy_level_{level}_names",
+            ],
+        )
     )
 
     # Add Store join if not already present for total count query
@@ -370,7 +356,9 @@ async def get_hierarchy_distribution(
 
     # Combine results
     sentiment_dict = {row.hierarchy_id: row for row in sentiment_results}
-    total_count_dict = {row.hierarchy_id: row.total_count for row in total_count_results}
+    total_count_dict = {
+        row.hierarchy_id: row.total_count for row in total_count_results
+    }
 
     hierarchy_distribution = []
     for hierarchy in all_hierarchies:
