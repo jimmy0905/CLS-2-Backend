@@ -300,11 +300,6 @@ async def get_hierarchy_distribution(
         )
         _joined_tables.add(f"hierarchy_level_{level}")
 
-    # Add SurveyTopics join if not already present (needed for sentiment aggregation)
-    if "topic" not in _joined_tables:
-        base_query = base_query.join(SurveyTopics, Survey.id == SurveyTopics.survey_id)
-        _joined_tables.add("topic")
-
     # Use distinct to avoid counting the same survey multiple times after many-to-many joins
     # Get sentiment counts and score
     sentiment_results = (
@@ -312,6 +307,11 @@ async def get_hierarchy_distribution(
             sentiment_hierarchy_alias.id.label("hierarchy_id"),
             sentiment_hierarchy_alias.name.label("hierarchy_name"),
             func.count(func.distinct(Survey.id)).label("total_count"),
+            func.count(
+                func.distinct(
+                    case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id))
+                )
+            ).label("neutral_count"),
             func.count(
                 func.distinct(
                     case((Survey.topic_sentiment == TopicSentiment.POSITIVE, Survey.id))
@@ -333,29 +333,40 @@ async def get_hierarchy_distribution(
         .all()
     )
 
-    # Total count query: Apply ALL filters EXCEPT hierarchy filters, group by hierarchy
-    total_count_query, total_count_joins, _ = build_optimized_query(
-        db, filter_dict, exclude_filters=["hierarchy_ids", "hierarchy_names"]
+    # Total count query: Apply ALL filters EXCEPT the specific hierarchy level's filters, group by hierarchy
+    total_count_query, total_count_joins, total_count_hierarchy_aliases = build_optimized_query(
+        db, filter_dict, exclude_filters=[f"hierarchy_level_{level}_ids", f"hierarchy_level_{level}_names"]
     )
-    # Add hierarchy join if not already present
+
+    # Add Store join if not already present for total count query
+    if "store" not in total_count_joins:
+        total_count_query = total_count_query.join(Store, Survey.store_id == Store.id)
+        total_count_joins.add("store")
+
+    # Check if the requested level's hierarchy join exists, if not, create it
+    total_count_hierarchy_alias = total_count_hierarchy_aliases.get(level)
     if f"hierarchy_level_{level}" not in total_count_joins:
+        from sqlalchemy.orm import aliased
+
+        total_count_hierarchy_alias = aliased(Hierarchy)
         total_count_query = total_count_query.join(
-            sentiment_hierarchy_alias, hierarchy_col == sentiment_hierarchy_alias.id
+            total_count_hierarchy_alias, hierarchy_col == total_count_hierarchy_alias.id
         )
         total_count_joins.add(f"hierarchy_level_{level}")
 
     total_count_results = (
         total_count_query.with_entities(
-            sentiment_hierarchy_alias.id.label("hierarchy_id"),
-            sentiment_hierarchy_alias.name.label("hierarchy_name"),
+            total_count_hierarchy_alias.id.label("hierarchy_id"),
+            total_count_hierarchy_alias.name.label("hierarchy_name"),
+            total_count_hierarchy_alias.level.label("hierarchy_level"),
             func.count(func.distinct(Survey.id)).label("total_count"),
         )
-        .group_by(sentiment_hierarchy_alias.id, sentiment_hierarchy_alias.name)
+        .group_by(total_count_hierarchy_alias.id, total_count_hierarchy_alias.name)
         .all()
     )
 
-    # Get all hierarchies from database
-    all_hierarchies = db.query(Hierarchy).all()
+    # Get all hierarchies for the requested level only
+    all_hierarchies = db.query(Hierarchy).filter(Hierarchy.level == level).all()
 
     # Combine results
     sentiment_dict = {row.hierarchy_id: row for row in sentiment_results}
@@ -384,7 +395,7 @@ async def get_hierarchy_distribution(
             HierarchyDistributionResponse(
                 id=hierarchy.id,
                 name=hierarchy.name,
-                level=level,
+                level=hierarchy.level,
                 positive_count=positive_count,
                 negative_count=negative_count,
                 neutral_count=neutral_count,
