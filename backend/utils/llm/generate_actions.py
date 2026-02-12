@@ -144,6 +144,7 @@ def _generate_actions_sync(
             {"role": "user", "content": user_prompt},
         ],
         temperature=GENERATE_ACTIONS_TEMPERATURE,
+        response_format={"type": "json_object"},
     )
     response_content = response.choices[0].message.content
     if response_content is None:

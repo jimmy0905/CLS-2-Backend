@@ -295,6 +295,7 @@ def _extract_total_sync(text: str) -> tuple[TotalResponse, dict]:
             {"role": "user", "content": user_prompt},
         ],
         temperature=EXTRACT_TOTAL_TEMPERATURE,
+        response_format={"type": "json_object"},
     )
     response_content = response.choices[0].message.content
     if response_content is None:
@@ -355,6 +356,7 @@ def _extract_total_retry_sync(text: str) -> tuple[TotalResponse, dict]:
             {"role": "user", "content": user_prompt},
         ],
         temperature=EXTRACT_TOTAL_RETRY_TEMPERATURE,
+        response_format={"type": "json_object"},
     )
     response_content = response.choices[0].message.content
     if response_content is None:

@@ -1,6 +1,7 @@
 from models.UploadTask import UploadTask
 from models.Survey import Survey
 import pandas as pd
+import json
 from models.Store import Store
 from models.UploadTaskError import UploadTaskError
 from models.Department import Department
@@ -170,6 +171,15 @@ def process_single_row(
         db = get_thread_db_session()
         index = row_data["index"]
         row = row_data["row"]
+
+        # Serialize row data
+        try:
+            row_dict = row.to_dict()
+            json_row_data = json.dumps({"index": index, "row": row_dict}, default=str)
+        except Exception as e:
+            logger.warning(f"Row {index + 1}: Failed to serialize row data: {e}")
+            json_row_data = json.dumps({"index": index, "error": str(e)})
+
         have_to_retry = False
         result = {"index": index, "success": False, "error": None}
 
@@ -177,6 +187,8 @@ def process_single_row(
         store_id = row["store_key"] if pd.notna(row["store_key"]) else None
         comment = row["answer"] if pd.notna(row["answer"]) else None
         reported_at = row["survey_order_date"] if pd.notna(row["survey_order_date"]) else None
+        survey_id = str(int(row["survey_id"])) if pd.notna(row["survey_id"]) else None
+        respondent_id = str(int(row["respondent_id"])) if pd.notna(row["respondent_id"]) else None
         if is_comment_valid(comment) is False:
             logger.warning(f"Row {index + 1}: Comment is invalid, skipping row")
             # Create an error for the upload task
@@ -186,6 +198,7 @@ def process_single_row(
                 input_comment=comment,
                 input_reported_at=reported_at,
                 error_message="Comment is invalid",
+                raw_row_data=json_row_data,
             )
             db.add(error)
             db.commit()
@@ -198,8 +211,8 @@ def process_single_row(
             channel_name = row["channel"]
 
         delivery_service_name = None
-        if "delivery_mode" in row and pd.notna(row["delivery_mode"]):
-            delivery_service_name = row["delivery_mode"]
+        if "delivery_mode" in row and pd.notna(row["processed_delivery_mode_detail"]):
+            delivery_service_name = row["processed_delivery_mode_detail"]
 
         # Check if the store_id (store_key) is valid
         # Check if the store_id is empty
@@ -212,6 +225,7 @@ def process_single_row(
                 input_comment=comment,
                 input_reported_at=reported_at,
                 error_message="Store ID is required",
+                raw_row_data=json_row_data,
             )
             db.add(error)
             db.commit()
@@ -230,6 +244,7 @@ def process_single_row(
                 input_comment=comment,
                 input_reported_at=reported_at,
                 error_message="Store ID is not valid",
+                raw_row_data=json_row_data,
             )
             db.add(error)
             db.commit()
@@ -247,6 +262,7 @@ def process_single_row(
                 input_comment=comment,
                 input_reported_at=reported_at,
                 error_message="Comment is required",
+                raw_row_data=json_row_data,
             )
             db.add(error)
             db.commit()
@@ -263,6 +279,7 @@ def process_single_row(
                 input_comment=comment,
                 input_reported_at=reported_at,
                 error_message="Reported at is required",
+                raw_row_data=json_row_data,
             )
             db.add(error)
             db.commit()
@@ -282,6 +299,7 @@ def process_single_row(
                 input_comment=comment,
                 input_reported_at=str(reported_at),
                 error_message=f"Could not parse date format: {reported_at}",
+                raw_row_data=json_row_data,
             )
             db.add(error)
             db.commit()
@@ -297,6 +315,17 @@ def process_single_row(
                 logger.warning(
                     f"Row {index + 1}: Channel {channel_name} not found in database, skipping row"
                 )
+                error = UploadTaskError(
+                    upload_task_id=upload_task_id,
+                    input_store_id=store_id,
+                    input_comment=comment,
+                    input_reported_at=reported_at,
+                    error_message="Channel is not valid",
+                    raw_row_data=json_row_data,
+                )
+                db.add(error)
+                db.commit()
+                result["error"] = "Channel is not valid"
                 return result
             channel_id = channel.id
         else:
@@ -312,6 +341,17 @@ def process_single_row(
                 logger.warning(
                     f"Row {index + 1}: Delivery service {delivery_service_name} not found in database, skipping row"
                 )
+                error = UploadTaskError(
+                    upload_task_id=upload_task_id,
+                    input_store_id=store_id,
+                    input_comment=comment,
+                    input_reported_at=reported_at,
+                    error_message="Delivery service is not valid",
+                    raw_row_data=json_row_data,
+                )
+                db.add(error)
+                db.commit()
+                result["error"] = "Delivery service is not valid"
                 return result
             delivery_service_id = delivery_service.id
         else:
@@ -345,15 +385,15 @@ def process_single_row(
                 logger.warning(f"Row {index + 1}: Cannot classified in AI Analysis after first try, retrying...")
                 have_to_retry = True
             # Check if the topics are not empty
-            if total.topics is None:
+            if total.topics is None or len(total.topics) == 0:
                 logger.warning(f"Row {index + 1}: Topics are empty after first try, skipping row")
                 have_to_retry = True
             # Check if the departments are not empty
-            if total.departments is None:
+            if total.departments is None or len(total.departments) == 0:
                 logger.warning(f"Row {index + 1}: Departments are empty after first try, skipping row")
                 have_to_retry = True
             # Check if the keywords are not empty
-            if total.keywords is None:
+            if total.keywords is None or len(total.keywords) == 0:
                 logger.warning(f"Row {index + 1}: Keywords are empty after first try, skipping row")
                 have_to_retry = True
             # Check if the topics are valid
@@ -395,6 +435,7 @@ def process_single_row(
                         input_comment=comment,
                         input_reported_at=reported_at,
                         error_message="Cannot classified in AI Analysis after retrying",
+                        raw_row_data=json_row_data,
                     )
                     db.add(error)
                     db.commit()
@@ -409,6 +450,7 @@ def process_single_row(
                         input_comment=comment,
                         input_reported_at=reported_at,
                         error_message="Topics are empty after retrying",
+                        raw_row_data=json_row_data,
                     )
                     db.add(error)
                     db.commit()
@@ -423,6 +465,7 @@ def process_single_row(
                         input_comment=comment,
                         input_reported_at=reported_at,
                         error_message="Departments are empty after retrying",
+                        raw_row_data=json_row_data,
                     )
                     db.add(error)
                     db.commit()
@@ -437,6 +480,7 @@ def process_single_row(
                         input_comment=comment,
                         input_reported_at=reported_at,
                         error_message="Keywords are empty after retrying",
+                        raw_row_data=json_row_data,
                     )
                     db.add(error)
                     db.commit()
@@ -454,6 +498,7 @@ def process_single_row(
                             input_comment=comment,
                             input_reported_at=reported_at,
                             error_message=f"Topic {topic.text} is not valid after retrying",
+                            raw_row_data=json_row_data,
                         )
                         db.add(error)
                         db.commit()
@@ -473,6 +518,7 @@ def process_single_row(
                             input_comment=comment,
                             input_reported_at=reported_at,
                             error_message=f"Department {department.text} is not valid after retrying",
+                            raw_row_data=json_row_data,
                         )
                         db.add(error)
                         db.commit()
@@ -492,6 +538,7 @@ def process_single_row(
                 input_comment=comment,
                 input_reported_at=reported_at,
                 error_message=f"Error conducting AI Analysis for topics: {e}",
+                raw_row_data=json_row_data,
             )
             db.add(error)
             db.commit()
@@ -499,17 +546,20 @@ def process_single_row(
             return result
         total_topics = total.topics
         total_departments = total.departments
-        total_sentiment = total.overall_sentiment
+        total_sentiment = total.overall_sentiment.upper() if total.overall_sentiment else None
         total_keywords = total.keywords
 
         # Create a new survey
         survey = Survey(
+            survey_id=survey_id,
+            respondent_id=respondent_id,
             store_id=store_id,
             comment=comment,
             reported_at=reported_at,
             sentiment=total_sentiment,
             channel_id=channel_id,
             delivery_service_id=delivery_service_id,
+            raw_row_data=json_row_data,
         )
         db.add(survey)
         db.commit()
@@ -541,7 +591,7 @@ def process_single_row(
             survey_keyword = SurveyKeywords(
                 survey_id=survey.id,
                 keyword_id=keyword.id,
-                sentiment=keyword_obj.sentiment,
+                sentiment=keyword_obj.sentiment.upper() if keyword_obj.sentiment else None,
             )
             db.add(survey_keyword)
 
@@ -560,7 +610,9 @@ def process_single_row(
 
             # Create survey-topic relationship
             survey_topic = SurveyTopics(
-                survey_id=survey.id, topic_id=topic.id, sentiment=topic_obj.sentiment
+                survey_id=survey.id,
+                topic_id=topic.id,
+                sentiment=topic_obj.sentiment.upper() if topic_obj.sentiment else None,
             )
             db.add(survey_topic)
 
@@ -589,7 +641,7 @@ def process_single_row(
             survey_department = SurveyDepartments(
                 survey_id=survey.id,
                 department_id=department.id,
-                sentiment=department_obj.sentiment,
+                sentiment=department_obj.sentiment.upper() if department_obj.sentiment else None,
             )
             db.add(survey_department)
 
@@ -645,7 +697,8 @@ async def process_upload_task(file_path, db, upload_task_id):
             on_bad_lines="warn",  # Warn about bad lines but continue
             engine="python",  # Use Python engine for more flexible parsing
             quotechar='"',
-            escapechar='\\'
+            escapechar='\\',
+            na_values=['']
         )
         logger.info(f"Successfully parsed CSV file with {len(df)} rows for processing")
     except Exception as e:
