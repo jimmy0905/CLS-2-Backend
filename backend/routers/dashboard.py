@@ -417,23 +417,24 @@ async def get_topic_distribution(
         base_query = base_query.join(Topic, SurveyTopics.topic_id == Topic.id)
         _joined_tables.add("topic")
 
+    # Count each SurveyTopics occurrence (same survey can have same topic with different sentiments)
     sentiment_results = (
         base_query.with_entities(
             Topic.topic.label("topic"),
             Topic.id.label("topic_id"),
             func.count(
                 func.distinct(
-                    case((Survey.topic_sentiment == Sentiment.NEUTRAL, Survey.id))
+                    case((SurveyTopics.sentiment == Sentiment.NEUTRAL, SurveyTopics.id))
                 )
             ).label("neutral_count"),
             func.count(
                 func.distinct(
-                    case((Survey.topic_sentiment == Sentiment.POSITIVE, Survey.id))
+                    case((SurveyTopics.sentiment == Sentiment.POSITIVE, SurveyTopics.id))
                 )
             ).label("positive_count"),
             func.count(
                 func.distinct(
-                    case((Survey.topic_sentiment == Sentiment.NEGATIVE, Survey.id))
+                    case((SurveyTopics.sentiment == Sentiment.NEGATIVE, SurveyTopics.id))
                 )
             ).label("negative_count"),
         )
@@ -455,11 +456,12 @@ async def get_topic_distribution(
             Topic, SurveyTopics.topic_id == Topic.id
         )
 
+    # Total count: each SurveyTopics record counts (same topic in same survey with different sentiments = 2)
     total_count_results = (
         total_count_query.with_entities(
             Topic.id.label("topic_id"),
             Topic.topic.label("topic_name"),
-            func.count(func.distinct(Survey.id)).label("total_count"),
+            func.count(func.distinct(SurveyTopics.id)).label("total_count"),
         )
         .group_by(Topic.id, Topic.topic)
         .all()
