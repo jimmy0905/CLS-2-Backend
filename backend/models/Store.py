@@ -5,7 +5,7 @@ from sqlalchemy.orm import relationship
 class Store(Base):
     __tablename__ = "stores"
 
-    id = Column(Integer, primary_key=True) # store_key
+    store_key= Column(Integer, primary_key=True) # store_key
     store_name_english = Column(String(100)) # store_name_english
     store_name_local=Column(String(100), nullable=True) # store_name_local
     bu_key = Column(String(100)) # bu_key
@@ -47,7 +47,7 @@ class Store(Base):
 
     def to_dict(self):
         return {
-            "id": self.id,
+            "store_key": self.store_key,
             "store_name_english": self.store_name_english,
             "store_name_local": self.store_name_local,
             "bu_key": self.bu_key,

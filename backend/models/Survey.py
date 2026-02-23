@@ -31,7 +31,7 @@ class Survey(Base):
     survey_id=Column(Text, nullable=False)
     respondent_id=Column(Text, nullable=False)
     # Foreign keys
-    store_id = Column(Integer, ForeignKey("stores.id"), nullable=False)
+    store_key = Column(Integer, ForeignKey("stores.store_key"), nullable=False)
     channel_id = Column(Integer, ForeignKey("channels.id"), nullable=True)
     delivery_service_id = Column(
         Integer, ForeignKey("delivery_services.id"), nullable=True
@@ -87,7 +87,7 @@ class Survey(Base):
             # Foreign keys
             "store": (
                 {
-                    "id": self.store.id,
+                    "id": self.store.store_key,
                     "store_name_english": self.store.store_name_english,
                     "store_name_local": self.store.store_name_local,
                     "bu_key": self.store.bu_key,
@@ -195,7 +195,7 @@ class Survey(Base):
             "id": self.id,
             "survey_id": self.survey_id,
             "respondent_id": self.respondent_id,
-            "store_id": self.store.id,
+            "store_key": self.store.store_key,
             "store_name_english": self.store.store_name_english,
             "store_name_local": self.store.store_name_local,
             "bu_key": self.store.bu_key,

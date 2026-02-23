@@ -14,7 +14,6 @@ from utils.llm.generate_strategy import (
 )
 from pydantic import BaseModel, Field
 from models.Store import Store
-from models.Hierarchy import Hierarchy
 from models.Channel import Channel
 from models.DeliveryService import DeliveryService
 from sqlalchemy import or_, func, case
@@ -33,21 +32,41 @@ router = APIRouter(
     dependencies=[Depends(get_current_user)],
 )
 
-
-class HierarchyResponse(BaseModel):
-    id: int
-    name: str
-    level: int
-
-
 class StoreResponse(BaseModel):
     id: int
-    name: str
-    hierarchy_level_1: Optional[HierarchyResponse] = None
-    hierarchy_level_2: Optional[HierarchyResponse] = None
-    hierarchy_level_3: Optional[HierarchyResponse] = None
-    hierarchy_level_4: Optional[HierarchyResponse] = None
-    hierarchy_level_5: Optional[HierarchyResponse] = None
+    store_name_english: str
+    store_name_local: Optional[str] = None
+    bu_key: Optional[str] = None
+    area_manager: Optional[str] = None
+    store_format: Optional[str] = None
+    store_type: Optional[str] = None
+    operations_controller: Optional[str] = None
+    regional_manager: Optional[str] = None
+    px: Optional[str] = None
+    csr: Optional[str] = None
+    dr: Optional[str] = None
+    mag_type: Optional[str] = None
+    cf_grouping: Optional[str] = None
+    store_brand: Optional[str] = None
+    competitor: Optional[str] = None
+    region: Optional[str] = None
+    area: Optional[str] = None
+    territory: Optional[str] = None
+    toh: Optional[str] = None
+    district: Optional[str] = None
+    city: Optional[str] = None
+    operations_manager: Optional[str] = None
+    district_manager: Optional[str] = None
+    sic: Optional[str] = None
+    tech_life_type: Optional[str] = None
+    operation_manager_tl: Optional[str] = None
+    region_manager_tl: Optional[str] = None
+    relocation: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    store_open_date: Optional[str] = None
+    store_close_date: Optional[str] = None
+    is_closed: bool
 
 
 class TopKPerformanceStoresResponse(BaseModel):
@@ -72,11 +91,11 @@ async def get_top_k_performance_stores(
     # First get the sentiment counts per store
     sentiment_query, sentiment_joins, _ = build_optimized_query(db, filter_dict)
     if "store" not in sentiment_joins:
-        sentiment_query = sentiment_query.join(Store, Survey.store_id == Store.id)
+        sentiment_query = sentiment_query.join(Store, Survey.store_key == Store.id)
 
     sentiment_results = (
         sentiment_query.with_entities(
-            Store.id.label("store_id"),
+            Store.id.label("store_key"),
             Store.name.label("store_name"),
             func.count(
                 case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id))
@@ -97,17 +116,10 @@ async def get_top_k_performance_stores(
     )
 
     # Get store details for the stores we found
-    store_ids = [r.store_id for r in sentiment_results]
+    store_keys = [r.store_key for r in sentiment_results]
     stores = (
         db.query(Store)
-        .filter(Store.id.in_(store_ids))
-        .options(
-            joinedload(Store.hierarchy_level_1),
-            joinedload(Store.hierarchy_level_2),
-            joinedload(Store.hierarchy_level_3),
-            joinedload(Store.hierarchy_level_4),
-            joinedload(Store.hierarchy_level_5),
-        )
+        .filter(Store.id.in_(store_keys))
         .all()
     )
 
@@ -116,58 +128,45 @@ async def get_top_k_performance_stores(
 
     store_with_sentiment = []
     for store in sentiment_results:
-        store_obj = store_details_map[store.store_id]
+        store_obj = store_details_map[store.store_key]
         average_sentiment_score = store.average_sentiment_score if store.average_sentiment_score is not None else 0
         store_with_sentiment.append(
             TopKPerformanceStoresResponse(
                 store={
-                    "id": store.store_id,
-                    "name": store.store_name,
-                    "hierarchy_level_1": (
-                        {
-                            "id": store_obj.hierarchy_level_1.id,
-                            "name": store_obj.hierarchy_level_1.name,
-                            "level": store_obj.hierarchy_level_1.level,
-                        }
-                        if store_obj.hierarchy_level_1
-                        else None
-                    ),
-                    "hierarchy_level_2": (
-                        {
-                            "id": store_obj.hierarchy_level_2.id,
-                            "name": store_obj.hierarchy_level_2.name,
-                            "level": store_obj.hierarchy_level_2.level,
-                        }
-                        if store_obj.hierarchy_level_2
-                        else None
-                    ),
-                    "hierarchy_level_3": (
-                        {
-                            "id": store_obj.hierarchy_level_3.id,
-                            "name": store_obj.hierarchy_level_3.name,
-                            "level": store_obj.hierarchy_level_3.level,
-                        }
-                        if store_obj.hierarchy_level_3
-                        else None
-                    ),
-                    "hierarchy_level_4": (
-                        {
-                            "id": store_obj.hierarchy_level_4.id,
-                            "name": store_obj.hierarchy_level_4.name,
-                            "level": store_obj.hierarchy_level_4.level,
-                        }
-                        if store_obj.hierarchy_level_4
-                        else None
-                    ),
-                    "hierarchy_level_5": (
-                        {
-                            "id": store_obj.hierarchy_level_5.id,
-                            "name": store_obj.hierarchy_level_5.name,
-                            "level": store_obj.hierarchy_level_5.level,
-                        }
-                        if store_obj.hierarchy_level_5
-                        else None
-                    ),
+                    "id": store.store_key,
+                    "store_name_english": store_obj.store_name_english,
+                    "store_name_local": store_obj.store_name_local,
+                    "bu_key": store_obj.bu_key,
+                    "area_manager": store_obj.area_manager,
+                    "store_format": store_obj.store_format,
+                    "store_type": store_obj.store_type,
+                    "operations_controller": store_obj.operations_controller,
+                    "regional_manager": store_obj.regional_manager,
+                    "px": store_obj.px,
+                    "csr": store_obj.csr,
+                    "dr": store_obj.dr,
+                    "mag_type": store_obj.mag_type,
+                    "cf_grouping": store_obj.cf_grouping,
+                    "store_brand": store_obj.store_brand,
+                    "competitor": store_obj.competitor,
+                    "region": store_obj.region,
+                    "area": store_obj.area,
+                    "territory": store_obj.territory,
+                    "toh": store_obj.toh,
+                    "district": store_obj.district,
+                    "city": store_obj.city,
+                    "operations_manager": store_obj.operations_manager,
+                    "district_manager": store_obj.district_manager,
+                    "sic": store_obj.sic,
+                    "tech_life_type": store_obj.tech_life_type,
+                    "operation_manager_tl": store_obj.operation_manager_tl,
+                    "region_manager_tl": store_obj.region_manager_tl,
+                    "relocation": store_obj.relocation,
+                    "latitude": store_obj.latitude,
+                    "longitude": store_obj.longitude,
+                    "store_open_date": store_obj.store_open_date,
+                    "store_close_date": store_obj.store_close_date,
+                    "is_closed": store_obj.is_closed,
                 },
                 score=average_sentiment_score,
                 positive_count=store.positive_count,
@@ -182,7 +181,7 @@ async def get_top_k_performance_stores(
 
 
 class StrategyByStoreIdsRequest(BaseModel):
-    store_ids: List[str] = Field(
+    store_keys: List[str] = Field(
         default_factory=list,
         description="The store ids to get the strategy",
     )
@@ -194,7 +193,7 @@ async def get_strategy_for_store_by_ids(
     db: Session = Depends(get_db),
 ) -> str:
     filter_dict = {
-        "store_ids": request.store_ids,
+        "store_keys": request.store_keys,
         "topic_sentiments": [TopicSentiment.POSITIVE],
     }
     filtered_query, _, _ = build_optimized_query(db, filter_dict)
@@ -205,8 +204,8 @@ async def get_strategy_for_store_by_ids(
     return strategy
 
 
-class TopKPerformanceHierarchyResponse(BaseModel):
-    hierarchy: HierarchyResponse
+class TopKPerformanceColumnResponse(BaseModel):
+    column_name: str
     score: float
     positive_count: int
     negative_count: int
@@ -214,50 +213,70 @@ class TopKPerformanceHierarchyResponse(BaseModel):
     mixed_count: int
 
 
-@router.get("/get_top_k_performance_hierarchies")
-async def get_top_k_performance_hierarchies(
-    level: int = Query(..., ge=1, le=5, description="Hierarchy level (1-5)"),
+@router.get("/get_top_k_performance_columns")
+async def get_top_k_performance_columns(
+    column: str = Query(..., description="The column to get the top performing columns"),
     db: Session = Depends(get_db),
     filter_params: FilterRequest = Depends(get_filter_params),
     k: int = Query(
         default=10,
-        description="The number of top performing hierarchies to return",
+        description="The number of top performing columns to return",
     ),
 ):
+
+    column_name_mapper = {
+        "bu_key": Store.bu_key,
+        "area_manager": Store.area_manager,
+        "store_format": Store.store_format,
+        "store_type": Store.store_type,
+        "operations_controller": Store.operations_controller,
+        "regional_manager": Store.regional_manager,
+        "px": Store.px,
+        "csr": Store.csr,
+        "dr": Store.dr,
+        "mag_type": Store.mag_type,
+        "cf_grouping": Store.cf_grouping,
+        "store_brand": Store.store_brand,
+        "competitor": Store.competitor,
+        "region": Store.region,
+        "area": Store.area,
+        "territory": Store.territory,
+        "toh": Store.toh,
+        "district": Store.district,
+        "city": Store.city,
+        "operations_manager": Store.operations_manager,
+        "district_manager": Store.district_manager,
+        "sic": Store.sic,
+        "tech_life_type": Store.tech_life_type,
+        "operation_manager_tl": Store.operation_manager_tl,
+        "region_manager_tl": Store.region_manager_tl,
+        "relocation": Store.relocation,
+        "latitude": Store.latitude,
+        "longitude": Store.longitude,
+        "store_open_date": Store.store_open_date,
+        "store_close_date": Store.store_close_date,
+        "is_closed": Store.is_closed,
+        "store_key": Store.id,
+        "store_english_name": Store.store_name_english,
+        "store_local_name": Store.store_name_local,
+    }
+    
+    column_col = column_name_mapper[column]
+    if column_col is None:
+        raise HTTPException(status_code=404, detail="Column name not found")
+
     filter_dict = filter_params.model_dump()
 
-    # Map level to Store hierarchy column
-    hierarchy_columns = {
-        1: Store.hierarchy_level_1_id,
-        2: Store.hierarchy_level_2_id,
-        3: Store.hierarchy_level_3_id,
-        4: Store.hierarchy_level_4_id,
-        5: Store.hierarchy_level_5_id,
-    }
 
-    hierarchy_col = hierarchy_columns[level]
-
-    sentiment_query, sentiment_joins, hierarchy_aliases = build_optimized_query(
+    sentiment_query, sentiment_joins, _ = build_optimized_query(
         db, filter_dict
     )
     if "store" not in sentiment_joins:
-        sentiment_query = sentiment_query.join(Store, Survey.store_id == Store.id)
-
-    # Check if the requested level's hierarchy join exists, if not, create it
-    hierarchy_alias = hierarchy_aliases.get(level)
-    if f"hierarchy_level_{level}" not in sentiment_joins:
-        from sqlalchemy.orm import aliased
-
-        hierarchy_alias = aliased(Hierarchy)
-        sentiment_query = sentiment_query.join(
-            hierarchy_alias, hierarchy_col == hierarchy_alias.id
-        )
+        sentiment_query = sentiment_query.join(Store, Survey.store_key == Store.id)
 
     sentiment_results = (
         sentiment_query.with_entities(
-            hierarchy_alias.id.label("hierarchy_id"),
-            hierarchy_alias.name.label("hierarchy_name"),
-            hierarchy_alias.level.label("hierarchy_level"),
+            column_col.label("column_name"),
             func.count(
                 case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id))
             ).label("neutral_count"),
@@ -272,19 +291,15 @@ async def get_top_k_performance_hierarchies(
             ).label("mixed_count"),
             func.avg(Survey.topic_sentiment_score).label("average_sentiment_score"),
         )
-        .group_by(hierarchy_alias.id, hierarchy_alias.name, hierarchy_alias.level)
+        .group_by(column_col)
         .all()
     )
     hierarchy_with_sentiment = []
     for hierarchy in sentiment_results:
         average_sentiment_score = hierarchy.average_sentiment_score if hierarchy.average_sentiment_score is not None else 0
         hierarchy_with_sentiment.append(
-            TopKPerformanceHierarchyResponse(
-                hierarchy={
-                    "id": hierarchy.hierarchy_id,
-                    "name": hierarchy.hierarchy_name,
-                    "level": hierarchy.hierarchy_level,
-                },
+            TopKPerformanceColumnResponse(
+                column_name=hierarchy.column_name,
                 score=average_sentiment_score,
                 positive_count=hierarchy.positive_count,
                 negative_count=hierarchy.negative_count,
@@ -296,22 +311,56 @@ async def get_top_k_performance_hierarchies(
     hierarchy_with_sentiment = hierarchy_with_sentiment[:k]
     return hierarchy_with_sentiment
 
+class StrategyByColumnValueRequest(BaseModel):
+    column_name: str
 
-class StrategyByHierarchyIdsRequest(BaseModel):
-    hierarchy_ids: List[int] = Field(
-        default_factory=list,
-        description="The hierarchy ids to get the strategy",
-    )
-    level: int = Field(..., ge=1, le=5, description="Hierarchy level (1-5)")
-
-
-@router.post("/get_strategy_for_hierarchy_by_ids")
-async def get_strategy_for_hierarchy_by_ids(
-    request: StrategyByHierarchyIdsRequest,
+@router.post("/get_strategy_for_column_by_values")
+async def get_strategy_for_column_by_value(
+    request: StrategyByColumnValueRequest,
     db: Session = Depends(get_db),
 ) -> str:
+
+    column_name_mapper = {
+        "bu_key": Store.bu_key,
+        "area_manager": Store.area_manager,
+        "store_format": Store.store_format,
+        "store_type": Store.store_type,
+        "operations_controller": Store.operations_controller,
+        "regional_manager": Store.regional_manager,
+        "px": Store.px,
+        "csr": Store.csr,
+        "dr": Store.dr,
+        "mag_type": Store.mag_type,
+        "cf_grouping": Store.cf_grouping,
+        "store_brand": Store.store_brand,
+        "competitor": Store.competitor,
+        "region": Store.region,
+        "area": Store.area,
+        "territory": Store.territory,
+        "toh": Store.toh,
+        "district": Store.district,
+        "city": Store.city,
+        "operations_manager": Store.operations_manager,
+        "district_manager": Store.district_manager,
+        "sic": Store.sic,
+        "tech_life_type": Store.tech_life_type,
+        "operation_manager_tl": Store.operation_manager_tl,
+        "region_manager_tl": Store.region_manager_tl,
+        "relocation": Store.relocation,
+        "latitude": Store.latitude,
+        "longitude": Store.longitude,
+        "store_open_date": Store.store_open_date,
+        "store_close_date": Store.store_close_date,
+        "is_closed": Store.is_closed,
+        "store_key": Store.id,
+        "store_english_name": Store.store_name_english,
+        "store_local_name": Store.store_name_local,
+    }
+    column_col = column_name_mapper[request.column_name]
+    if column_col is None:
+        raise HTTPException(status_code=404, detail="Column name not found")
     filter_dict = {
-        f"hierarchy_level_{request.level}_ids": request.hierarchy_ids,
+        column_col: request.column_name,
         "topic_sentiments": [TopicSentiment.POSITIVE],
     }
     filtered_query, _, _ = build_optimized_query(db, filter_dict)
@@ -346,7 +395,7 @@ async def get_top_k_performance_channels(
     filter_dict = filter_params.model_dump()
     sentiment_query, sentiment_joins, _ = build_optimized_query(db, filter_dict)
     if "store" not in sentiment_joins:
-        sentiment_query = sentiment_query.join(Store, Survey.store_id == Store.id)
+        sentiment_query = sentiment_query.join(Store, Survey.store_key == Store.id)
     
     # Add Channel join if not already present
     if "channel" not in sentiment_joins:
@@ -439,7 +488,7 @@ async def get_top_k_performance_delivery_services(
     filter_dict = filter_params.model_dump()
     sentiment_query, sentiment_joins, _ = build_optimized_query(db, filter_dict)
     if "store" not in sentiment_joins:
-        sentiment_query = sentiment_query.join(Store, Survey.store_id == Store.id)
+        sentiment_query = sentiment_query.join(Store, Survey.store_key == Store.id)
     
     # Add DeliveryService join if not already present
     if "delivery_service" not in sentiment_joins:
@@ -540,7 +589,7 @@ async def get_strategy_v2(
             "id",
             "survey_id",
             "respondent_id",
-            "store_id",
+            "store_key",
             "store_name",
             "hierarchy_level_1_name",
             "hierarchy_level_2_name",

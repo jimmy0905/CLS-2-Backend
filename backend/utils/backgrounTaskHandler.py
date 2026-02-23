@@ -188,7 +188,7 @@ async def process_single_row(
         result = {"index": index, "success": False, "error": None}
 
         # Handle NaN values for critical fields
-        store_id = row["store_key"] if pd.notna(row["store_key"]) else None
+        store_key = row["store_key"] if pd.notna(row["store_key"]) else None
         comment = row["answer"] if pd.notna(row["answer"]) else None
         reported_at = row["survey_order_date"] if pd.notna(row["survey_order_date"]) else None
         survey_id = str(int(row["survey_id"])) if pd.notna(row["survey_id"]) else None
@@ -198,7 +198,7 @@ async def process_single_row(
             # Create an error for the upload task
             error = UploadTaskError(
                 upload_task_id=upload_task_id,
-                input_store_id=store_id,
+                input_store_key=store_key,
                 input_comment=comment,
                 input_reported_at=reported_at,
                 error_message="Comment is invalid",
@@ -218,14 +218,14 @@ async def process_single_row(
         if "delivery_mode" in row and pd.notna(row["processed_delivery_mode_detail"]):
             delivery_service_name = row["processed_delivery_mode_detail"]
 
-        # Check if the store_id (store_key) is valid
-        # Check if the store_id is empty
-        if not store_id:
+        # Check if the store_key (store_key) is valid
+        # Check if the store_key is empty
+        if not store_key:
             logger.warning(f"Row {index + 1}: Store ID is empty, skipping row")
             # Create an error for the upload task
             error = UploadTaskError(
                 upload_task_id=upload_task_id,
-                input_store_id=store_id,
+                input_store_key=store_key,
                 input_comment=comment,
                 input_reported_at=reported_at,
                 error_message="Store ID is required",
@@ -235,16 +235,16 @@ async def process_single_row(
             db.commit()
             result["error"] = "Store ID is required"
             return result
-        # Check if the store_id is in the database
-        store = db.query(Store).filter(Store.id == int(store_id)).first()
+        # Check if the store_key is in the database
+        store = db.query(Store).filter(Store.id == int(store_key)).first()
         if not store:
             logger.warning(
-                f"Row {index + 1}: Store ID {store_id} not found in database, skipping row"
+                f"Row {index + 1}: Store ID {store_key} not found in database, skipping row"
             )
             # Create an error for the upload task
             error = UploadTaskError(
                 upload_task_id=upload_task_id,
-                input_store_id=store_id,
+                input_store_key=store_key,
                 input_comment=comment,
                 input_reported_at=reported_at,
                 error_message="Store ID is not valid",
@@ -262,7 +262,7 @@ async def process_single_row(
             # Create an error for the upload task
             error = UploadTaskError(
                 upload_task_id=upload_task_id,
-                input_store_id=store_id,
+                input_store_key=store_key,
                 input_comment=comment,
                 input_reported_at=reported_at,
                 error_message="Comment is required",
@@ -279,7 +279,7 @@ async def process_single_row(
             # Create an error for the upload task
             error = UploadTaskError(
                 upload_task_id=upload_task_id,
-                input_store_id=store_id,
+                input_store_key=store_key,
                 input_comment=comment,
                 input_reported_at=reported_at,
                 error_message="Reported at is required",
@@ -299,7 +299,7 @@ async def process_single_row(
             # Create an error for the upload task
             error = UploadTaskError(
                 upload_task_id=upload_task_id,
-                input_store_id=store_id,
+                input_store_key=store_key,
                 input_comment=comment,
                 input_reported_at=str(reported_at),
                 error_message=f"Could not parse date format: {reported_at}",
@@ -321,7 +321,7 @@ async def process_single_row(
                 )
                 error = UploadTaskError(
                     upload_task_id=upload_task_id,
-                    input_store_id=store_id,
+                    input_store_key=store_key,
                     input_comment=comment,
                     input_reported_at=reported_at,
                     error_message="Channel is not valid",
@@ -347,7 +347,7 @@ async def process_single_row(
                 )
                 error = UploadTaskError(
                     upload_task_id=upload_task_id,
-                    input_store_id=store_id,
+                    input_store_key=store_key,
                     input_comment=comment,
                     input_reported_at=reported_at,
                     error_message="Delivery service is not valid",
@@ -374,7 +374,7 @@ async def process_single_row(
             if not is_valid:
                 error = UploadTaskError(
                     upload_task_id=upload_task_id,
-                    input_store_id=store_id,
+                    input_store_key=store_key,
                     input_comment=comment,
                     input_reported_at=reported_at,
                     error_message=error_message,
@@ -426,7 +426,7 @@ async def process_single_row(
                     )
                     error = UploadTaskError(
                         upload_task_id=upload_task_id,
-                        input_store_id=store_id,
+                        input_store_key=store_key,
                         input_comment=comment,
                         input_reported_at=reported_at,
                         error_message="Cannot classified in AI Analysis after retrying",
@@ -443,7 +443,7 @@ async def process_single_row(
                     )
                     error = UploadTaskError(
                         upload_task_id=upload_task_id,
-                        input_store_id=store_id,
+                        input_store_key=store_key,
                         input_comment=comment,
                         input_reported_at=reported_at,
                         error_message="Topics are empty after retrying",
@@ -460,7 +460,7 @@ async def process_single_row(
                     )
                     error = UploadTaskError(
                         upload_task_id=upload_task_id,
-                        input_store_id=store_id,
+                        input_store_key=store_key,
                         input_comment=comment,
                         input_reported_at=reported_at,
                         error_message="Departments are empty after retrying",
@@ -477,7 +477,7 @@ async def process_single_row(
                     )
                     error = UploadTaskError(
                         upload_task_id=upload_task_id,
-                        input_store_id=store_id,
+                        input_store_key=store_key,
                         input_comment=comment,
                         input_reported_at=reported_at,
                         error_message="Keywords are empty after retrying",
@@ -495,7 +495,7 @@ async def process_single_row(
                         )
                         error = UploadTaskError(
                             upload_task_id=upload_task_id,
-                            input_store_id=store_id,
+                            input_store_key=store_key,
                             input_comment=comment,
                             input_reported_at=reported_at,
                             error_message=f"Topic {topic.text} is not valid after retrying",
@@ -515,7 +515,7 @@ async def process_single_row(
                         )
                         error = UploadTaskError(
                             upload_task_id=upload_task_id,
-                            input_store_id=store_id,
+                            input_store_key=store_key,
                             input_comment=comment,
                             input_reported_at=reported_at,
                             error_message=f"Department {department.text} is not valid after retrying",
@@ -535,7 +535,7 @@ async def process_single_row(
             # Create an error for the upload task
             error = UploadTaskError(
                 upload_task_id=upload_task_id,
-                input_store_id=store_id,
+                input_store_key=store_key,
                 input_comment=comment,
                 input_reported_at=reported_at,
                 error_message=f"Error conducting AI Analysis for topics: {e}",
@@ -554,7 +554,7 @@ async def process_single_row(
         survey = Survey(
             survey_id=survey_id,
             respondent_id=respondent_id,
-            store_id=store_id,
+            store_key=store_key,
             comment=comment,
             reported_at=reported_at,
             sentiment=total_sentiment,

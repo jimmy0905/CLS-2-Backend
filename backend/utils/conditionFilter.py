@@ -21,7 +21,7 @@ from typing import Optional
 
 
 class FilterRequest(BaseModel):
-    store_ids: List[int] = []
+    store_keys: List[int] = []
     store_english_names: List[str] = []
     store_local_names: List[str] = []
     bu_keys: List[str] = []
@@ -72,7 +72,7 @@ class FilterRequest(BaseModel):
 
 
 def get_filter_params(
-    store_ids: List[int] = Query(
+    store_keys: List[int] = Query(
         default=[],
         description="The store ids to filter by, separated by |",
     ),
@@ -267,7 +267,7 @@ def get_filter_params(
 ) -> FilterRequest:
 
     return FilterRequest(
-        store_ids=store_ids,
+        store_keys=store_keys,
         store_english_names=store_english_names,
         store_local_names=store_local_names,
         bu_keys=bu_keys,
@@ -373,8 +373,8 @@ def build_store_filter_conditions(filter_dict: FilterRequest):
     """Build filter conditions for store-related queries that include store filtering"""
     conditions = []
     # Store filter
-    if filter_dict.get("store_ids"):
-        conditions.append(Store.id.in_(filter_dict["store_ids"]))
+    if filter_dict.get("store_keys"):
+        conditions.append(Store.id.in_(filter_dict["store_keys"]))
 
     if filter_dict.get("store_english_names"):
         conditions.append(Store.english_name.in_(filter_dict["store_english_names"]))
@@ -518,7 +518,7 @@ def build_survey_query(query: Query, filter_dict: FilterRequest) -> Query:
     if (
         store_conditions
     ):
-        query = query.join(Store, Survey.store_id == Store.id)
+        query = query.join(Store, Survey.store_key == Store.id)
         joins_added.add("store")
 
     # Join Department if department filters are applied
@@ -635,7 +635,7 @@ def build_optimized_query(
     if (
         store_conditions
     ):
-        query = query.join(Store, Survey.store_id == Store.id)
+        query = query.join(Store, Survey.store_key == Store.id)
         joined_tables.add("store")
 
     if department_conditions:

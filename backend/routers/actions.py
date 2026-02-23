@@ -30,7 +30,7 @@ router = APIRouter(
 
 
 class ActionFilterRequest(BaseModel):
-    store_ids: List[int] = []
+    store_keys: List[int] = []
     store_names: List[str] = []
     channel_ids: List[int] = []
     channel_names: List[str] = []
@@ -68,11 +68,11 @@ async def get_actions(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> GetActionsResponse:
-    # store_ids and store_names cannot be used together
-    if action_filter_request.store_ids and action_filter_request.store_names:
+    # store_keys and store_names cannot be used together
+    if action_filter_request.store_keys and action_filter_request.store_names:
         raise HTTPException(
             status_code=400,
-            detail="store_ids and store_names cannot be used together",
+            detail="store_keys and store_names cannot be used together",
         )
     # department_ids and department_names cannot be used together
     if action_filter_request.department_ids and action_filter_request.department_names:

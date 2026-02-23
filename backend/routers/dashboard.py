@@ -420,11 +420,11 @@ async def get_store_distribution(
 
     # Add store join if not already present
     if "store" not in _joined_tables:
-        base_query = base_query.join(Store, Survey.store_id == Store.id)
+        base_query = base_query.join(Store, Survey.store_key == Store.id)
 
     results_grouped_by_store = (
         base_query.with_entities(
-            Store.id.label("store_id"),
+            Store.id.label("store_key"),
             Store.store_name_english.label("store_english_name"),
             Store.store_name_local.label("store_local_name"),
             func.count(
@@ -455,16 +455,16 @@ async def get_store_distribution(
 
     # Total count query: Apply ALL filters EXCEPT store filters, group by store
     total_count_query, total_count_joins, _ = build_optimized_query(
-        db, filter_dict, exclude_filters=["store_ids", "store_names"]
+        db, filter_dict, exclude_filters=["store_keys", "store_names"]
     )
 
     # Add store join if not already present
     if "store" not in total_count_joins:
-        total_count_query = total_count_query.join(Store, Survey.store_id == Store.id)
+        total_count_query = total_count_query.join(Store, Survey.store_key == Store.id)
 
     total_count_results = (
         total_count_query.with_entities(
-            Store.id.label("store_id"),
+            Store.id.label("store_key"),
             Store.store_name_english.label("store_english_name"),
             Store.store_name_local.label("store_local_name"),
             func.count(func.distinct(Survey.id)).label("total_count"),
@@ -477,9 +477,9 @@ async def get_store_distribution(
     all_stores = db.query(Store).all()
 
     # Combine results
-    # Create dictionaries keyed by store_id
-    sentiment_dict = {row.store_id: row for row in results_grouped_by_store}
-    total_count_dict = {row.store_id: row.total_count for row in total_count_results}
+    # Create dictionaries keyed by store_key
+    sentiment_dict = {row.store_key: row for row in results_grouped_by_store}
+    total_count_dict = {row.store_key: row.total_count for row in total_count_results}
 
     store_distribution = []
     for store in all_stores:
@@ -835,7 +835,7 @@ async def get_store_column_sentiment_distribution(
         "store_open_date": Store.store_open_date,
         "store_close_date": Store.store_close_date,
         "is_closed": Store.is_closed,
-        "store_id": Store.id,
+        "store_key": Store.id,
         "store_english_name": Store.store_name_english,
         "store_local_name": Store.store_name_local,
     }
@@ -850,7 +850,7 @@ async def get_store_column_sentiment_distribution(
 
     # Add store join if not already present
     if "store" not in _joined_tables:
-        base_query = base_query.join(Store, Survey.store_id == Store.id)
+        base_query = base_query.join(Store, Survey.store_key == Store.id)
 
     results_grouped_by_column_name = (
         (

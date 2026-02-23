@@ -48,8 +48,8 @@ class StoreResponse(BaseModel):
     relocation: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
-    store_open_date: Optional[Date] = None
-    store_close_date: Optional[Date] = None
+    store_open_date: Optional[str] = None
+    store_close_date: Optional[str] = None
     is_closed: bool
 
 
@@ -102,13 +102,13 @@ async def get_stores(db: Session = Depends(get_db)) -> List[StoreResponse]:
     ]
 
 
-@router.get("/{store_id}")
-async def get_store(store_id: int, db: Session = Depends(get_db)) -> StoreResponse:
+@router.get("/{store_key}")
+async def get_store(store_key: int, db: Session = Depends(get_db)) -> StoreResponse:
     store = (
         db.query(Store)
         .options(
         )
-        .filter(Store.id == store_id)
+        .filter(Store.id == store_key)
         .first()
     )
     if not store:
@@ -152,7 +152,7 @@ async def get_store(store_id: int, db: Session = Depends(get_db)) -> StoreRespon
 
 
 class CreateStoreRequest(BaseModel):
-    store_id: int
+    store_key: int
     store_name_english: str
     store_name_local: Optional[str] = None
     bu_key: Optional[str] = None
@@ -183,8 +183,8 @@ class CreateStoreRequest(BaseModel):
     relocation: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
-    store_open_date: Optional[Date] = None
-    store_close_date: Optional[Date] = None
+    store_open_date: Optional[str] = None
+    store_close_date: Optional[str] = None
     is_closed: bool
 
 
@@ -194,13 +194,13 @@ async def create_store(
 ) -> StoreResponse:
 
     # If store id is provided, check if store exists
-    if create_store_request.store_id:
-        store = db.query(Store).filter(Store.id == create_store_request.store_id).first()
+    if create_store_request.store_key:
+        store = db.query(Store).filter(Store.id == create_store_request.store_key).first()
         if store:
             raise HTTPException(status_code=400, detail="Store id already exists")
     
     store = Store(
-        id=create_store_request.store_id,
+        id=create_store_request.store_key,
         store_name_english=create_store_request.store_name_english,
         store_name_local=create_store_request.store_name_local,
         bu_key=create_store_request.bu_key,
@@ -307,18 +307,18 @@ class UpdateStoreRequest(BaseModel):
     relocation: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
-    store_open_date: Optional[Date] = None
-    store_close_date: Optional[Date] = None
+    store_open_date: Optional[str] = None
+    store_close_date: Optional[str] = None
     is_closed: Optional[bool] = None
 
 
-@router.put("/{store_id}")
+@router.put("/{store_key}")
 async def update_store(
-    store_id: int,
+    store_key: int,
     update_store_request: UpdateStoreRequest,
     db: Session = Depends(get_db),
 ):
-    store = db.query(Store).filter(Store.id == store_id).first()
+    store = db.query(Store).filter(Store.id == store_key).first()
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
     
@@ -429,12 +429,12 @@ async def update_store(
     )
 
 
-@router.delete("/{store_id}")
+@router.delete("/{store_key}")
 async def delete_store(
-    store_id: int,
+    store_key: int,
     db: Session = Depends(get_db),
 ):
-    store = db.query(Store).filter(Store.id == store_id).first()
+    store = db.query(Store).filter(Store.id == store_key).first()
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
     store.is_closed = False
@@ -464,7 +464,7 @@ async def upsert_stores_from_csv(
         # Iterate over the dataframe and upsert the stores
         for index, row in df.iterrows():
             store = Store(
-                id=row["store_id"],
+                id=row["store_key"],
                 store_name_english=row["store_name_english"],
                 store_name_local=row["store_name_local"],
                 bu_key=row["bu_key"],

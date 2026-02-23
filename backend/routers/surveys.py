@@ -195,7 +195,7 @@ class CreateSurveyKeywordRequest(BaseModel):
 
 
 class CreateSurveyRequest(BaseModel):
-    store_id: int
+    store_key: int
     channel: Optional[str] = None
     delivery_service: Optional[str] = None
     departments: List[CreateSurveyDepartmentRequest]
@@ -213,7 +213,7 @@ async def create_survey(
 ):
 
     # Check if store exists
-    store = db.query(Store).filter(Store.id == survey_request.store_id).first()
+    store = db.query(Store).filter(Store.id == survey_request.store_key).first()
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
     # Check if departments exist
@@ -255,7 +255,7 @@ async def create_survey(
     try:
         # Create survey without departments, topics, and keywords relationships
         survey = Survey(
-            store_id=survey_request.store_id,
+            store_key=survey_request.store_key,
             comment=survey_request.comment,
             sentiment=survey_request.sentiment,
             reported_at=survey_request.reported_at,
@@ -349,7 +349,7 @@ async def download_surveys(
             "id",
             "survey_id",
             "respondent_id",
-            "store_id",
+            "store_key",
             "store_english_name",
             "store_local_name",
             "bu_key",
@@ -486,7 +486,7 @@ class UpdateSurveyDepartmentRequest(BaseModel):
 
 
 class UpdateSurveyRequest(BaseModel):
-    store_id: Optional[int] = None
+    store_key: Optional[int] = None
     channel: Optional[str] = None
     delivery_service: Optional[str] = None
     departments: Optional[List[UpdateSurveyDepartmentRequest]] = None
@@ -515,8 +515,8 @@ async def update_survey(
         survey = query.first()
         if not survey:
             raise HTTPException(status_code=404, detail="Survey not found")
-        if survey_request.store_id:
-            survey.store_id = survey_request.store_id
+        if survey_request.store_key:
+            survey.store_key = survey_request.store_key
         if survey_request.channel:
             survey.channel_id = survey_request.channel
         if survey_request.delivery_service:
