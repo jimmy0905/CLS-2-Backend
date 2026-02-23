@@ -28,6 +28,9 @@ from config import MAX_WORKER_THREADS
 from utils.llm.models import TotalResponse
 from sqlalchemy.orm import Session
 
+# Thread-safe lock for updating progress
+progress_lock = threading.Lock()
+
 
 # ONLY FOR WTCHKECLS PROJECT
 def is_total_valid(total: TotalResponse) -> tuple[bool, str]:
@@ -221,25 +224,25 @@ async def process_single_row(
         # Check if the store_key (store_key) is valid
         # Check if the store_key is empty
         if not store_key:
-            logger.warning(f"Row {index + 1}: Store ID is empty, skipping row")
+            logger.warning(f"Row {index + 1}: Store Key is empty, skipping row")
             # Create an error for the upload task
             error = UploadTaskError(
                 upload_task_id=upload_task_id,
                 input_store_key=store_key,
                 input_comment=comment,
                 input_reported_at=reported_at,
-                error_message="Store ID is required",
+                error_message="Store Key is required",
                 raw_row_data=json_row_data,
             )
             db.add(error)
             db.commit()
-            result["error"] = "Store ID is required"
+            result["error"] = "Store Key is required"
             return result
         # Check if the store_key is in the database
-        store = db.query(Store).filter(Store.id == int(store_key)).first()
+        store = db.query(Store).filter(Store.store_key == int(store_key)).first()
         if not store:
             logger.warning(
-                f"Row {index + 1}: Store ID {store_key} not found in database, skipping row"
+                f"Row {index + 1}: Store Key {store_key} not found in database, skipping row"
             )
             # Create an error for the upload task
             error = UploadTaskError(
@@ -247,12 +250,12 @@ async def process_single_row(
                 input_store_key=store_key,
                 input_comment=comment,
                 input_reported_at=reported_at,
-                error_message="Store ID is not valid",
+                error_message="Store Key is not valid",
                 raw_row_data=json_row_data,
             )
             db.add(error)
             db.commit()
-            result["error"] = "Store ID is not valid"
+            result["error"] = "Store Key is not valid"
             return result
 
         # Check if the comment is valid
@@ -550,24 +553,54 @@ async def process_single_row(
         total_sentiment = total.overall_sentiment.upper() if total.overall_sentiment else None
         total_keywords = total.keywords
 
-        # Create a new survey
-        survey = Survey(
-            survey_id=survey_id,
-            respondent_id=respondent_id,
-            store_key=store_key,
-            comment=comment,
-            reported_at=reported_at,
-            sentiment=total_sentiment,
-            channel_id=channel_id,
-            delivery_service_id=delivery_service_id,
-            raw_row_data=json_row_data,
-        )
-        db.add(survey)
-        db.commit()
-        db.refresh(survey)
-        logger.debug(
-            f"Row {index + 1}: Survey created successfully with ID: {survey.id}"
-        )
+        # Check if survey already exists (upsert logic)
+        existing_survey = db.query(Survey).filter(
+            Survey.survey_id == survey_id,
+            Survey.respondent_id == respondent_id
+        ).first()
+
+        if existing_survey:
+            # Update existing survey
+            logger.info(
+                f"Row {index + 1}: Found existing survey (ID: {existing_survey.id}) with survey_id={survey_id} and respondent_id={respondent_id}, updating..."
+            )
+            existing_survey.store_key = store_key
+            existing_survey.comment = comment
+            existing_survey.reported_at = reported_at
+            existing_survey.sentiment = total_sentiment
+            existing_survey.channel_id = channel_id
+            existing_survey.delivery_service_id = delivery_service_id
+            existing_survey.raw_row_data = json_row_data
+            
+            # Delete old relationships to replace with new analysis
+            db.query(SurveyKeywords).filter(SurveyKeywords.survey_id == existing_survey.id).delete()
+            db.query(SurveyTopics).filter(SurveyTopics.survey_id == existing_survey.id).delete()
+            db.query(SurveyDepartments).filter(SurveyDepartments.survey_id == existing_survey.id).delete()
+            
+            db.commit()
+            survey = existing_survey
+            logger.debug(
+                f"Row {index + 1}: Survey updated successfully with ID: {survey.id}"
+            )
+        else:
+            # Create a new survey
+            survey = Survey(
+                survey_id=survey_id,
+                respondent_id=respondent_id,
+                store_key=store_key,
+                comment=comment,
+                reported_at=reported_at,
+                sentiment=total_sentiment,
+                channel_id=channel_id,
+                delivery_service_id=delivery_service_id,
+                raw_row_data=json_row_data,
+            )
+            db.add(survey)
+            db.commit()
+            db.refresh(survey)
+            logger.debug(
+                f"Row {index + 1}: Survey created successfully with ID: {survey.id}"
+            )
 
         # Add keywords
         for keyword_obj in total_keywords:
@@ -722,12 +755,31 @@ async def process_upload_task(file_path, db, upload_task_id):
     # Track processing time
     start_time = time.time()
 
+    # Create a session factory for thread-safe database access
+    SessionLocal = sessionmaker(bind=engine)
+    
+    # Synchronous wrapper function to run async process_single_row in a thread
+    def process_row_sync(row_data, upload_task_id, available_topics, available_departments):
+        thread_db = SessionLocal()
+        try:
+            # Create a new event loop for this thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(
+                    process_single_row(row_data, upload_task_id, available_topics, available_departments, thread_db)
+                )
+            finally:
+                loop.close()
+        finally:
+            thread_db.close()
+    
     # Process rows in parallel using ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Submit all tasks
         future_to_row = {
             executor.submit(
-                process_single_row,
+                process_row_sync,
                 row_data,
                 upload_task_id,
                 available_topics,
