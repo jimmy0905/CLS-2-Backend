@@ -196,6 +196,10 @@ class Survey(Base):
             "survey_id": self.survey_id,
             "respondent_id": self.respondent_id,
             "store_key": self.store.store_key,
+            "store_id": self.store.store_key,  # Alias for store_key
+            "store_name": self.store.store_name_english if self.store.store_name_english else self.store.store_name_local,  # Fallback to local name if English name is missing
+            "store_english_name": self.store.store_name_english,
+            "store_local_name": self.store.store_name_local,
             "store_name_english": self.store.store_name_english,
             "store_name_local": self.store.store_name_local,
             "bu_key": self.store.bu_key,

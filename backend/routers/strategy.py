@@ -569,11 +569,14 @@ async def get_strategy_v2(
     survey_ids = [row[0] for row in id_query.all()]
     
     def format_excel_value(value):
+        from datetime import date
         if value is None:
             return ""
         elif isinstance(value, list):
             return "; ".join(str(item) for item in value)
         elif isinstance(value, datetime):
+            return value.isoformat()
+        elif isinstance(value, date):
             return value.isoformat()
         else:
             return str(value)
@@ -590,20 +593,53 @@ async def get_strategy_v2(
             "survey_id",
             "respondent_id",
             "store_key",
+            "store_id",
             "store_name",
-            "hierarchy_level_1_name",
-            "hierarchy_level_2_name",
-            "hierarchy_level_3_name",
-            "hierarchy_level_4_name",
-            "hierarchy_level_5_name",
+            "store_name_english",
+            "store_name_local",
+            "bu_key",
+            "area_manager",
+            "store_format",
+            "store_type",
+            "operations_controller",
+            "regional_manager",
+            "px",
+            "csr",
+            "dr",
+            "mag_type",
+            "cf_grouping",
+            "store_brand",
+            "competitor",
+            "region",
+            "area",
+            "territory",
+            "toh",
+            "district",
+            "city",
+            "operations_manager",
+            "district_manager",
+            "sic",
+            "tech_life_type",
+            "operation_manager_tl",
+            "region_manager_tl",
+            "relocation",
+            "latitude",
+            "longitude",
+            "store_open_date",
+            "store_close_date",
+            "is_closed",
+            "department_id",
+            "department_name",
+            "channel_id",
+            "channel_name",
             "departments",
             "topics",
             "keywords",
             "comment",
             "channel",
             "delivery_service",
-            "sentiment",
-            "sentiment_score",
+            "sentiment", # topic_sentiment
+            "sentiment_score", # topic_sentiment_score
             "reported_at",
             "created_at",
             "updated_at",
