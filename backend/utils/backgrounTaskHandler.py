@@ -26,6 +26,7 @@ from sqlalchemy.orm import sessionmaker
 from utils.database import engine
 from config import MAX_WORKER_THREADS
 from utils.llm.models import TotalResponse
+from sqlalchemy.orm import Session
 
 
 # ONLY FOR WTCHKECLS PROJECT
@@ -159,37 +160,12 @@ def parse_flexible_date(
         logger.error(f"{row_context}Unexpected error parsing date '{date_input}': {e}")
         return None
 
-
-# Thread-safe session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Thread-local storage for database sessions
-thread_local_data = threading.local()
-
-# Global locks for thread-safe statistics tracking
-stats_lock = threading.Lock()
-progress_lock = threading.Lock()
-
-
-def get_thread_db_session():
-    """Get a thread-local database session"""
-    if not hasattr(thread_local_data, "session"):
-        thread_local_data.session = SessionLocal()
-    return thread_local_data.session
-
-
-def close_thread_db_session():
-    """Close the thread-local database session"""
-    if hasattr(thread_local_data, "session"):
-        thread_local_data.session.close()
-        delattr(thread_local_data, "session")
-
-
-def process_single_row(
+async def process_single_row(
     row_data: Dict[str, Any],
     upload_task_id: int,
     available_topics: List[str],
     available_departments: List[str],
+    db: Session,
 ) -> Dict[str, Any]:
     """
     Process a single row in a separate thread.
@@ -197,7 +173,6 @@ def process_single_row(
     Returns a dictionary with processing results.
     """
     try:
-        db = get_thread_db_session()
         index = row_data["index"]
         row = row_data["row"]
 
@@ -391,23 +366,7 @@ def process_single_row(
             # Use synchronous extract_total in thread pool
             from utils.llm.extract_total import _extract_total_sync
 
-            total, usage = _extract_total_sync(comment)
-
-            # Update usage statistics atomically
-            if usage:
-                with stats_lock:
-                    upload_task = (
-                        db.query(UploadTask)
-                        .filter(UploadTask.id == upload_task_id)
-                        .first()
-                    )
-                    if upload_task:
-                        upload_task.completion_tokens += usage.get(
-                            "completion_tokens", 0
-                        )
-                        upload_task.prompt_tokens += usage.get("prompt_tokens", 0)
-                        upload_task.total_tokens += usage.get("total_tokens", 0)
-                        db.commit()
+            total, _ = await asyncio.to_thread(_extract_total_sync, comment)
 
             # ONLY FOR WTCHKECLS PROJECT
             # Check if the total is valid
@@ -459,22 +418,7 @@ def process_single_row(
                     have_to_retry = True
 
             if have_to_retry:
-                total, usage = _extract_total_retry_sync(comment)
-                # Update usage statistics atomically
-                if usage:
-                    with stats_lock:
-                        upload_task = (
-                            db.query(UploadTask)
-                            .filter(UploadTask.id == upload_task_id)
-                            .first()
-                        )
-                        if upload_task:
-                            upload_task.completion_tokens += usage.get(
-                                "completion_tokens", 0
-                            )
-                            upload_task.prompt_tokens += usage.get("prompt_tokens", 0)
-                            upload_task.total_tokens += usage.get("total_tokens", 0)
-                            db.commit()
+                total, _ = await asyncio.to_thread(_extract_total_retry_sync, comment)
                 # Check if the total is classified, if not, skip the row
                 if total.cannot_classified:
                     logger.warning(
@@ -730,7 +674,7 @@ def process_single_row(
         result["error"] = f"Unexpected error: {e}"
         return result
     finally:
-        close_thread_db_session()
+        db.close()
 
 
 async def process_upload_task(file_path, db, upload_task_id):

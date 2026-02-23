@@ -8,7 +8,6 @@ from models.SurveyTopics import SurveyTopics
 from models.SurveyKeywords import SurveyKeywords
 from models.SurveyDepartments import SurveyDepartments
 from models.Store import Store
-from models.Hierarchy import Hierarchy
 from models.Department import Department
 from models.Channel import Channel
 from models.DeliveryService import DeliveryService
@@ -50,12 +49,39 @@ class HierarchyResponse(BaseModel):
 
 class StoreResponse(BaseModel):
     id: int
-    name: str
-    hierarchy_level_1: Optional[HierarchyResponse] = None
-    hierarchy_level_2: Optional[HierarchyResponse] = None
-    hierarchy_level_3: Optional[HierarchyResponse] = None
-    hierarchy_level_4: Optional[HierarchyResponse] = None
-    hierarchy_level_5: Optional[HierarchyResponse] = None
+    store_name_english: str
+    store_name_local: Optional[str] = None
+    bu_key: Optional[str] = None
+    area_manager: Optional[str] = None
+    store_format: Optional[str] = None
+    store_type: Optional[str] = None
+    operations_controller: Optional[str] = None
+    regional_manager: Optional[str] = None
+    px: Optional[str] = None
+    csr: Optional[str] = None
+    dr: Optional[str] = None
+    mag_type: Optional[str] = None
+    cf_grouping: Optional[str] = None
+    store_brand: Optional[str] = None
+    competitor: Optional[str] = None
+    region: Optional[str] = None
+    area: Optional[str] = None
+    territory: Optional[str] = None
+    toh: Optional[str] = None
+    district: Optional[str] = None
+    city: Optional[str] = None
+    operations_manager: Optional[str] = None
+    district_manager: Optional[str] = None
+    sic: Optional[str] = None
+    tech_life_type: Optional[str] = None
+    operation_manager_tl: Optional[str] = None
+    region_manager_tl: Optional[str] = None
+    relocation: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    store_open_date: Optional[str] = None
+    store_close_date: Optional[str] = None
+    is_closed: bool
 
 
 class ChannelResponse(BaseModel):
@@ -324,12 +350,43 @@ async def download_surveys(
             "survey_id",
             "respondent_id",
             "store_id",
-            "store_name",
-            "hierarchy_level_1_name",
-            "hierarchy_level_2_name",
-            "hierarchy_level_3_name",
-            "hierarchy_level_4_name",
-            "hierarchy_level_5_name",
+            "store_english_name",
+            "store_local_name",
+            "bu_key",
+            "area_manager",
+            "store_format",
+            "store_type",
+            "operations_controller",
+            "regional_manager",
+            "px",
+            "csr",
+            "dr",
+            "mag_type",
+            "cf_grouping",
+            "store_brand",
+            "competitor",
+            "region",
+            "area",
+            "territory",
+            "toh",
+            "district",
+            "city",
+            "operations_manager",
+            "district_manager",
+            "sic",
+            "tech_life_type",
+            "operation_manager_tl",
+            "region_manager_tl",
+            "relocation",
+            "latitude",
+            "longitude",
+            "store_open_date",
+            "store_close_date",
+            "is_closed",
+            "department_id",
+            "department_name",
+            "channel_id",
+            "channel_name",
             "departments",
             "topics",
             "keywords",

@@ -17,10 +17,6 @@ class UploadTask(Base):
     processed_rows = Column(Integer)
     created_at = Column(DateTime(timezone=True), default=func.now())
     updated_at = Column(DateTime(timezone=True), default=func.now())
-    completion_tokens = Column(Integer, default=0)
-    prompt_tokens = Column(Integer, default=0)
-    total_tokens = Column(Integer, default=0)
-    cached_tokens = Column(Integer, default=0)
 
     # Relationships
     errors = relationship("UploadTaskError", back_populates="upload_task")
@@ -35,10 +31,6 @@ class UploadTask(Base):
             "processed_rows": self.processed_rows,
             "created_at": self.created_at.astimezone(timezone.utc) if self.created_at else None,
             "updated_at": self.updated_at.astimezone(timezone.utc) if self.updated_at else None,
-            "completion_tokens": self.completion_tokens,
-            "prompt_tokens": self.prompt_tokens,
-            "total_tokens": self.total_tokens,
-            "cached_tokens": self.cached_tokens,
             "errors": [error.to_dict() for error in self.errors],
         }
 
