@@ -87,7 +87,7 @@ class Survey(Base):
             # Foreign keys
             "store": (
                 {
-                    "id": self.store.store_key,
+                    "store_key": self.store.store_key,
                     "store_name_english": self.store.store_name_english,
                     "store_name_local": self.store.store_name_local,
                     "bu_key": self.store.bu_key,
@@ -118,8 +118,8 @@ class Survey(Base):
                     "relocation": self.store.relocation,
                     "latitude": self.store.latitude,
                     "longitude": self.store.longitude,
-                    "store_open_date": self.store.store_open_date,
-                    "store_close_date": self.store.store_close_date,
+                    "store_open_date": self.store.store_open_date.isoformat() if self.store.store_open_date else None,
+                    "store_close_date": self.store.store_close_date.isoformat() if self.store.store_close_date else None,
                     "is_closed": self.store.is_closed,
                 }
                 if self.store
@@ -229,33 +229,34 @@ class Survey(Base):
             "store_open_date": self.store.store_open_date,
             "store_close_date": self.store.store_close_date,
             "is_closed": self.store.is_closed,
-            "comment": self.comment,
-            "reported_at": self.reported_at,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
-            "sentiment": self._format_sentiment_value(
-                self.topic_sentiment
-            ),  # use topic_sentiment instead of sentiment
-            "sentiment_score": self.topic_sentiment_score,
-            # department1 (positive), department2 (negative), department3 (neutral)
+            "department_id": ", ".join([str(survey_department.department_id) for survey_department in self.survey_departments]) if self.survey_departments else None,
+            "department_name": ", ".join([survey_department.department.name for survey_department in self.survey_departments]) if self.survey_departments else None,
+            "channel_id": self.channel_id if self.channel else None,
+            "channel_name": self.channel.name if self.channel else None,
             "departments": [
                 f"{survey_department.department.name} ({self._format_sentiment_value(survey_department.sentiment)})"
                 for survey_department in self.survey_departments
             ],
-            # topic1 (positive), topic2 (negative), topic3 (neutral)
             "topics": [
                 f"{survey_topic.topic.topic} ({self._format_sentiment_value(survey_topic.sentiment)})"
                 for survey_topic in self.survey_topics
             ],
-            # keyword1 (positive), keyword2 (negative), keyword3 (neutral)
             "keywords": [
                 f"{survey_keyword.keyword.keyword} ({self._format_sentiment_value(survey_keyword.sentiment)})"
                 for survey_keyword in self.survey_keywords
             ],
+            "comment": self.comment,
             "channel": self.channel.name if self.channel else None,
             "delivery_service": (
                 self.delivery_service.name if self.delivery_service else None
             ),
+            "sentiment": self._format_sentiment_value(
+                self.topic_sentiment
+            ),  # use topic_sentiment instead of sentiment
+            "sentiment_score": self.topic_sentiment_score,
+            "reported_at": self.reported_at,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
         }
 
 

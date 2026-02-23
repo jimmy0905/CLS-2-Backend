@@ -91,11 +91,11 @@ async def get_top_k_performance_stores(
     # First get the sentiment counts per store
     sentiment_query, sentiment_joins, _ = build_optimized_query(db, filter_dict)
     if "store" not in sentiment_joins:
-        sentiment_query = sentiment_query.join(Store, Survey.store_key == Store.id)
+        sentiment_query = sentiment_query.join(Store, Survey.store_key == Store.store_key)
 
     sentiment_results = (
         sentiment_query.with_entities(
-            Store.id.label("store_key"),
+            Store.store_key.label("store_key"),
             Store.name.label("store_name"),
             func.count(
                 case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id))
@@ -111,7 +111,7 @@ async def get_top_k_performance_stores(
             ).label("mixed_count"),
             func.avg(Survey.topic_sentiment_score).label("average_sentiment_score"),
         )
-        .group_by(Store.id, Store.name)
+        .group_by(Store.store_key, Store.name)
         .all()
     )
 
@@ -119,7 +119,7 @@ async def get_top_k_performance_stores(
     store_keys = [r.store_key for r in sentiment_results]
     stores = (
         db.query(Store)
-        .filter(Store.id.in_(store_keys))
+        .filter(Store.store_key.in_(store_keys))
         .all()
     )
 
@@ -256,7 +256,7 @@ async def get_top_k_performance_columns(
         "store_open_date": Store.store_open_date,
         "store_close_date": Store.store_close_date,
         "is_closed": Store.is_closed,
-        "store_key": Store.id,
+        "store_key": Store.store_key,
         "store_english_name": Store.store_name_english,
         "store_local_name": Store.store_name_local,
     }
@@ -272,7 +272,7 @@ async def get_top_k_performance_columns(
         db, filter_dict
     )
     if "store" not in sentiment_joins:
-        sentiment_query = sentiment_query.join(Store, Survey.store_key == Store.id)
+        sentiment_query = sentiment_query.join(Store, Survey.store_key == Store.store_key)
 
     sentiment_results = (
         sentiment_query.with_entities(
@@ -352,7 +352,7 @@ async def get_strategy_for_column_by_value(
         "store_open_date": Store.store_open_date,
         "store_close_date": Store.store_close_date,
         "is_closed": Store.is_closed,
-        "store_key": Store.id,
+        "store_key": Store.store_key,
         "store_english_name": Store.store_name_english,
         "store_local_name": Store.store_name_local,
     }
@@ -395,7 +395,7 @@ async def get_top_k_performance_channels(
     filter_dict = filter_params.model_dump()
     sentiment_query, sentiment_joins, _ = build_optimized_query(db, filter_dict)
     if "store" not in sentiment_joins:
-        sentiment_query = sentiment_query.join(Store, Survey.store_key == Store.id)
+        sentiment_query = sentiment_query.join(Store, Survey.store_key == Store.store_key)
     
     # Add Channel join if not already present
     if "channel" not in sentiment_joins:
@@ -488,7 +488,7 @@ async def get_top_k_performance_delivery_services(
     filter_dict = filter_params.model_dump()
     sentiment_query, sentiment_joins, _ = build_optimized_query(db, filter_dict)
     if "store" not in sentiment_joins:
-        sentiment_query = sentiment_query.join(Store, Survey.store_key == Store.id)
+        sentiment_query = sentiment_query.join(Store, Survey.store_key == Store.store_key)
     
     # Add DeliveryService join if not already present
     if "delivery_service" not in sentiment_joins:

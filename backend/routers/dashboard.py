@@ -420,11 +420,11 @@ async def get_store_distribution(
 
     # Add store join if not already present
     if "store" not in _joined_tables:
-        base_query = base_query.join(Store, Survey.store_key == Store.id)
+        base_query = base_query.join(Store, Survey.store_key == Store.store_key)
 
     results_grouped_by_store = (
         base_query.with_entities(
-            Store.id.label("store_key"),
+            Store.store_key.label("store_key"),
             Store.store_name_english.label("store_english_name"),
             Store.store_name_local.label("store_local_name"),
             func.count(
@@ -449,7 +449,7 @@ async def get_store_distribution(
             ).label("mixed_count"),
             func.avg(Survey.topic_sentiment_score).label("sentiment_score"),
         )
-        .group_by(Store.id)
+        .group_by(Store.store_key)
         .all()
     )
 
@@ -460,16 +460,16 @@ async def get_store_distribution(
 
     # Add store join if not already present
     if "store" not in total_count_joins:
-        total_count_query = total_count_query.join(Store, Survey.store_key == Store.id)
+        total_count_query = total_count_query.join(Store, Survey.store_key == Store.store_key)
 
     total_count_results = (
         total_count_query.with_entities(
-            Store.id.label("store_key"),
+            Store.store_key.label("store_key"),
             Store.store_name_english.label("store_english_name"),
             Store.store_name_local.label("store_local_name"),
             func.count(func.distinct(Survey.id)).label("total_count"),
         )
-        .group_by(Store.id)
+        .group_by(Store.store_key)
         .all()
     )
 
@@ -483,7 +483,7 @@ async def get_store_distribution(
 
     store_distribution = []
     for store in all_stores:
-        sentiment_row = sentiment_dict.get(store.id)
+        sentiment_row = sentiment_dict.get(store.store_key)
 
         if sentiment_row:
             neutral_count = sentiment_row.neutral_count
@@ -498,11 +498,11 @@ async def get_store_distribution(
             mixed_count = 0
             sentiment_score = 0.0
 
-        total_count = total_count_dict.get(store.id, 0)
+        total_count = total_count_dict.get(store.store_key, 0)
 
         store_distribution.append(
             StoreResponse(
-                id=store.id,
+                id=store.store_key,
                 english_name=store.store_name_english,
                 local_name=store.store_name_local,
                 neutral_count=neutral_count,
@@ -797,8 +797,12 @@ class StoreColumnSentimentDistributionResponse(BaseModel):
     total_count_for_option: int
 
 
-@router.get("/store-column-sentiment-distribution/{column_name}")
+@router.get("/store-column-sentiment-distribution")
 async def get_store_column_sentiment_distribution(
+    column: str = Query(
+        ...,
+        description="The column name to get the sentiment distribution for store column, columns are bu_key, area_manager, store_format, store_type, operations_controller, regional_manager, px, csr, dr, mag_type, cf_grouping, store_brand, competitor, region, area, territory, toh, district, city, operations_manager, district_manager, sic, tech_life_type, operation_manager_tl, region_manager_tl, relocation, latitude, longitude, store_open_date, store_close_date, is_closed, store_key, store_english_name, store_local_name",
+    ),
     filter_params: FilterRequest = Depends(get_filter_params),
     db: Session = Depends(get_db),
 ) -> List[StoreColumnSentimentDistributionResponse]:
@@ -835,11 +839,11 @@ async def get_store_column_sentiment_distribution(
         "store_open_date": Store.store_open_date,
         "store_close_date": Store.store_close_date,
         "is_closed": Store.is_closed,
-        "store_key": Store.id,
+        "store_key": Store.store_key,
         "store_english_name": Store.store_name_english,
         "store_local_name": Store.store_name_local,
     }
-    column_name = column_name_mapper.get(column_name)
+    column_name = column_name_mapper.get(column)
     if column_name is None:
         raise HTTPException(status_code=404, detail="Column name not found")
 
@@ -850,14 +854,12 @@ async def get_store_column_sentiment_distribution(
 
     # Add store join if not already present
     if "store" not in _joined_tables:
-        base_query = base_query.join(Store, Survey.store_key == Store.id)
+        base_query = base_query.join(Store, Survey.store_key == Store.store_key)
 
     results_grouped_by_column_name = (
-        (
-            base_query.with_entities(
-                column_name.label("column_name"),
-                func.count(func.distinct(Survey.id)).label("total_count"),
-            ),
+        base_query.with_entities(
+            column_name.label("column_name"),
+            func.count(func.distinct(Survey.id)).label("total_count"),
             func.count(
                 func.distinct(
                     case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id))
@@ -880,6 +882,7 @@ async def get_store_column_sentiment_distribution(
             ).label("mixed_count"),
             func.avg(Survey.topic_sentiment_score).label("sentiment_score"),
         )
+        .filter(column_name.isnot(None))
         .group_by(column_name)
         .all()
     )
@@ -890,19 +893,21 @@ async def get_store_column_sentiment_distribution(
         exclude_filters=[column_name],
     )
     # Add store column join if not already present
-    if column_name not in total_count_joins:
-        total_count_query = total_count_query.join(Store, column_name == Store.id)
+    if "store" not in total_count_joins:
+        total_count_query = total_count_query.join(Store, Survey.store_key == Store.store_key)
 
     total_count_results = (
         total_count_query.with_entities(
+            column_name.label("column_name"),
             func.count(func.distinct(Survey.id)).label("total_count"),
         )
+        .filter(column_name.isnot(None))
         .group_by(column_name)
         .all()
     )
 
-    # Get all values for the column
-    all_values = db.query(column_name).distinct().all()
+    # Get all values for the column (filter out None values)
+    all_values = [row[0] for row in db.query(column_name).distinct().all() if row[0] is not None]
 
     # Combine results
     # Create dictionaries keyed by column value

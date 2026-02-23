@@ -54,7 +54,7 @@ class FilterRequest(BaseModel):
     longitudes: List[float] = []
     store_open_dates: List[str] = []
     store_close_dates: List[str] = []
-    is_closed: bool = None
+    is_closed: Optional[bool] = None
     department_ids: List[int] = []
     department_names: List[str] = []
     channel_ids: List[int] = []
@@ -205,7 +205,7 @@ def get_filter_params(
         description="The store close dates to filter by",
     ),
     is_closed: bool = Query(
-        default=None,
+        default=False,
         description="The is closed to filter by",
     ),
     department_ids: List[int] = Query(
@@ -374,13 +374,13 @@ def build_store_filter_conditions(filter_dict: FilterRequest):
     conditions = []
     # Store filter
     if filter_dict.get("store_keys"):
-        conditions.append(Store.id.in_(filter_dict["store_keys"]))
+        conditions.append(Store.store_key.in_(filter_dict["store_keys"]))
 
     if filter_dict.get("store_english_names"):
-        conditions.append(Store.english_name.in_(filter_dict["store_english_names"]))
+        conditions.append(Store.store_name_english.in_(filter_dict["store_english_names"]))
 
     if filter_dict.get("store_local_names"):
-        conditions.append(Store.local_name.in_(filter_dict["store_local_names"]))
+        conditions.append(Store.store_name_local.in_(filter_dict["store_local_names"]))
 
     if filter_dict.get("bu_keys"):
         conditions.append(Store.bu_key.in_(filter_dict["bu_keys"]))
@@ -389,10 +389,10 @@ def build_store_filter_conditions(filter_dict: FilterRequest):
         conditions.append(Store.area_manager.in_(filter_dict["area_managers"]))
 
     if filter_dict.get("store_formats"):
-        conditions.append(Store.format.in_(filter_dict["store_formats"]))
+        conditions.append(Store.store_format.in_(filter_dict["store_formats"]))
 
     if filter_dict.get("store_types"):
-        conditions.append(Store.type.in_(filter_dict["store_types"]))
+        conditions.append(Store.store_type.in_(filter_dict["store_types"]))
 
     if filter_dict.get("operations_controllers"):
         conditions.append(Store.operations_controller.in_(filter_dict["operations_controllers"]))
@@ -416,7 +416,7 @@ def build_store_filter_conditions(filter_dict: FilterRequest):
         conditions.append(Store.cf_grouping.in_(filter_dict["cf_groupings"]))
 
     if filter_dict.get("store_brands"):
-        conditions.append(Store.brand.in_(filter_dict["store_brands"]))
+        conditions.append(Store.store_brand.in_(filter_dict["store_brands"]))
 
     if filter_dict.get("competitors"):
         conditions.append(Store.competitor.in_(filter_dict["competitors"]))
@@ -518,7 +518,7 @@ def build_survey_query(query: Query, filter_dict: FilterRequest) -> Query:
     if (
         store_conditions
     ):
-        query = query.join(Store, Survey.store_key == Store.id)
+        query = query.join(Store, Survey.store_key == Store.store_key)
         joins_added.add("store")
 
     # Join Department if department filters are applied
@@ -610,7 +610,15 @@ def build_delivery_service_filter_conditions(filter_dict: FilterRequest):
 def build_optimized_query(
     db: Session, filter_dict: FilterRequest, exclude_filters: List[str] = None
 ):
-    """Build an optimized query with minimal joins and filtering"""
+    """
+    Build an optimized query with minimal joins and filtering.
+    
+    Returns:
+        tuple: (query, joined_tables, working_filter)
+            - query: SQLAlchemy query object with filters applied
+            - joined_tables: Set of table names that have been joined
+            - working_filter: Dictionary of filters that were actually applied
+    """
     exclude_filters = exclude_filters or []
 
     # Create a copy of filter_dict without excluded filters
@@ -635,7 +643,7 @@ def build_optimized_query(
     if (
         store_conditions
     ):
-        query = query.join(Store, Survey.store_key == Store.id)
+        query = query.join(Store, Survey.store_key == Store.store_key)
         joined_tables.add("store")
 
     if department_conditions:
@@ -675,4 +683,4 @@ def build_optimized_query(
     if filter_conditions is not None:
         query = query.filter(filter_conditions)
 
-    return query, joined_tables
+    return query, joined_tables, working_filter
