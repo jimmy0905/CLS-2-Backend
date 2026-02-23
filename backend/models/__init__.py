@@ -7,7 +7,6 @@ from models.Topic import Topic
 from models.Keyword import Keyword
 from models.Store import Store
 from models.Department import Department
-from models.Hierarchy import Hierarchy
 from models.Action import Action
 from models.GeneratedEmail import GeneratedEmail
 from models.EmailRecord import EmailRecord
@@ -26,7 +25,6 @@ __all__ = [
     "Keyword",
     "Store",
     "Department",
-    "Hierarchy",
     "Action",
     "GeneratedEmail",
     "EmailRecord",

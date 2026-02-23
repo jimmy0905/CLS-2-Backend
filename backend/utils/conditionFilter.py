@@ -78,7 +78,7 @@ def build_store_filter_conditions(filter_dict):
         conditions.append(Store.name.in_(filter_dict["store_names"]))
 
     # Active store filter, default is true
-    conditions.append(Store.is_active == True)
+    conditions.append(Store.is_closed == True)
 
     return conditions
 
