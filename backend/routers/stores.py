@@ -5,8 +5,9 @@ from models.Store import Store
 from utils.security import get_current_user
 from pydantic import BaseModel
 from typing import Optional, List, Annotated    
-from datetime import datetime
+from datetime import datetime, date
 import pandas as pd
+import numpy as np
 import os
 
 router = APIRouter(
@@ -17,7 +18,7 @@ router = APIRouter(
 
 
 class StoreResponse(BaseModel):
-    id: int
+    store_key: int
     store_name_english: str
     store_name_local: Optional[str] = None
     bu_key: Optional[str] = None
@@ -48,8 +49,8 @@ class StoreResponse(BaseModel):
     relocation: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
-    store_open_date: Optional[str] = None
-    store_close_date: Optional[str] = None
+    store_open_date: Optional[date] = None
+    store_close_date: Optional[date] = None
     is_closed: bool
 
 
@@ -63,7 +64,7 @@ async def get_stores(db: Session = Depends(get_db)) -> List[StoreResponse]:
     )
     return [
         StoreResponse(
-            id=store.id,
+            store_key=store.store_key,
             store_name_english=store.store_name_english,
             store_name_local=store.store_name_local,
             bu_key=store.bu_key,
@@ -114,7 +115,7 @@ async def get_store(store_key: int, db: Session = Depends(get_db)) -> StoreRespo
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
     return StoreResponse(
-        id=store.id,
+        store_key=store.store_key,
         store_name_english=store.store_name_english,
         store_name_local=store.store_name_local,
         bu_key=store.bu_key,
@@ -183,8 +184,8 @@ class CreateStoreRequest(BaseModel):
     relocation: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
-    store_open_date: Optional[str] = None
-    store_close_date: Optional[str] = None
+    store_open_date: Optional[date] = None
+    store_close_date: Optional[date] = None
     is_closed: bool
 
 
@@ -195,12 +196,12 @@ async def create_store(
 
     # If store id is provided, check if store exists
     if create_store_request.store_key:
-        store = db.query(Store).filter(Store.id == create_store_request.store_key).first()
+        store = db.query(Store).filter(Store.store_key == create_store_request.store_key).first()
         if store:
             raise HTTPException(status_code=400, detail="Store id already exists")
     
     store = Store(
-        id=create_store_request.store_key,
+        store_key=create_store_request.store_key,
         store_name_english=create_store_request.store_name_english,
         store_name_local=create_store_request.store_name_local,
         bu_key=create_store_request.bu_key,
@@ -239,7 +240,7 @@ async def create_store(
     db.commit()
     db.refresh(store)
     return StoreResponse(
-        id=store.id,
+        store_key=store.store_key,
         store_name_english=store.store_name_english,
         store_name_local=store.store_name_local,
         bu_key=store.bu_key,
@@ -307,8 +308,8 @@ class UpdateStoreRequest(BaseModel):
     relocation: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
-    store_open_date: Optional[str] = None
-    store_close_date: Optional[str] = None
+    store_open_date: Optional[date] = None
+    store_close_date: Optional[date] = None
     is_closed: Optional[bool] = None
 
 
@@ -318,7 +319,7 @@ async def update_store(
     update_store_request: UpdateStoreRequest,
     db: Session = Depends(get_db),
 ):
-    store = db.query(Store).filter(Store.id == store_key).first()
+    store = db.query(Store).filter(Store.store_key == store_key).first()
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
     
@@ -383,16 +384,16 @@ async def update_store(
     if update_store_request.longitude:
         store.longitude = update_store_request.longitude
     if update_store_request.store_open_date:
-        store.store_open_date = update_store_request.store_open_date
+        store.store_open_date = datetime.strptime(update_store_request.store_open_date, "%Y-%m-%d").date()
     if update_store_request.store_close_date:
-        store.store_close_date = update_store_request.store_close_date
+        store.store_close_date = datetime.strptime(update_store_request.store_close_date, "%Y-%m-%d").date()
     if update_store_request.is_closed is not None:
         store.is_closed = update_store_request.is_closed
     
     db.commit()
     db.refresh(store)
     return StoreResponse(
-        id=store.id,
+        store_key=store.store_key,
         store_name_english=store.store_name_english,
         store_name_local=store.store_name_local,
         bu_key=store.bu_key,
@@ -434,7 +435,7 @@ async def delete_store(
     store_key: int,
     db: Session = Depends(get_db),
 ):
-    store = db.query(Store).filter(Store.id == store_key).first()
+    store = db.query(Store).filter(Store.store_key == store_key).first()
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
     store.is_closed = False
@@ -460,11 +461,13 @@ async def upsert_stores_from_csv(
             contents = file.file.read()
             f.write(contents)
         # Read the file into a pandas dataframe
-        df = pd.read_csv(tmp_file_path, encoding="utf-8", sep=",", encoding_errors="ignore", on_bad_lines="warn", engine="python", quotechar='"', escapechar="\\")
+        df = pd.read_csv(tmp_file_path, encoding="utf-8", sep=",", encoding_errors="ignore", on_bad_lines="warn", engine="python", quotechar='"', escapechar="\\", na_values=[''])
+        # Replace all NaN values with None for proper NULL insertion in database
+        df = df.replace({np.nan: None})
         # Iterate over the dataframe and upsert the stores
         for index, row in df.iterrows():
             store = Store(
-                id=row["store_key"],
+                store_key=row["store_key"],
                 store_name_english=row["store_name_english"],
                 store_name_local=row["store_name_local"],
                 bu_key=row["bu_key"],
@@ -495,9 +498,9 @@ async def upsert_stores_from_csv(
                 relocation=row["relocation"],
                 latitude=row["latitude"],
                 longitude=row["longitude"],
-                store_open_date=row["store_open_date"],
-                store_close_date=row["store_close_date"],
-                is_closed=row["is_closed"],
+                store_open_date=datetime.strptime(row["store_open_date"], "%Y-%m-%d").date() if row["store_open_date"] else None,
+                store_close_date=datetime.strptime(row["store_close_date"], "%Y-%m-%d").date() if row["store_close_date"] else None,
+                is_closed=True if row["is_closed"] == "True" else False,
             )
             db.merge(store)
         

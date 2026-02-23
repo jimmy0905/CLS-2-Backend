@@ -48,7 +48,7 @@ class HierarchyResponse(BaseModel):
 
 
 class StoreResponse(BaseModel):
-    id: int
+    store_key: int
     store_name_english: str
     store_name_local: Optional[str] = None
     bu_key: Optional[str] = None
@@ -213,7 +213,7 @@ async def create_survey(
 ):
 
     # Check if store exists
-    store = db.query(Store).filter(Store.id == survey_request.store_key).first()
+    store = db.query(Store).filter(Store.store_key == survey_request.store_key).first()
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
     # Check if departments exist
