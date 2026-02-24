@@ -14,7 +14,7 @@ from models.UploadTask import UploadTask
 from models.UploadTaskError import UploadTaskError
 from models.Channel import Channel
 from models.DeliveryService import DeliveryService
-
+from models.LoginRecord import LoginRecord
 __all__ = [
     "User",
     "Survey",
@@ -32,4 +32,5 @@ __all__ = [
     "UploadTaskError",
     "Channel",
     "DeliveryService",
+    "LoginRecord",
 ]
