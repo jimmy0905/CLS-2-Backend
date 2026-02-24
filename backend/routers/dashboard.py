@@ -21,7 +21,7 @@ from utils.conditionFilter import (
 )
 from typing import List, Optional
 from utils.security import get_current_user
-from datetime import timezone
+from datetime import timezone, date
 
 router = APIRouter(
     prefix="/dashboard",
@@ -397,9 +397,11 @@ async def get_sentiment_distribution(
 
 
 class StoreResponse(BaseModel):
-    id: int
-    english_name: str
-    local_name: str
+    store_key: int
+    store_english_name: Optional[str] = None
+    store_local_name: Optional[str] = None
+    store_open_date: Optional[date] = None
+    store_close_date: Optional[date] = None
     positive_count: int
     negative_count: int
     neutral_count: int
@@ -502,9 +504,11 @@ async def get_store_distribution(
 
         store_distribution.append(
             StoreResponse(
-                id=store.store_key,
-                english_name=store.store_name_english,
-                local_name=store.store_name_local,
+                store_key=store.store_key,
+                store_english_name=store.store_name_english,
+                store_local_name=store.store_name_local,
+                store_open_date=store.store_open_date,
+                store_close_date=store.store_close_date,
                 neutral_count=neutral_count,
                 positive_count=positive_count,
                 negative_count=negative_count,
@@ -935,7 +939,7 @@ async def get_store_column_sentiment_distribution(
 
         column_sentiment_distribution.append(
             StoreColumnSentimentDistributionResponse(
-                column_name=value,
+                column_name=str(value),
                 neutral_count=neutral_count,
                 positive_count=positive_count,
                 negative_count=negative_count,

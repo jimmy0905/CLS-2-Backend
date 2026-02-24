@@ -19,7 +19,7 @@ from models.DeliveryService import DeliveryService
 from sqlalchemy import or_, func, case
 from utils.conditionFilter import FilterRequest, get_filter_params
 from models.enum.Sentiment import TopicSentiment, Sentiment
-from datetime import datetime
+from datetime import datetime, date
 from io import BytesIO
 import requests
 from openpyxl import Workbook
@@ -33,7 +33,7 @@ router = APIRouter(
 )
 
 class StoreResponse(BaseModel):
-    id: int
+    store_key: int
     store_name_english: str
     store_name_local: Optional[str] = None
     bu_key: Optional[str] = None
@@ -64,8 +64,8 @@ class StoreResponse(BaseModel):
     relocation: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
-    store_open_date: Optional[str] = None
-    store_close_date: Optional[str] = None
+    store_open_date: Optional[date] = None
+    store_close_date: Optional[date] = None
     is_closed: bool
 
 
@@ -96,7 +96,6 @@ async def get_top_k_performance_stores(
     sentiment_results = (
         sentiment_query.with_entities(
             Store.store_key.label("store_key"),
-            Store.name.label("store_name"),
             func.count(
                 case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id))
             ).label("neutral_count"),
@@ -111,7 +110,7 @@ async def get_top_k_performance_stores(
             ).label("mixed_count"),
             func.avg(Survey.topic_sentiment_score).label("average_sentiment_score"),
         )
-        .group_by(Store.store_key, Store.name)
+        .group_by(Store.store_key)
         .all()
     )
 
@@ -124,7 +123,7 @@ async def get_top_k_performance_stores(
     )
 
     # Create a lookup dictionary for store details
-    store_details_map = {s.id: s for s in stores}
+    store_details_map = {s.store_key: s for s in stores}
 
     store_with_sentiment = []
     for store in sentiment_results:
@@ -133,7 +132,7 @@ async def get_top_k_performance_stores(
         store_with_sentiment.append(
             TopKPerformanceStoresResponse(
                 store={
-                    "id": store.store_key,
+                    "store_key": store.store_key,
                     "store_name_english": store_obj.store_name_english,
                     "store_name_local": store_obj.store_name_local,
                     "bu_key": store_obj.bu_key,
@@ -205,7 +204,7 @@ async def get_strategy_for_store_by_ids(
 
 
 class TopKPerformanceColumnResponse(BaseModel):
-    column_name: str
+    column_value: str
     score: float
     positive_count: int
     negative_count: int
@@ -215,14 +214,14 @@ class TopKPerformanceColumnResponse(BaseModel):
 
 @router.get("/get_top_k_performance_columns")
 async def get_top_k_performance_columns(
-    column: str = Query(..., description="The column to get the top performing columns"),
+    column: str = Query(..., description="The column name to get the sentiment distribution for store column, columns are bu_key, area_manager, store_format, store_type, operations_controller, regional_manager, px, csr, dr, mag_type, cf_grouping, store_brand, competitor, region, area, territory, toh, district, city, operations_manager, district_manager, sic, tech_life_type, operation_manager_tl, region_manager_tl, relocation, latitude, longitude, store_open_date, store_close_date, is_closed, store_key, store_english_name, store_local_name"),
     db: Session = Depends(get_db),
     filter_params: FilterRequest = Depends(get_filter_params),
     k: int = Query(
         default=10,
         description="The number of top performing columns to return",
     ),
-):
+) -> List[TopKPerformanceColumnResponse]:
 
     column_name_mapper = {
         "bu_key": Store.bu_key,
@@ -299,7 +298,7 @@ async def get_top_k_performance_columns(
         average_sentiment_score = hierarchy.average_sentiment_score if hierarchy.average_sentiment_score is not None else 0
         hierarchy_with_sentiment.append(
             TopKPerformanceColumnResponse(
-                column_name=hierarchy.column_name,
+                column_value=hierarchy.column_name,
                 score=average_sentiment_score,
                 positive_count=hierarchy.positive_count,
                 negative_count=hierarchy.negative_count,
@@ -312,7 +311,8 @@ async def get_top_k_performance_columns(
     return hierarchy_with_sentiment
 
 class StrategyByColumnValueRequest(BaseModel):
-    column_name: str
+    target_column: str
+    column_value: str
 
 @router.post("/get_strategy_for_column_by_values")
 async def get_strategy_for_column_by_value(
@@ -356,11 +356,11 @@ async def get_strategy_for_column_by_value(
         "store_english_name": Store.store_name_english,
         "store_local_name": Store.store_name_local,
     }
-    column_col = column_name_mapper[request.column_name]
+    column_col = column_name_mapper[request.target_column]
     if column_col is None:
         raise HTTPException(status_code=404, detail="Column name not found")
     filter_dict = {
-        column_col: request.column_name,
+        column_col: request.column_value,
         "topic_sentiments": [TopicSentiment.POSITIVE],
     }
     filtered_query, _, _ = build_optimized_query(db, filter_dict)
