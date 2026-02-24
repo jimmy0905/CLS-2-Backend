@@ -74,7 +74,7 @@ class FilterRequest(BaseModel):
 def get_filter_params(
     store_keys: List[int] = Query(
         default=[],
-        description="The store ids to filter by, separated by |",
+        description="The store keys to filter by",
     ),
     store_english_names: List[str] = Query(
         default=[],
