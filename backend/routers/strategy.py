@@ -86,7 +86,7 @@ async def get_top_k_performance_stores(
         default=10,
         description="The number of top performing stores to return",
     ),
-):
+) -> List[TopKPerformanceStoresResponse]:
     filter_dict = filter_params.model_dump()
     # First get the sentiment counts per store
     sentiment_query, sentiment_joins, _ = build_optimized_query(db, filter_dict)
@@ -298,7 +298,7 @@ async def get_top_k_performance_columns(
         average_sentiment_score = hierarchy.average_sentiment_score if hierarchy.average_sentiment_score is not None else 0
         hierarchy_with_sentiment.append(
             TopKPerformanceColumnResponse(
-                column_value=hierarchy.column_name,
+                column_value=str(hierarchy.column_name),
                 score=average_sentiment_score,
                 positive_count=hierarchy.positive_count,
                 negative_count=hierarchy.negative_count,
@@ -312,7 +312,7 @@ async def get_top_k_performance_columns(
 
 class StrategyByColumnValueRequest(BaseModel):
     target_column: str
-    column_value: str
+    column_values: List[str]
 
 @router.post("/get_strategy_for_column_by_values")
 async def get_strategy_for_column_by_value(
@@ -360,7 +360,7 @@ async def get_strategy_for_column_by_value(
     if column_col is None:
         raise HTTPException(status_code=404, detail="Column name not found")
     filter_dict = {
-        column_col: request.column_value,
+        column_col: request.column_values,
         "topic_sentiments": [TopicSentiment.POSITIVE],
     }
     filtered_query, _, _ = build_optimized_query(db, filter_dict)
@@ -391,7 +391,7 @@ async def get_top_k_performance_channels(
         default=10,
         description="The number of top performing channels to return",
     ),
-):
+) -> List[TopKPerformanceChannelsResponse]:
     filter_dict = filter_params.model_dump()
     sentiment_query, sentiment_joins, _ = build_optimized_query(db, filter_dict)
     if "store" not in sentiment_joins:
@@ -484,7 +484,7 @@ async def get_top_k_performance_delivery_services(
         default=10,
         description="The number of top performing delivery services to return",
     ),
-):
+) -> List[TopKPerformanceDeliveryServicesResponse]:
     filter_dict = filter_params.model_dump()
     sentiment_query, sentiment_joins, _ = build_optimized_query(db, filter_dict)
     if "store" not in sentiment_joins:
