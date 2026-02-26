@@ -365,6 +365,13 @@ async def process_single_row(
             delivery_service_id = None
 
         # Topic (Survey sentiment, topics, departments, keywords)
+        llm_processing_failed = False
+        llm_error_message = None
+        total_topics = None
+        total_departments = None
+        total_sentiment = None
+        total_keywords = None
+        
         try:
             # Use synchronous extract_total in thread pool
             from utils.llm.extract_total import _extract_total_sync
@@ -375,183 +382,176 @@ async def process_single_row(
             # Check if the total is valid
             is_valid, error_message = is_total_valid(total)
             if not is_valid:
-                error = UploadTaskError(
-                    upload_task_id=upload_task_id,
-                    input_store_key=store_key,
-                    input_comment=comment,
-                    input_reported_at=reported_at,
-                    error_message=error_message,
-                )
-                db.add(error)
-                db.commit()
-                result["error"] = error_message
-                return result
-
-            # if total.cannot_classified is True, set have_to_retry to True
-            if total.cannot_classified:
-                logger.warning(
-                    f"Row {index + 1}: Cannot classified in AI Analysis after first try, retrying..."
-                )
-                have_to_retry = True
-            # Check if the topics are not empty
-            if total.topics is None or len(total.topics) == 0:
-                logger.warning(f"Row {index + 1}: Topics are empty after first try, skipping row")
-                have_to_retry = True
-            # Check if the departments are not empty
-            if total.departments is None or len(total.departments) == 0:
-                logger.warning(f"Row {index + 1}: Departments are empty after first try, skipping row")
-                have_to_retry = True
-            # Check if the keywords are not empty
-            if total.keywords is None or len(total.keywords) == 0:
-                logger.warning(f"Row {index + 1}: Keywords are empty after first try, skipping row")
-                have_to_retry = True
-            # Check if the topics are valid
-            for topic in total.topics:
-                if topic.text not in available_topics:
-                    logger.warning(
-                        f"Row {index + 1}: Topic {topic.text} is not valid after first try, retrying..."
-                    )
-                    have_to_retry = True
-            # Check if the departments are valid
-            for department in total.departments:
-                if department.text not in available_departments:
-                    logger.warning(
-                        f"Row {index + 1}: Department {department.text} is not valid after first try, retrying..."
-                    )
-                    have_to_retry = True
-
-            if have_to_retry:
-                total, _ = await asyncio.to_thread(_extract_total_retry_sync, comment)
-                # Check if the total is classified, if not, skip the row
+                llm_processing_failed = True
+                llm_error_message = error_message
+            else:
+                # if total.cannot_classified is True, set have_to_retry to True
                 if total.cannot_classified:
                     logger.warning(
-                        f"Row {index + 1}: Cannot classified in AI Analysis after retrying, skipping row"
+                        f"Row {index + 1}: Cannot classified in AI Analysis after first try, retrying..."
                     )
-                    error = UploadTaskError(
-                        upload_task_id=upload_task_id,
-                        input_store_key=store_key,
-                        input_comment=comment,
-                        input_reported_at=reported_at,
-                        error_message="Cannot classified in AI Analysis after retrying",
-                        raw_row_data=json_row_data,
-                    )
-                    db.add(error)
-                    db.commit()
-                    result["error"] = "Cannot classified in AI Analysis after retrying"
-                    return result
+                    have_to_retry = True
                 # Check if the topics are not empty
-                if total.topics is None:
-                    logger.warning(
-                        f"Row {index + 1}: Topics are empty after retrying, skipping row"
-                    )
-                    error = UploadTaskError(
-                        upload_task_id=upload_task_id,
-                        input_store_key=store_key,
-                        input_comment=comment,
-                        input_reported_at=reported_at,
-                        error_message="Topics are empty after retrying",
-                        raw_row_data=json_row_data,
-                    )
-                    db.add(error)
-                    db.commit()
-                    result["error"] = "Topics are empty after retrying"
-                    return result
+                if total.topics is None or len(total.topics) == 0:
+                    logger.warning(f"Row {index + 1}: Topics are empty after first try, skipping row")
+                    have_to_retry = True
                 # Check if the departments are not empty
-                if total.departments is None:
-                    logger.warning(
-                        f"Row {index + 1}: Departments are empty after retrying, skipping row"
-                    )
-                    error = UploadTaskError(
-                        upload_task_id=upload_task_id,
-                        input_store_key=store_key,
-                        input_comment=comment,
-                        input_reported_at=reported_at,
-                        error_message="Departments are empty after retrying",
-                        raw_row_data=json_row_data,
-                    )
-                    db.add(error)
-                    db.commit()
-                    result["error"] = "Departments are empty after retrying"
-                    return result
+                if total.departments is None or len(total.departments) == 0:
+                    logger.warning(f"Row {index + 1}: Departments are empty after first try, skipping row")
+                    have_to_retry = True
                 # Check if the keywords are not empty
-                if total.keywords is None:
-                    logger.warning(
-                        f"Row {index + 1}: Keywords are empty after retrying, skipping row"
-                    )
-                    error = UploadTaskError(
-                        upload_task_id=upload_task_id,
-                        input_store_key=store_key,
-                        input_comment=comment,
-                        input_reported_at=reported_at,
-                        error_message="Keywords are empty after retrying",
-                        raw_row_data=json_row_data,
-                    )
-                    db.add(error)
-                    db.commit()
-                    result["error"] = "Keywords are empty after retrying"
-                    return result
+                if total.keywords is None or len(total.keywords) == 0:
+                    logger.warning(f"Row {index + 1}: Keywords are empty after first try, skipping row")
+                    have_to_retry = True
                 # Check if the topics are valid
                 for topic in total.topics:
                     if topic.text not in available_topics:
                         logger.warning(
-                            f"Row {index + 1}: Topic {topic.text} is not valid after retrying, skipping row"
+                            f"Row {index + 1}: Topic {topic.text} is not valid after first try, retrying..."
                         )
-                        error = UploadTaskError(
-                            upload_task_id=upload_task_id,
-                            input_store_key=store_key,
-                            input_comment=comment,
-                            input_reported_at=reported_at,
-                            error_message=f"Topic {topic.text} is not valid after retrying",
-                            raw_row_data=json_row_data,
-                        )
-                        db.add(error)
-                        db.commit()
-                        result["error"] = (
-                            f"Topic {topic.text} is not valid after retrying"
-                        )
-                        return result
+                        have_to_retry = True
                 # Check if the departments are valid
                 for department in total.departments:
                     if department.text not in available_departments:
                         logger.warning(
-                            f"Row {index + 1}: Department {department.text} is not valid after retrying, skipping row"
+                            f"Row {index + 1}: Department {department.text} is not valid after first try, retrying..."
                         )
-                        error = UploadTaskError(
-                            upload_task_id=upload_task_id,
-                            input_store_key=store_key,
-                            input_comment=comment,
-                            input_reported_at=reported_at,
-                            error_message=f"Department {department.text} is not valid after retrying",
-                            raw_row_data=json_row_data,
+                        have_to_retry = True
+
+                if have_to_retry:
+                    total, _ = await asyncio.to_thread(_extract_total_retry_sync, comment)
+                    # Check if the total is classified, if not, skip the row
+                    if total.cannot_classified:
+                        logger.warning(
+                            f"Row {index + 1}: Cannot classified in AI Analysis after retrying, skipping row"
                         )
-                        db.add(error)
-                        db.commit()
-                        result["error"] = (
-                            f"Department {department.text} is not valid after retrying"
+                        llm_processing_failed = True
+                        llm_error_message = "Cannot classified in AI Analysis after retrying"
+                    # Check if the topics are not empty
+                    elif total.topics is None:
+                        logger.warning(
+                            f"Row {index + 1}: Topics are empty after retrying, skipping row"
                         )
-                        return result
+                        llm_processing_failed = True
+                        llm_error_message = "Topics are empty after retrying"
+                    # Check if the departments are not empty
+                    elif total.departments is None:
+                        logger.warning(
+                            f"Row {index + 1}: Departments are empty after retrying, skipping row"
+                        )
+                        llm_processing_failed = True
+                        llm_error_message = "Departments are empty after retrying"
+                    # Check if the keywords are not empty
+                    elif total.keywords is None:
+                        logger.warning(
+                            f"Row {index + 1}: Keywords are empty after retrying, skipping row"
+                        )
+                        llm_processing_failed = True
+                        llm_error_message = "Keywords are empty after retrying"
+                    else:
+                        # Check if the topics are valid
+                        for topic in total.topics:
+                            if topic.text not in available_topics:
+                                logger.warning(
+                                    f"Row {index + 1}: Topic {topic.text} is not valid after retrying, skipping row"
+                                )
+                                llm_processing_failed = True
+                                llm_error_message = f"Topic {topic.text} is not valid after retrying"
+                                break
+                        
+                        # Check if the departments are valid (only if topics were valid)
+                        if not llm_processing_failed:
+                            for department in total.departments:
+                                if department.text not in available_departments:
+                                    logger.warning(
+                                        f"Row {index + 1}: Department {department.text} is not valid after retrying, skipping row"
+                                    )
+                                    llm_processing_failed = True
+                                    llm_error_message = f"Department {department.text} is not valid after retrying"
+                                    break
+
+                if not llm_processing_failed:
+                    total_topics = total.topics
+                    total_departments = total.departments
+                    total_sentiment = total.overall_sentiment.upper() if total.overall_sentiment else None
+                    total_keywords = total.keywords
 
         except Exception as e:
             logger.error(
                 f"Row {index + 1}: Failed to extract topics and sentiment. Error: {e}"
             )
-            # Create an error for the upload task
-            error = UploadTaskError(
-                upload_task_id=upload_task_id,
-                input_store_key=store_key,
-                input_comment=comment,
-                input_reported_at=reported_at,
-                error_message=f"Error conducting AI Analysis for topics: {e}",
-                raw_row_data=json_row_data,
-            )
-            db.add(error)
-            db.commit()
-            result["error"] = f"Error conducting AI Analysis for topics: {e}"
-            return result
-        total_topics = total.topics
-        total_departments = total.departments
-        total_sentiment = total.overall_sentiment.upper() if total.overall_sentiment else None
-        total_keywords = total.keywords
+            llm_processing_failed = True
+            llm_error_message = f"Error conducting AI Analysis for topics: {e}"
+        
+        # If LLM processing failed, check if we need to update an existing record
+        if llm_processing_failed:
+            # Check if survey already exists
+            existing_survey = db.query(Survey).filter(
+                Survey.survey_id == survey_id,
+                Survey.respondent_id == respondent_id
+            ).first()
+            
+            if existing_survey:
+                # Update existing survey with new data and mark as deleted
+                logger.info(
+                    f"Row {index + 1}: LLM processing failed but found existing survey (ID: {existing_survey.id}), updating and marking as deleted..."
+                )
+                existing_survey.store_key = store_key
+                existing_survey.comment = comment
+                existing_survey.reported_at = reported_at
+                existing_survey.channel_id = channel_id
+                existing_survey.delivery_service_id = delivery_service_id
+                existing_survey.raw_row_data = json_row_data
+                existing_survey.is_deleted = True
+                
+                db.commit()
+                
+                # Log the error
+                error = UploadTaskError(
+                    upload_task_id=upload_task_id,
+                    input_store_key=store_key,
+                    input_comment=comment,
+                    input_reported_at=reported_at,
+                    error_message=llm_error_message,
+                    raw_row_data=json_row_data,
+                )
+                db.add(error)
+                db.commit()
+                
+                # Update processed rows count
+                with progress_lock:
+                    upload_task = (
+                        db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
+                    )
+                    if upload_task:
+                        upload_task.processed_rows += 1
+                        processed_count = upload_task.processed_rows
+                        total_rows = upload_task.total_rows
+                        db.commit()
+
+                        if (processed_count % 10 == 0) or (processed_count == total_rows):
+                            logger.info(f"Processed {processed_count}/{total_rows} rows")
+                
+                result["success"] = True
+                result["error"] = f"Updated existing survey with is_deleted=True due to: {llm_error_message}"
+                logger.info(
+                    f"Row {index + 1}: Updated existing survey (ID: {existing_survey.id}) and marked as deleted"
+                )
+                return result
+            else:
+                # No existing survey, just log the error
+                error = UploadTaskError(
+                    upload_task_id=upload_task_id,
+                    input_store_key=store_key,
+                    input_comment=comment,
+                    input_reported_at=reported_at,
+                    error_message=llm_error_message,
+                    raw_row_data=json_row_data,
+                )
+                db.add(error)
+                db.commit()
+                result["error"] = llm_error_message
+                return result
 
         # Check if survey already exists (upsert logic)
         existing_survey = db.query(Survey).filter(
