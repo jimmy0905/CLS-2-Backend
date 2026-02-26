@@ -30,8 +30,8 @@ class UploadTaskError(Base):
             "input_store_key": self.input_store_key,
             "input_comment": self.input_comment,
             "input_reported_at": self.input_reported_at,
-            "created_at": self.created_at.astimezone(timezone.utc) if self.created_at else None,
-            "updated_at": self.updated_at.astimezone(timezone.utc) if self.updated_at else None,
+            "created_at": self.created_at.astimezone(timezone.utc).isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.astimezone(timezone.utc).isoformat() if self.updated_at else None,
             "raw_row_data": self.raw_row_data,
         }
 

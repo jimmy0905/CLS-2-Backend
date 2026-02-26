@@ -29,8 +29,8 @@ class UploadTask(Base):
             "status": self.status,
             "total_rows": self.total_rows,
             "processed_rows": self.processed_rows,
-            "created_at": self.created_at.astimezone(timezone.utc) if self.created_at else None,
-            "updated_at": self.updated_at.astimezone(timezone.utc) if self.updated_at else None,
+            "created_at": self.created_at.astimezone(timezone.utc).isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.astimezone(timezone.utc).isoformat() if self.updated_at else None,
             "errors": [error.to_dict() for error in self.errors],
         }
 
