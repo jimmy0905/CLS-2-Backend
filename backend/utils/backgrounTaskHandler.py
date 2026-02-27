@@ -606,13 +606,13 @@ async def process_single_row(
         for keyword_obj in total_keywords:
             # Get or create keyword
             keyword = (
-                db.query(Keyword).filter(Keyword.keyword == keyword_obj.lower()).first()
+                db.query(Keyword).filter(Keyword.keyword == keyword_obj.text.lower()).first()
             )
             if not keyword:
                 logger.debug(
-                    f"Row {index + 1}: Creating new keyword: {keyword_obj.lower()}"
+                    f"Row {index + 1}: Creating new keyword: {keyword_obj.text.lower()}"
                 )
-                keyword = Keyword(keyword=keyword_obj.lower())
+                keyword = Keyword(keyword=keyword_obj.text.lower())
                 db.add(keyword)
                 db.commit()
                 db.refresh(keyword)
