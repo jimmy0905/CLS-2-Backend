@@ -159,10 +159,6 @@ class UploadTaskResponse(BaseModel):
     processed_rows: int
     created_at: datetime
     updated_at: datetime
-    completion_tokens: int
-    prompt_tokens: int
-    total_tokens: int
-    cached_tokens: int
     error_count: int
 
 
@@ -182,10 +178,6 @@ async def get_upload_task(
         processed_rows=upload_task.processed_rows,
         created_at=upload_task.created_at,
         updated_at=upload_task.updated_at,
-        completion_tokens=upload_task.completion_tokens,
-        prompt_tokens=upload_task.prompt_tokens,
-        total_tokens=upload_task.total_tokens,
-        cached_tokens=upload_task.cached_tokens,
         error_count=len(upload_task.errors),
     )
 
@@ -203,10 +195,6 @@ async def get_upload_tasks(db: Session = Depends(get_db)) -> list[UploadTaskResp
             processed_rows=upload_task.processed_rows,
             created_at=upload_task.created_at,
             updated_at=upload_task.updated_at,
-            completion_tokens=upload_task.completion_tokens,
-            prompt_tokens=upload_task.prompt_tokens,
-            total_tokens=upload_task.total_tokens,
-            cached_tokens=upload_task.cached_tokens,
             error_count=len(upload_task.errors),
         )
         for upload_task in upload_tasks

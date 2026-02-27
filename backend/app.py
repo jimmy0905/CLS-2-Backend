@@ -13,7 +13,6 @@ from routers import (
     userBehavoiorLogs,
     stores,
     departments,
-    hierarchies,
     tasks,
     users,
     channels,
@@ -78,7 +77,6 @@ app.include_router(strategy.router)
 app.include_router(stores.router)
 app.include_router(departments.router)
 app.include_router(userBehavoiorLogs.router)
-app.include_router(hierarchies.router)
 app.include_router(tasks.router)
 app.include_router(users.router)
 app.include_router(channels.router)

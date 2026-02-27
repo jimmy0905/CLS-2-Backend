@@ -31,7 +31,7 @@ class Survey(Base):
     survey_id=Column(Text, nullable=False)
     respondent_id=Column(Text, nullable=False)
     # Foreign keys
-    store_id = Column(Integer, ForeignKey("stores.id"), nullable=False)
+    store_key = Column(Integer, ForeignKey("stores.store_key"), nullable=False)
     channel_id = Column(Integer, ForeignKey("channels.id"), nullable=True)
     delivery_service_id = Column(
         Integer, ForeignKey("delivery_services.id"), nullable=True
@@ -87,53 +87,40 @@ class Survey(Base):
             # Foreign keys
             "store": (
                 {
-                    "id": self.store.id,
-                    "name": self.store.name,
-                    "hierarchy_level_1": (
-                        {
-                            "id": self.store.hierarchy_level_1.id,
-                            "name": self.store.hierarchy_level_1.name,
-                            "level": self.store.hierarchy_level_1.level,
-                        }
-                        if self.store.hierarchy_level_1
-                        else None
-                    ),
-                    "hierarchy_level_2": (
-                        {
-                            "id": self.store.hierarchy_level_2.id,
-                            "name": self.store.hierarchy_level_2.name,
-                            "level": self.store.hierarchy_level_2.level,
-                        }
-                        if self.store.hierarchy_level_2
-                        else None
-                    ),
-                    "hierarchy_level_3": (
-                        {
-                            "id": self.store.hierarchy_level_3.id,
-                            "name": self.store.hierarchy_level_3.name,
-                            "level": self.store.hierarchy_level_3.level,
-                        }
-                        if self.store.hierarchy_level_3
-                        else None
-                    ),
-                    "hierarchy_level_4": (
-                        {
-                            "id": self.store.hierarchy_level_4.id,
-                            "name": self.store.hierarchy_level_4.name,
-                            "level": self.store.hierarchy_level_4.level,
-                        }
-                        if self.store.hierarchy_level_4
-                        else None
-                    ),
-                    "hierarchy_level_5": (
-                        {
-                            "id": self.store.hierarchy_level_5.id,
-                            "name": self.store.hierarchy_level_5.name,
-                            "level": self.store.hierarchy_level_5.level,
-                        }
-                        if self.store.hierarchy_level_5
-                        else None
-                    ),
+                    "store_key": self.store.store_key,
+                    "store_name_english": self.store.store_name_english,
+                    "store_name_local": self.store.store_name_local,
+                    "bu_key": self.store.bu_key,
+                    "area_manager": self.store.area_manager,
+                    "store_format": self.store.store_format,
+                    "store_type": self.store.store_type,
+                    "operations_controller": self.store.operations_controller,
+                    "regional_manager": self.store.regional_manager,
+                    "px": self.store.px,
+                    "csr": self.store.csr,
+                    "dr": self.store.dr,
+                    "mag_type": self.store.mag_type,
+                    "cf_grouping": self.store.cf_grouping,
+                    "store_brand": self.store.store_brand,
+                    "competitor": self.store.competitor,
+                    "region": self.store.region,
+                    "area": self.store.area,
+                    "territory": self.store.territory,
+                    "toh": self.store.toh,
+                    "district": self.store.district,
+                    "city": self.store.city,
+                    "operations_manager": self.store.operations_manager,
+                    "district_manager": self.store.district_manager,
+                    "sic": self.store.sic,
+                    "tech_life_type": self.store.tech_life_type,
+                    "operation_manager_tl": self.store.operation_manager_tl,
+                    "region_manager_tl": self.store.region_manager_tl,
+                    "relocation": self.store.relocation,
+                    "latitude": self.store.latitude,
+                    "longitude": self.store.longitude,
+                    "store_open_date": self.store.store_open_date.isoformat() if self.store.store_open_date else None,
+                    "store_close_date": self.store.store_close_date.isoformat() if self.store.store_close_date else None,
+                    "is_closed": self.store.is_closed,
                 }
                 if self.store
                 else None
@@ -208,60 +195,72 @@ class Survey(Base):
             "id": self.id,
             "survey_id": self.survey_id,
             "respondent_id": self.respondent_id,
-            "store_id": self.store.id,
-            "store_name": self.store.name,
-            "hierarchy_level_1_name": (
-                self.store.hierarchy_level_1.name
-                if self.store.hierarchy_level_1
-                else None
-            ),
-            "hierarchy_level_2_name": (
-                self.store.hierarchy_level_2.name
-                if self.store.hierarchy_level_2
-                else None
-            ),
-            "hierarchy_level_3_name": (
-                self.store.hierarchy_level_3.name
-                if self.store.hierarchy_level_3
-                else None
-            ),
-            "hierarchy_level_4_name": (
-                self.store.hierarchy_level_4.name
-                if self.store.hierarchy_level_4
-                else None
-            ),
-            "hierarchy_level_5_name": (
-                self.store.hierarchy_level_5.name
-                if self.store.hierarchy_level_5
-                else None
-            ),
-            "comment": self.comment,
-            "reported_at": self.reported_at,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
-            "sentiment": self._format_sentiment_value(
-                self.topic_sentiment
-            ),  # use topic_sentiment instead of sentiment
-            "sentiment_score": self.topic_sentiment_score,
-            # department1 (positive), department2 (negative), department3 (neutral)
+            "store_key": self.store.store_key,
+            "store_id": self.store.store_key,  # Alias for store_key
+            "store_name": self.store.store_name_english if self.store.store_name_english else self.store.store_name_local,  # Fallback to local name if English name is missing
+            "store_english_name": self.store.store_name_english,
+            "store_local_name": self.store.store_name_local,
+            "store_name_english": self.store.store_name_english,
+            "store_name_local": self.store.store_name_local,
+            "bu_key": self.store.bu_key,
+            "area_manager": self.store.area_manager,
+            "store_format": self.store.store_format,
+            "store_type": self.store.store_type,
+            "operations_controller": self.store.operations_controller,
+            "regional_manager": self.store.regional_manager,
+            "px": self.store.px,
+            "csr": self.store.csr,
+            "dr": self.store.dr,
+            "mag_type": self.store.mag_type,
+            "cf_grouping": self.store.cf_grouping,
+            "store_brand": self.store.store_brand,
+            "competitor": self.store.competitor,
+            "region": self.store.region,
+            "area": self.store.area,
+            "territory": self.store.territory,
+            "toh": self.store.toh,
+            "district": self.store.district,
+            "city": self.store.city,
+            "operations_manager": self.store.operations_manager,
+            "district_manager": self.store.district_manager,
+            "sic": self.store.sic,
+            "tech_life_type": self.store.tech_life_type,
+            "operation_manager_tl": self.store.operation_manager_tl,
+            "region_manager_tl": self.store.region_manager_tl,
+            "relocation": self.store.relocation,
+            "latitude": self.store.latitude,
+            "longitude": self.store.longitude,
+            "store_open_date": self.store.store_open_date,
+            "store_close_date": self.store.store_close_date,
+            "is_closed": self.store.is_closed,
+            "department_id": ", ".join([str(survey_department.department_id) for survey_department in self.survey_departments]) if self.survey_departments else None,
+            "department_name": ", ".join([survey_department.department.name for survey_department in self.survey_departments]) if self.survey_departments else None,
+            "channel_id": self.channel_id if self.channel else None,
+            "channel_name": self.channel.name if self.channel else None,
             "departments": [
                 f"{survey_department.department.name} ({self._format_sentiment_value(survey_department.sentiment)})"
                 for survey_department in self.survey_departments
             ],
-            # topic1 (positive), topic2 (negative), topic3 (neutral)
             "topics": [
                 f"{survey_topic.topic.topic} ({self._format_sentiment_value(survey_topic.sentiment)})"
                 for survey_topic in self.survey_topics
             ],
-            # keyword1 (positive), keyword2 (negative), keyword3 (neutral)
             "keywords": [
                 f"{survey_keyword.keyword.keyword} ({self._format_sentiment_value(survey_keyword.sentiment)})"
                 for survey_keyword in self.survey_keywords
             ],
+            "comment": self.comment,
             "channel": self.channel.name if self.channel else None,
             "delivery_service": (
                 self.delivery_service.name if self.delivery_service else None
             ),
+            "sentiment": self._format_sentiment_value(
+                self.topic_sentiment
+            ),  # use topic_sentiment instead of sentiment
+            "sentiment_score": self.topic_sentiment_score,
+            "reported_at": self.reported_at,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
         }
 
 
