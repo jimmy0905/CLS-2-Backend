@@ -1,5 +1,5 @@
 from utils.database import Base
-from sqlalchemy import Column, Integer, String, DateTime, CHAR, event
+from sqlalchemy import Column, Integer, String, DateTime, CHAR
 import uuid
 from datetime import timezone
 from sqlalchemy.orm import relationship
@@ -16,7 +16,7 @@ class UploadTask(Base):
     total_rows = Column(Integer)
     processed_rows = Column(Integer)
     created_at = Column(DateTime(timezone=True), default=func.now())
-    updated_at = Column(DateTime(timezone=True), default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
     # Relationships
     errors = relationship("UploadTaskError", back_populates="upload_task")
@@ -33,13 +33,3 @@ class UploadTask(Base):
             "updated_at": self.updated_at.astimezone(timezone.utc).isoformat() if self.updated_at else None,
             "errors": [error.to_dict() for error in self.errors],
         }
-
-
-# Register the event listener to automatically update updated_at
-@event.listens_for(UploadTask, "before_update")
-def update_updated_at(mapper, connection, target):
-    connection.execute(
-        UploadTask.__table__.update()
-        .where(UploadTask.id == target.id)
-        .values(updated_at=func.now())
-    )

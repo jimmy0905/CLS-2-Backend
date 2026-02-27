@@ -571,6 +571,7 @@ async def process_single_row(
             existing_survey.channel_id = channel_id
             existing_survey.delivery_service_id = delivery_service_id
             existing_survey.raw_row_data = json_row_data
+            existing_survey.is_deleted = False
             
             # Delete old relationships to replace with new analysis
             db.query(SurveyKeywords).filter(SurveyKeywords.survey_id == existing_survey.id).delete()
