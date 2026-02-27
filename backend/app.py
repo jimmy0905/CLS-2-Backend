@@ -53,7 +53,6 @@ app.add_middleware(
 
 add_pagination(app)
 
-
 @app.on_event("startup")
 async def startup_event():
     check_tables_exist()
