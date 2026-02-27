@@ -474,7 +474,7 @@ async def process_single_row(
                     total_topics = total.topics
                     total_departments = total.departments
                     total_sentiment = total.overall_sentiment.upper() if total.overall_sentiment else None
-                    total_keywords = total.keywords
+                    total_keywords = total.keywords if total.keywords else []
 
         except Exception as e:
             logger.error(
@@ -606,13 +606,13 @@ async def process_single_row(
         for keyword_obj in total_keywords:
             # Get or create keyword
             keyword = (
-                db.query(Keyword).filter(Keyword.keyword == keyword_obj.text).first()
+                db.query(Keyword).filter(Keyword.keyword == keyword_obj.lower()).first()
             )
             if not keyword:
                 logger.debug(
-                    f"Row {index + 1}: Creating new keyword: {keyword_obj.text}"
+                    f"Row {index + 1}: Creating new keyword: {keyword_obj.lower()}"
                 )
-                keyword = Keyword(keyword=keyword_obj.text)
+                keyword = Keyword(keyword=keyword_obj.lower())
                 db.add(keyword)
                 db.commit()
                 db.refresh(keyword)
