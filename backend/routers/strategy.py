@@ -34,7 +34,7 @@ router = APIRouter(
 
 class StoreResponse(BaseModel):
     store_key: int
-    store_name_english: str
+    store_name_english: Optional[str] = None
     store_name_local: Optional[str] = None
     bu_key: Optional[str] = None
     area_manager: Optional[str] = None
