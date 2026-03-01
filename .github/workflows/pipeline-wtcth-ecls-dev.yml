@@ -1,17 +1,17 @@
-name: WTCHKECLS CLSense Backend UAT Pipeline
+name: WTCTH-ECLS CLSense Backend Dev Pipeline
 
 on:
   push:
     branches:
-      - wtchkecls-uat
+      - wtcth-ecls-dev
     paths:
       - backend/**
       - requirements.txt
       - Dockerfile
-      - .github/workflows/pipeline-wtchkecls-uat.yml
+      - .github/workflows/pipeline-wtcth-ecls-dev.yml
 
 env:
-  DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/clsense-wtchkecls-backend-uat
+  DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/clsense-wtcth-ecls-backend-dev
 
 jobs:
   build-image:

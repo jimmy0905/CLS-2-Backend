@@ -1,17 +1,17 @@
-name: WTCHKECLS CLSense Backend Prod Pipeline
+name: WTCCN-ECLS CLSense Backend Prod Pipeline
 
 on:
   push:
     branches:
-      - wtchkecls-prod
+      - wtccn-ecls-prod
     paths:
       - backend/**
       - requirements.txt
       - Dockerfile
-      - .github/workflows/pipeline-wtchkecls-prod.yml
+      - .github/workflows/pipeline-wtccn-ecls-prod.yml
 
 env:
-  DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/clsense-wtchkecls-backend-prod
+  DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/clsense-wtccn-ecls-backend-prod
 
 jobs:
   build-image:
