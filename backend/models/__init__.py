@@ -7,7 +7,6 @@ from models.Topic import Topic
 from models.Keyword import Keyword
 from models.Store import Store
 from models.Department import Department
-from models.Hierarchy import Hierarchy
 from models.Action import Action
 from models.GeneratedEmail import GeneratedEmail
 from models.EmailRecord import EmailRecord
@@ -15,7 +14,7 @@ from models.UploadTask import UploadTask
 from models.UploadTaskError import UploadTaskError
 from models.Channel import Channel
 from models.DeliveryService import DeliveryService
-
+from models.LoginRecord import LoginRecord
 __all__ = [
     "User",
     "Survey",
@@ -26,7 +25,6 @@ __all__ = [
     "Keyword",
     "Store",
     "Department",
-    "Hierarchy",
     "Action",
     "GeneratedEmail",
     "EmailRecord",
@@ -34,4 +32,5 @@ __all__ = [
     "UploadTaskError",
     "Channel",
     "DeliveryService",
+    "LoginRecord",
 ]

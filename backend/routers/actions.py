@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from models.Survey import Survey
 from utils.conditionFilter import build_survey_query
 from utils.database import get_db
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel, Field
 from typing import Optional
 from utils.llm.models import (
@@ -30,7 +30,7 @@ router = APIRouter(
 
 
 class ActionFilterRequest(BaseModel):
-    store_ids: List[int] = []
+    store_keys: List[int] = []
     store_names: List[str] = []
     channel_ids: List[int] = []
     channel_names: List[str] = []
@@ -49,6 +49,9 @@ class ActionFilterRequest(BaseModel):
     from_date: Optional[str] = ""
     to_date: Optional[str] = ""
     sentiments: List[str] = []
+    topic_sentiments: List[str] = []
+    min_topic_sentiment_score: Optional[float] = None
+    max_topic_sentiment_score: Optional[float] = None
 
 
 class GetActionsResponse(BaseModel):
@@ -65,11 +68,11 @@ async def get_actions(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> GetActionsResponse:
-    # store_ids and store_names cannot be used together
-    if action_filter_request.store_ids and action_filter_request.store_names:
+    # store_keys and store_names cannot be used together
+    if action_filter_request.store_keys and action_filter_request.store_names:
         raise HTTPException(
             status_code=400,
-            detail="store_ids and store_names cannot be used together",
+            detail="store_keys and store_names cannot be used together",
         )
     # department_ids and department_names cannot be used together
     if action_filter_request.department_ids and action_filter_request.department_names:
@@ -95,21 +98,55 @@ async def get_actions(
             status_code=400,
             detail="source_ids and source_names cannot be used together",
         )
-    # lowercase the sentiments
-    action_filter_request.sentiments = [
-        sentiment.lower() for sentiment in action_filter_request.sentiments
-    ]
+    # available topic_sentiments are POSITIVE, NEGATIVE, NEUTRAL, MIXED
+    valid_topic_sentiments = ["POSITIVE", "NEGATIVE", "NEUTRAL", "MIXED"]
+    if action_filter_request.topic_sentiments:
+        invalid_topic_sentiments = [
+            sentiment
+            for sentiment in action_filter_request.topic_sentiments
+            if sentiment not in valid_topic_sentiments
+        ]
+        if invalid_topic_sentiments:
+            raise HTTPException(
+                status_code=400,
+                detail=f"topic_sentiments must be one of {', '.join(valid_topic_sentiments)}. Invalid values: {', '.join(invalid_topic_sentiments)}",
+            )
+    # available sentiments are POSITIVE, NEGATIVE, NEUTRAL
+    valid_sentiments = ["POSITIVE", "NEGATIVE", "NEUTRAL"]
+    if action_filter_request.sentiments:
+        invalid_sentiments = [
+            sentiment
+            for sentiment in action_filter_request.sentiments
+            if sentiment not in valid_sentiments
+        ]
+        if invalid_sentiments:
+            raise HTTPException(
+                status_code=400,
+                detail=f"sentiments must be one of {', '.join(valid_sentiments)}. Invalid values: {', '.join(invalid_sentiments)}",
+            )
     filter_dict = action_filter_request.model_dump()
-    filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
-
-    # convert sentiments to lowercase
-    filter_dict["sentiments"] = [
-        sentiment.lower() for sentiment in filter_dict["sentiments"]
-    ]
-    # Execute the query
+    
+    # First get distinct survey IDs that match the filters
+    # Include comment in select for ORDER BY compatibility with DISTINCT
+    id_query = build_survey_query(db.query(Survey.id, Survey.comment).distinct(), filter_dict)
+    id_query = id_query.order_by(func.length(Survey.comment).desc()).limit(500)
+    survey_ids = [row[0] for row in id_query.all()]
+    
+    # Execute the query to get full survey objects
     surveys = (
-        filtered_query.order_by(func.length(Survey.comment).desc()).limit(500).all()
-    )
+        db.query(Survey)
+        .filter(Survey.id.in_(survey_ids))
+        .options(
+            joinedload(Survey.store),
+            joinedload(Survey.survey_topics),
+            joinedload(Survey.survey_keywords),
+            joinedload(Survey.survey_departments),
+            joinedload(Survey.channel),
+            joinedload(Survey.delivery_service)
+        )
+        .order_by(func.length(Survey.comment).desc())
+        .all()
+    ) if survey_ids else []
 
     # Check the length of the surveys
     if len(surveys) == 0:
@@ -158,7 +195,11 @@ async def generate_email_route(
     db: Session = Depends(get_db),
 ) -> EmailResponse:
 
-    action = db.query(ActionDatabaseModel).filter(ActionDatabaseModel.id == email_request.action_id).first()
+    action = (
+        db.query(ActionDatabaseModel)
+        .filter(ActionDatabaseModel.id == email_request.action_id)
+        .first()
+    )
     if action is None:
         raise HTTPException(status_code=404, detail="Action not found")
     # Convert EmailRequest to EmailData format

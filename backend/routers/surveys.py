@@ -8,7 +8,6 @@ from models.SurveyTopics import SurveyTopics
 from models.SurveyKeywords import SurveyKeywords
 from models.SurveyDepartments import SurveyDepartments
 from models.Store import Store
-from models.Hierarchy import Hierarchy
 from models.Department import Department
 from models.Channel import Channel
 from models.DeliveryService import DeliveryService
@@ -49,13 +48,40 @@ class HierarchyResponse(BaseModel):
 
 
 class StoreResponse(BaseModel):
-    id: int
-    name: str
-    hierarchy_level_1: Optional[HierarchyResponse] = None
-    hierarchy_level_2: Optional[HierarchyResponse] = None
-    hierarchy_level_3: Optional[HierarchyResponse] = None
-    hierarchy_level_4: Optional[HierarchyResponse] = None
-    hierarchy_level_5: Optional[HierarchyResponse] = None
+    store_key: int
+    store_name_english: str
+    store_name_local: Optional[str] = None
+    bu_key: Optional[str] = None
+    area_manager: Optional[str] = None
+    store_format: Optional[str] = None
+    store_type: Optional[str] = None
+    operations_controller: Optional[str] = None
+    regional_manager: Optional[str] = None
+    px: Optional[str] = None
+    csr: Optional[str] = None
+    dr: Optional[str] = None
+    mag_type: Optional[str] = None
+    cf_grouping: Optional[str] = None
+    store_brand: Optional[str] = None
+    competitor: Optional[str] = None
+    region: Optional[str] = None
+    area: Optional[str] = None
+    territory: Optional[str] = None
+    toh: Optional[str] = None
+    district: Optional[str] = None
+    city: Optional[str] = None
+    operations_manager: Optional[str] = None
+    district_manager: Optional[str] = None
+    sic: Optional[str] = None
+    tech_life_type: Optional[str] = None
+    operation_manager_tl: Optional[str] = None
+    region_manager_tl: Optional[str] = None
+    relocation: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    store_open_date: Optional[str] = None
+    store_close_date: Optional[str] = None
+    is_closed: bool
 
 
 class ChannelResponse(BaseModel):
@@ -96,6 +122,8 @@ class SurveyResponse(BaseModel):
     keywords: List[KeywordWithSentimentResponse]
     comment: str
     sentiment: str
+    topic_sentiment: str
+    topic_sentiment_score: float
     reported_at: datetime
     created_at: datetime
     updated_at: datetime
@@ -109,17 +137,34 @@ async def get_surveys(
     db: Session = Depends(get_db),
 ) -> Page[SurveyResponse]:
     filter_dict = filter_params.model_dump()
-    filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
-
-    # Apply ordering
-    ordered_query = filtered_query.order_by(Survey.reported_at.desc())
-
+    
+    # First get distinct survey IDs that match the filters
+    # Include reported_at in select for ORDER BY compatibility with DISTINCT
+    id_query = build_survey_query(db.query(Survey.id, Survey.reported_at).distinct(), filter_dict)
+    id_query = id_query.order_by(Survey.reported_at.desc())
+    
     # Calculate total count
-    total = ordered_query.count()
-
-    # Apply pagination
+    total = id_query.count()
+    
+    # Apply pagination to get survey IDs
     offset = (page - 1) * size
-    surveys = ordered_query.offset(offset).limit(size).all()
+    survey_ids = [row[0] for row in id_query.offset(offset).limit(size).all()]
+    
+    # Now fetch full survey objects for these IDs with proper eager loading
+    surveys = (
+        db.query(Survey)
+        .filter(Survey.id.in_(survey_ids))
+        .options(
+            joinedload(Survey.store),
+            joinedload(Survey.survey_topics),
+            joinedload(Survey.survey_keywords),
+            joinedload(Survey.survey_departments),
+            joinedload(Survey.channel),
+            joinedload(Survey.delivery_service)
+        )
+        .order_by(Survey.reported_at.desc())
+        .all()
+    ) if survey_ids else []
 
     # Convert to response models
     survey_responses = [
@@ -150,7 +195,7 @@ class CreateSurveyKeywordRequest(BaseModel):
 
 
 class CreateSurveyRequest(BaseModel):
-    store_id: int
+    store_key: int
     channel: Optional[str] = None
     delivery_service: Optional[str] = None
     departments: List[CreateSurveyDepartmentRequest]
@@ -168,7 +213,7 @@ async def create_survey(
 ):
 
     # Check if store exists
-    store = db.query(Store).filter(Store.id == survey_request.store_id).first()
+    store = db.query(Store).filter(Store.store_key == survey_request.store_key).first()
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
     # Check if departments exist
@@ -210,7 +255,7 @@ async def create_survey(
     try:
         # Create survey without departments, topics, and keywords relationships
         survey = Survey(
-            store_id=survey_request.store_id,
+            store_key=survey_request.store_key,
             comment=survey_request.comment,
             sentiment=survey_request.sentiment,
             reported_at=survey_request.reported_at,
@@ -266,51 +311,30 @@ async def download_surveys(
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     filter_dict = filter_params.model_dump()
-    filtered_query = build_survey_query(db.query(Survey).distinct(), filter_dict)
-
-    def calculate_sentiment(survey):
-        """Calculate sentiment based on topics using the same logic as frontend."""
-        # Get topics with sentiment from the survey
-        topics = [
-            {"topic": survey_topic.topic.topic, "sentiment": survey_topic.sentiment}
-            for survey_topic in survey.survey_topics
-        ]
-        
-        # Safety check: ensure topics is an array
-        if not topics or len(topics) == 0:
-            return {"sentiment": "neutral", "score": 0}
-        
-        # if there are only neutral, return "neutral"
-        if all(topic["sentiment"] == "neutral" for topic in topics):
-            return {"sentiment": "neutral", "score": 0}
-        
-        # if there are only positive or neutral, return "positive"
-        if all(topic["sentiment"] in ["positive", "neutral"] for topic in topics):
-            return {"sentiment": "positive", "score": 1}
-        
-        # if there are only negative or neutral, return "negative"
-        if all(topic["sentiment"] in ["negative", "neutral"] for topic in topics):
-            return {"sentiment": "negative", "score": -1}
-        
-        # if there are both positive and negative, return "mix"
-        positive_count = sum(1 for topic in topics if topic["sentiment"] == "positive")
-        negative_count = sum(1 for topic in topics if topic["sentiment"] == "negative")
-        neutral_count = sum(1 for topic in topics if topic["sentiment"] == "neutral")
-        
-        if positive_count > 0 and negative_count > 0:
-            total_count = positive_count + negative_count + neutral_count
-            score = round((positive_count - negative_count) / total_count, 2)
-            return {"sentiment": "mix", "score": score}
-        
-        return {"sentiment": "neutral", "score": 0}
-
+    
+    # Get distinct survey IDs that match the filters
+    id_query = build_survey_query(db.query(Survey.id).distinct(), filter_dict)
+    survey_ids = [row[0] for row in id_query.all()]
+    
     def format_excel_value(value):
+        """Format a value for Excel export, handling None, lists, dates, enums, and strings."""
         if value is None:
             return ""
         elif isinstance(value, list):
-            return "; ".join(str(item) for item in value)
+            return "; ".join(format_excel_value(item) for item in value)
         elif isinstance(value, datetime):
             return value.isoformat()
+        elif hasattr(value, 'value'):  # Handle enum types
+            # Extract the enum value and capitalize: "POSITIVE" -> "Positive"
+            enum_value = value.value
+            return enum_value.title() if isinstance(enum_value, str) else str(enum_value)
+        elif isinstance(value, str):
+            # Handle string representations of enums like "Sentiment.NEUTRAL" or "POSITIVE"
+            if '.' in value and any(enum_name in value for enum_name in ['Sentiment', 'TopicSentiment']):
+                # Extract just the value part: "Sentiment.NEUTRAL" -> "NEUTRAL" -> "Neutral"
+                enum_value = value.split('.')[-1]
+                return enum_value.title()
+            return value
         else:
             return str(value)
 
@@ -323,21 +347,54 @@ async def download_surveys(
         # Define headers
         headers = [
             "id",
-            "store_id",
-            "store_name",
-            "hierarchy_level_1_name",
-            "hierarchy_level_2_name",
-            "hierarchy_level_3_name",
-            "hierarchy_level_4_name",
-            "hierarchy_level_5_name",
+            "survey_id",
+            "respondent_id",
+            "store_key",
+            "store_name_english",
+            "store_name_local",
+            "bu_key",
+            "area_manager",
+            "store_format",
+            "store_type",
+            "operations_controller",
+            "regional_manager",
+            "px",
+            "csr",
+            "dr",
+            "mag_type",
+            "cf_grouping",
+            "store_brand",
+            "competitor",
+            "region",
+            "area",
+            "territory",
+            "toh",
+            "district",
+            "city",
+            "operations_manager",
+            "district_manager",
+            "sic",
+            "tech_life_type",
+            "operation_manager_tl",
+            "region_manager_tl",
+            "relocation",
+            "latitude",
+            "longitude",
+            "store_open_date",
+            "store_close_date",
+            "is_closed",
+            "department_id",
+            "department_name",
+            "channel_id",
+            "channel_name",
             "departments",
             "topics",
             "keywords",
             "comment",
             "channel",
             "delivery_service",
-            "sentiment",
-            "sentiment_score",
+            "sentiment", # topic_sentiment
+            "sentiment_score", # topic_sentiment_score
             "reported_at",
             "created_at",
             "updated_at",
@@ -353,22 +410,27 @@ async def download_surveys(
         row_num = 2  # Start from row 2 (row 1 is headers)
 
         while True:
-            # Get surveys
+            # Get surveys for the current batch of IDs
+            batch_ids = survey_ids[offset:offset + batch_size]
+            if not batch_ids:
+                break
+                
             surveys = (
-                filtered_query.order_by(Survey.reported_at.asc())
-                .offset(offset)
-                .limit(batch_size)
+                db.query(Survey)
+                .filter(Survey.id.in_(batch_ids))
+                .options(
+                    joinedload(Survey.store),
+                    joinedload(Survey.survey_topics),
+                    joinedload(Survey.survey_keywords),
+                    joinedload(Survey.survey_departments),
+                    joinedload(Survey.channel),
+                    joinedload(Survey.delivery_service)
+                )
+                .order_by(Survey.reported_at.asc())
                 .all()
             )
-            if not surveys:
-                break
             for survey in surveys:
                 csv_value = survey.to_csv()
-                # Calculate sentiment based on topics
-                sentiment_result = calculate_sentiment(survey)
-                csv_value["sentiment"] = sentiment_result["sentiment"]
-                csv_value["sentiment_score"] = sentiment_result["score"]
-                
                 # Write row values
                 for col_idx, header in enumerate(headers, start=1):
                     value = format_excel_value(csv_value[header])
@@ -393,11 +455,168 @@ async def download_surveys(
 @router.get("/{survey_id}")
 async def get_survey(survey_id: int, db: Session = Depends(get_db)) -> SurveyResponse:
     filter_dict = {"ids": [survey_id]}
-    query = build_survey_query(db.query(Survey).distinct(), filter_dict)
+    query = build_survey_query(db.query(Survey), filter_dict)
+    query = query.options(
+        joinedload(Survey.store),
+        joinedload(Survey.survey_topics),
+        joinedload(Survey.survey_keywords),
+        joinedload(Survey.survey_departments),
+        joinedload(Survey.channel),
+        joinedload(Survey.delivery_service)
+    )
     survey = query.first()
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
     return SurveyResponse.model_validate(survey.to_dict())
+
+
+class UpdateSurveyTopicRequest(BaseModel):
+    topic: str
+    sentiment: Literal["positive", "negative", "neutral"] = "neutral"
+
+
+class UpdateSurveyKeywordRequest(BaseModel):
+    keyword: str
+    sentiment: Literal["positive", "negative", "neutral"] = "neutral"
+
+
+class UpdateSurveyDepartmentRequest(BaseModel):
+    name: str
+    sentiment: Literal["positive", "negative", "neutral"] = "neutral"
+
+
+class UpdateSurveyRequest(BaseModel):
+    store_key: Optional[int] = None
+    channel: Optional[str] = None
+    delivery_service: Optional[str] = None
+    departments: Optional[List[UpdateSurveyDepartmentRequest]] = None
+    comment: Optional[str] = None
+    sentiment: Optional[Literal["positive", "negative", "neutral"]] = None
+    topics: Optional[List[UpdateSurveyTopicRequest]] = None
+    keywords: Optional[List[UpdateSurveyKeywordRequest]] = None
+    reported_at: Optional[datetime] = None
+
+
+@router.put("/{survey_id}")
+async def update_survey(
+    survey_id: int, survey_request: UpdateSurveyRequest, db: Session = Depends(get_db)
+) -> SurveyResponse:
+    try:
+        filter_dict = {"ids": [survey_id]}
+        query = build_survey_query(db.query(Survey), filter_dict)
+        query = query.options(
+            joinedload(Survey.store),
+            joinedload(Survey.survey_topics),
+            joinedload(Survey.survey_keywords),
+            joinedload(Survey.survey_departments),
+            joinedload(Survey.channel),
+            joinedload(Survey.delivery_service)
+        )
+        survey = query.first()
+        if not survey:
+            raise HTTPException(status_code=404, detail="Survey not found")
+        if survey_request.store_key:
+            survey.store_key = survey_request.store_key
+        if survey_request.channel:
+            survey.channel_id = survey_request.channel
+        if survey_request.delivery_service:
+            survey.delivery_service_id = survey_request.delivery_service
+        if survey_request.departments:
+            for department in survey_request.departments:
+                survey_department = (
+                    db.query(SurveyDepartments)
+                    .filter(
+                        SurveyDepartments.survey_id == survey.id,
+                        SurveyDepartments.department_id == department.name,
+                    )
+                    .first()
+                )
+                if not survey_department:
+                    survey_department = SurveyDepartments(
+                        survey_id=survey.id,
+                        department_id=department.name,
+                        sentiment=department.sentiment,
+                    )
+                    db.add(survey_department)
+                else:
+                    survey_department.sentiment = department.sentiment
+        if survey_request.comment:
+            survey.comment = survey_request.comment
+        if survey_request.sentiment:
+            survey.sentiment = survey_request.sentiment
+        if survey_request.topics:
+            for topic in survey_request.topics:
+                survey_topic = (
+                    db.query(SurveyTopics)
+                    .filter(
+                        SurveyTopics.survey_id == survey.id,
+                        SurveyTopics.topic_id == topic.topic,
+                    )
+                    .first()
+                )
+                if not survey_topic:
+                    survey_topic = SurveyTopics(
+                        survey_id=survey.id,
+                        topic_id=topic.topic,
+                        sentiment=topic.sentiment,
+                    )
+                    db.add(survey_topic)
+                else:
+                    survey_topic.sentiment = topic.sentiment
+        if survey_request.keywords:
+            for keyword in survey_request.keywords:
+                survey_keyword = (
+                    db.query(SurveyKeywords)
+                    .filter(
+                        SurveyKeywords.survey_id == survey.id,
+                        SurveyKeywords.keyword_id == keyword.keyword,
+                    )
+                    .first()
+                )
+                if not survey_keyword:
+                    survey_keyword = SurveyKeywords(
+                        survey_id=survey.id,
+                        keyword_id=keyword.keyword,
+                        sentiment=keyword.sentiment,
+                    )
+                    db.add(survey_keyword)
+                else:
+                    survey_keyword.sentiment = keyword.sentiment
+        if survey_request.reported_at:
+            survey.reported_at = survey_request.reported_at
+        db.commit()
+        db.refresh(survey)
+        return SurveyResponse.model_validate(survey.to_dict())
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{survey_id}")
+async def delete_survey(
+    survey_id: int, db: Session = Depends(get_db)
+) -> SurveyResponse:
+    try:
+        filter_dict = {"ids": [survey_id]}
+        query = build_survey_query(db.query(Survey), filter_dict)
+        query = query.options(
+            joinedload(Survey.store),
+            joinedload(Survey.survey_topics),
+            joinedload(Survey.survey_keywords),
+            joinedload(Survey.survey_departments),
+            joinedload(Survey.channel),
+            joinedload(Survey.delivery_service)
+        )
+        survey = query.first()
+        if not survey:
+            raise HTTPException(status_code=404, detail="Survey not found")
+        survey.is_deleted = True
+        db.commit()
+        db.refresh(survey)
+        return SurveyResponse.model_validate(survey.to_dict())
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 class ExtractRequest(BaseModel):

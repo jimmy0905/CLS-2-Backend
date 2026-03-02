@@ -74,13 +74,9 @@ async def translate(
             'http': proxy_url,
             'https': proxy_url
         }
-        print(f"Using proxy: {proxy_url}")
-    else:
-        print("No proxy configured")
     
     # Configure timeout (30 seconds for connect, 60 seconds for read)
 
-    print(f"Sending request to {url} with params {params}, headers {headers}, and body {body}")
     try:
         request = requests.post(url, params=params, headers=headers, json=body, proxies=proxies, timeout=(30, 60))
         request.raise_for_status()
