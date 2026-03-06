@@ -28,6 +28,7 @@ from utils.database import engine
 from config import MAX_WORKER_THREADS
 from utils.llm.models import TotalResponse
 from sqlalchemy.orm import Session
+import os
 
 # Thread-safe lock for updating progress
 progress_lock = threading.Lock()
@@ -320,21 +321,11 @@ async def process_single_row(
         if channel_name is not None and str(channel_name).strip():
             channel = db.query(Channel).filter(Channel.name == channel_name).first()
             if not channel:
-                logger.warning(
-                    f"Row {index + 1}: Channel {channel_name} not found in database, skipping row"
-                )
-                error = UploadTaskError(
-                    upload_task_id=upload_task_id,
-                    input_store_key=store_key,
-                    input_comment=comment,
-                    input_reported_at=reported_at,
-                    error_message="Channel is not valid",
-                    raw_row_data=json_row_data,
-                )
-                db.add(error)
+                # Create a new channel if it doesn't exist
+                channel = Channel(name=channel_name)
+                db.add(channel)
                 db.commit()
-                result["error"] = "Channel is not valid"
-                return result
+                db.refresh(channel)
             channel_id = channel.id
         else:
             channel_id = None
@@ -346,21 +337,10 @@ async def process_single_row(
                 .first()
             )
             if not delivery_service:
-                logger.warning(
-                    f"Row {index + 1}: Delivery service {delivery_service_name} not found in database, skipping row"
-                )
-                error = UploadTaskError(
-                    upload_task_id=upload_task_id,
-                    input_store_key=store_key,
-                    input_comment=comment,
-                    input_reported_at=reported_at,
-                    error_message="Delivery service is not valid",
-                    raw_row_data=json_row_data,
-                )
-                db.add(error)
+                delivery_service = DeliveryService(name=delivery_service_name)
+                db.add(delivery_service)
                 db.commit()
-                result["error"] = "Delivery service is not valid"
-                return result
+                db.refresh(delivery_service)
             delivery_service_id = delivery_service.id
         else:
             delivery_service_id = None
@@ -723,120 +703,130 @@ async def process_upload_task(file_path, db, upload_task_id):
     Process upload task with multi-threading support.
     Uses ThreadPoolExecutor to process multiple rows concurrently.
     """
-    # Get the available topics and departments from the database
-    topics = db.query(Topic).all()
-    available_topics = [topic.topic for topic in topics]
-    departments = db.query(Department).all()
-    available_departments = [department.name for department in departments]
-
-    # Read the file from csv file with improved error handling
     try:
-        df = pd.read_csv(
-            file_path,
-            encoding="utf-8",
-            sep=",",
-            encoding_errors="ignore",
-            on_bad_lines="warn",  # Warn about bad lines but continue
-            engine="python",  # Use Python engine for more flexible parsing
-            quotechar='"',
-            escapechar='\\',
-            na_values=['']
-        )
-        logger.info(f"Successfully parsed CSV file with {len(df)} rows for processing")
-    except Exception as e:
-        logger.error(f"Failed to read CSV file {file_path}: {e}")
-        raise Exception(f"Failed to read CSV file: {e}")
+        # Get the available topics and departments from the database
+        topics = db.query(Topic).all()
+        available_topics = [topic.topic for topic in topics]
+        departments = db.query(Department).all()
+        available_departments = [department.name for department in departments]
 
-    # Prepare row data for processing
-    row_data_list = []
-    for index, row in df.iterrows():
-        row_data_list.append({"index": index, "row": row})
-
-    # Configure thread pool size - adjust based on your system capabilities
-    # Consider API rate limits and database connection pool size
-    max_workers = min(MAX_WORKER_THREADS, len(row_data_list))
-
-    logger.info(
-        f"Processing {len(row_data_list)} rows with {max_workers} worker threads"
-    )
-
-    # Track processing time
-    start_time = time.time()
-
-    # Create a session factory for thread-safe database access
-    SessionLocal = sessionmaker(bind=engine)
-    
-    # Synchronous wrapper function to run async process_single_row in a thread
-    def process_row_sync(row_data, upload_task_id, available_topics, available_departments):
-        thread_db = SessionLocal()
+        # Read the file from csv file with improved error handling
         try:
-            # Create a new event loop for this thread
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            df = pd.read_csv(
+                file_path,
+                encoding="utf-8",
+                sep=",",
+                encoding_errors="ignore",
+                on_bad_lines="warn",  # Warn about bad lines but continue
+                engine="python",  # Use Python engine for more flexible parsing
+                quotechar='"',
+                escapechar='\\',
+                na_values=['']
+            )
+            logger.info(f"Successfully parsed CSV file with {len(df)} rows for processing")
+        except Exception as e:
+            logger.error(f"Failed to read CSV file {file_path}: {e}")
+            raise Exception(f"Failed to read CSV file: {e}")
+
+        # Prepare row data for processing
+        row_data_list = []
+        for index, row in df.iterrows():
+            row_data_list.append({"index": index, "row": row})
+
+        # Configure thread pool size - adjust based on your system capabilities
+        # Consider API rate limits and database connection pool size
+        max_workers = min(MAX_WORKER_THREADS, len(row_data_list))
+
+        logger.info(
+            f"Processing {len(row_data_list)} rows with {max_workers} worker threads"
+        )
+
+        # Track processing time
+        start_time = time.time()
+
+        # Create a session factory for thread-safe database access
+        SessionLocal = sessionmaker(bind=engine)
+        
+        # Synchronous wrapper function to run async process_single_row in a thread
+        def process_row_sync(row_data, upload_task_id, available_topics, available_departments):
+            thread_db = SessionLocal()
             try:
-                return loop.run_until_complete(
-                    process_single_row(row_data, upload_task_id, available_topics, available_departments, thread_db)
-                )
+                # Create a new event loop for this thread
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    return loop.run_until_complete(
+                        process_single_row(row_data, upload_task_id, available_topics, available_departments, thread_db)
+                    )
+                finally:
+                    loop.close()
             finally:
-                loop.close()
-        finally:
-            thread_db.close()
-    
-    # Process rows in parallel using ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all tasks
-        future_to_row = {
-            executor.submit(
-                process_row_sync,
-                row_data,
-                upload_task_id,
-                available_topics,
-                available_departments,
-            ): row_data["index"]
-            for row_data in row_data_list
-        }
+                thread_db.close()
+        
+        # Process rows in parallel using ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_row = {
+                executor.submit(
+                    process_row_sync,
+                    row_data,
+                    upload_task_id,
+                    available_topics,
+                    available_departments,
+                ): row_data["index"]
+                for row_data in row_data_list
+            }
 
-        # Wait for all tasks to complete
-        completed_tasks = 0
-        failed_tasks = 0
+            # Wait for all tasks to complete
+            completed_tasks = 0
+            failed_tasks = 0
 
-        for future in as_completed(future_to_row):
-            row_index = future_to_row[future]
-            try:
-                result = future.result()
-                if result.get("success"):
-                    completed_tasks += 1
-                else:
+            for future in as_completed(future_to_row):
+                row_index = future_to_row[future]
+                try:
+                    result = future.result()
+                    if result.get("success"):
+                        completed_tasks += 1
+                    else:
+                        failed_tasks += 1
+
+                except Exception as e:
                     failed_tasks += 1
+                    logger.error(f"Error processing row {row_index + 1}: {e}")
 
-            except Exception as e:
-                failed_tasks += 1
-                logger.error(f"Error processing row {row_index + 1}: {e}")
+        # Update final task status
+        upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
+        if upload_task:
+            upload_task.status = "completed"
+            db.commit()
 
-    # Update final task status
-    upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
-    if upload_task:
-        upload_task.status = "completed"
-        db.commit()
+        # Calculate and log performance metrics
+        end_time = time.time()
+        processing_time = end_time - start_time
+        rows_per_second = len(row_data_list) / processing_time if processing_time > 0 else 0
 
-    # Calculate and log performance metrics
-    end_time = time.time()
-    processing_time = end_time - start_time
-    rows_per_second = len(row_data_list) / processing_time if processing_time > 0 else 0
+        # Get final statistics from database
+        final_upload_task = (
+            db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
+        )
+        final_processed_count = final_upload_task.processed_rows if final_upload_task else 0
 
-    # Get final statistics from database
-    final_upload_task = (
-        db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
-    )
-    final_processed_count = final_upload_task.processed_rows if final_upload_task else 0
-
-    logger.info(
-        f"Upload task {upload_task_id} completed in {processing_time:.2f} seconds."
-    )
-    logger.info(
-        f"Processed {final_processed_count}/{len(row_data_list)} rows successfully."
-    )
-    logger.info(f"Failed tasks: {failed_tasks}, Completed tasks: {completed_tasks}")
-    logger.info(
-        f"Processing rate: {rows_per_second:.2f} rows/second with {max_workers} threads."
-    )
+        logger.info(
+            f"Upload task {upload_task_id} completed in {processing_time:.2f} seconds."
+        )
+        logger.info(
+            f"Processed {final_processed_count}/{len(row_data_list)} rows successfully."
+        )
+        logger.info(f"Failed tasks: {failed_tasks}, Completed tasks: {completed_tasks}")
+        logger.info(
+            f"Processing rate: {rows_per_second:.2f} rows/second with {max_workers} threads."
+        )
+    except Exception as e:
+        logger.error(f"Failed to process upload task {upload_task_id}: {e}")
+        raise Exception(f"Failed to process upload task: {e}")
+    finally:
+        #Remove the upload task file
+        try:
+            os.remove(file_path)
+        except Exception as e:
+            logger.error(f"Failed to remove upload task file {file_path}: {e}")
