@@ -364,15 +364,9 @@ def _recalculate_survey_sentiment(connection, survey_id, target):
         {"topic_sentiment_score": topic_sentiment_score, "survey_id": survey_id},
     )
 
-    # Update target object's score attribute
-    target.topic_sentiment_score = topic_sentiment_score
+    # Use set_committed_value to reflect the raw SQL changes back onto the ORM instance
+    # without creating dirty-tracking history (avoids SAWarning in flush event handlers)
+    from sqlalchemy.orm.attributes import set_committed_value
 
-    # Prevent SQLAlchemy from trying to update topic_sentiment in its generated UPDATE
-    # by expiring the attribute - this tells SQLAlchemy to reload it from DB on next access
-    from sqlalchemy.orm import object_session
-
-    session = object_session(target)
-    if session:
-        # Expire the attribute so SQLAlchemy doesn't try to validate/update it
-        # The value we set via raw SQL will be loaded on next access
-        session.expire(target, ["topic_sentiment"])
+    set_committed_value(target, "topic_sentiment_score", topic_sentiment_score)
+    set_committed_value(target, "topic_sentiment", topic_sentiment_value)

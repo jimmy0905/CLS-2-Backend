@@ -24,6 +24,7 @@ from utils.llm.extract_total import (
     extract_total,
     extract_total_retry,
 )
+from utils.llm.normalize_keywords import normalize_keywords
 from utils.security import get_current_user
 from fastapi_pagination import Page, paginate
 from fastapi.responses import StreamingResponse
@@ -654,4 +655,6 @@ async def extract_total_route(
     if total.cannot_classified:
         print("Cannot classified in AI Analysis, retrying...")
         total, usage = await extract_total_retry(request.comment)
-    return total, usage
+    # Normalize keywords
+    normalized_total, usage = await normalize_keywords(request.comment, total.model_dump())
+    return normalized_total, usage

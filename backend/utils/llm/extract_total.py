@@ -547,7 +547,6 @@ def _extract_total_sync(text: str) -> tuple[TotalResponse, dict]:
     try:
         cleaned_response_content = _clean_response_content(response_content)
         response_json = json.loads(cleaned_response_content)
-        print("response_json", response_json)
         # Handle the case where only cannot_classified=True is returned
         if response_json.get("cannot_classified") is True:
             # Fill with empty arrays and default values to match TotalResponse model
@@ -608,7 +607,6 @@ def _extract_total_retry_sync(text: str) -> tuple[TotalResponse, dict]:
     try:
         cleaned_response_content = _clean_response_content(response_content)
         response_json = json.loads(cleaned_response_content)
-        print("response_json (retry)", response_json)
         # Handle the case where only cannot_classified=True is returned
         if response_json.get("cannot_classified") is True:
             # Fill with empty arrays and default values to match TotalResponse model

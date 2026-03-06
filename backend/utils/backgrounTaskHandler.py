@@ -14,6 +14,7 @@ from models.Channel import Channel
 from models.DeliveryService import DeliveryService
 from datetime import datetime, timezone
 from utils.llm.extract_total import extract_total, _extract_total_retry_sync
+from utils.llm.normalize_keywords import normalize_keywords, _normalize_keywords_sync
 from utils.logger import logger
 import dateutil.parser
 from typing import Union, Optional, List, Dict, Any
@@ -391,27 +392,29 @@ async def process_single_row(
                         f"Row {index + 1}: Cannot classified in AI Analysis after first try, retrying..."
                     )
                     have_to_retry = True
+                # Normalize keywords
+                normalized_total, _ = await asyncio.to_thread(_normalize_keywords_sync, comment, total.model_dump())
                 # Check if the topics are not empty
-                if total.topics is None or len(total.topics) == 0:
+                if normalized_total.topics is None or len(normalized_total.topics) == 0:
                     logger.warning(f"Row {index + 1}: Topics are empty after first try, skipping row")
                     have_to_retry = True
                 # Check if the departments are not empty
-                if total.departments is None or len(total.departments) == 0:
+                if normalized_total.departments is None or len(normalized_total.departments) == 0:
                     logger.warning(f"Row {index + 1}: Departments are empty after first try, skipping row")
                     have_to_retry = True
                 # Check if the keywords are not empty
-                if total.keywords is None or len(total.keywords) == 0:
+                if normalized_total.keywords is None or len(normalized_total.keywords) == 0:
                     logger.warning(f"Row {index + 1}: Keywords are empty after first try, skipping row")
                     have_to_retry = True
                 # Check if the topics are valid
-                for topic in total.topics:
+                for topic in normalized_total.topics:
                     if topic.text not in available_topics:
                         logger.warning(
                             f"Row {index + 1}: Topic {topic.text} is not valid after first try, retrying..."
                         )
                         have_to_retry = True
                 # Check if the departments are valid
-                for department in total.departments:
+                for department in normalized_total.departments:
                     if department.text not in available_departments:
                         logger.warning(
                             f"Row {index + 1}: Department {department.text} is not valid after first try, retrying..."
@@ -420,29 +423,31 @@ async def process_single_row(
 
                 if have_to_retry:
                     total, _ = await asyncio.to_thread(_extract_total_retry_sync, comment)
+                    # Normalize keywords
+                    normalized_total, _ = await asyncio.to_thread(_normalize_keywords_sync, comment, total.model_dump())
                     # Check if the total is classified, if not, skip the row
-                    if total.cannot_classified:
+                    if normalized_total.cannot_classified:
                         logger.warning(
                             f"Row {index + 1}: Cannot classified in AI Analysis after retrying, skipping row"
                         )
                         llm_processing_failed = True
                         llm_error_message = "Cannot classified in AI Analysis after retrying"
                     # Check if the topics are not empty
-                    elif total.topics is None:
+                    elif normalized_total.topics is None:
                         logger.warning(
                             f"Row {index + 1}: Topics are empty after retrying, skipping row"
                         )
                         llm_processing_failed = True
                         llm_error_message = "Topics are empty after retrying"
                     # Check if the departments are not empty
-                    elif total.departments is None:
+                    elif normalized_total.departments is None:
                         logger.warning(
                             f"Row {index + 1}: Departments are empty after retrying, skipping row"
                         )
                         llm_processing_failed = True
                         llm_error_message = "Departments are empty after retrying"
                     # Check if the keywords are not empty
-                    elif total.keywords is None:
+                    elif normalized_total.keywords is None:
                         logger.warning(
                             f"Row {index + 1}: Keywords are empty after retrying, skipping row"
                         )
@@ -450,7 +455,7 @@ async def process_single_row(
                         llm_error_message = "Keywords are empty after retrying"
                     else:
                         # Check if the topics are valid
-                        for topic in total.topics:
+                        for topic in normalized_total.topics:
                             if topic.text not in available_topics:
                                 logger.warning(
                                     f"Row {index + 1}: Topic {topic.text} is not valid after retrying, skipping row"
@@ -461,7 +466,7 @@ async def process_single_row(
                         
                         # Check if the departments are valid (only if topics were valid)
                         if not llm_processing_failed:
-                            for department in total.departments:
+                            for department in normalized_total.departments:
                                 if department.text not in available_departments:
                                     logger.warning(
                                         f"Row {index + 1}: Department {department.text} is not valid after retrying, skipping row"
@@ -471,10 +476,10 @@ async def process_single_row(
                                     break
 
                 if not llm_processing_failed:
-                    total_topics = total.topics
-                    total_departments = total.departments
-                    total_sentiment = total.overall_sentiment.upper() if total.overall_sentiment else None
-                    total_keywords = total.keywords if total.keywords else []
+                    total_topics = normalized_total.topics
+                    total_departments = normalized_total.departments
+                    total_sentiment = normalized_total.overall_sentiment.upper() if normalized_total.overall_sentiment else None
+                    total_keywords = normalized_total.keywords if normalized_total.keywords else []
 
         except Exception as e:
             logger.error(
@@ -629,6 +634,7 @@ async def process_single_row(
                 sentiment=keyword_obj.sentiment.upper() if keyword_obj.sentiment else None,
             )
             db.add(survey_keyword)
+            db.flush()
 
         # Add topics
         for topic_obj in total_topics:
@@ -650,6 +656,7 @@ async def process_single_row(
                 sentiment=topic_obj.sentiment.upper() if topic_obj.sentiment else None,
             )
             db.add(survey_topic)
+            db.flush()
 
         # Add departments
         for department_obj in total_departments:
