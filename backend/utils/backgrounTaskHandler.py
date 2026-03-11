@@ -412,7 +412,10 @@ async def process_single_row(
                     )
                     have_to_retry = True
                 # Normalize keywords
-                normalized_total, _ = await asyncio.to_thread(_normalize_keywords_sync, comment, total.model_dump())
+                if not have_to_retry:
+                    normalized_total, _ = await asyncio.to_thread(_normalize_keywords_sync, comment, total.model_dump())
+                else:
+                    normalized_total = total
                 # Check if the topics are not empty
                 if normalized_total.topics is None or len(normalized_total.topics) == 0:
                     logger.warning(f"Row {index + 1}: Topics are empty after first try, skipping row")
@@ -442,57 +445,64 @@ async def process_single_row(
 
                 if have_to_retry:
                     total, _ = await asyncio.to_thread(_extract_total_retry_sync, comment)
-                    # Normalize keywords
-                    normalized_total, _ = await asyncio.to_thread(_normalize_keywords_sync, comment, total.model_dump())
-                    # Check if the total is classified, if not, skip the row
-                    if normalized_total.cannot_classified:
+                    if total.cannot_classified:
                         logger.warning(
                             f"Row {index + 1}: Cannot classified in AI Analysis after retrying, skipping row"
                         )
                         llm_processing_failed = True
                         llm_error_message = "Cannot classified in AI Analysis after retrying"
-                    # Check if the topics are not empty
-                    elif normalized_total.topics is None:
-                        logger.warning(
-                            f"Row {index + 1}: Topics are empty after retrying, skipping row"
-                        )
-                        llm_processing_failed = True
-                        llm_error_message = "Topics are empty after retrying"
-                    # Check if the departments are not empty
-                    elif normalized_total.departments is None:
-                        logger.warning(
-                            f"Row {index + 1}: Departments are empty after retrying, skipping row"
-                        )
-                        llm_processing_failed = True
-                        llm_error_message = "Departments are empty after retrying"
-                    # Check if the keywords are not empty
-                    elif normalized_total.keywords is None:
-                        logger.warning(
-                            f"Row {index + 1}: Keywords are empty after retrying, skipping row"
-                        )
-                        llm_processing_failed = True
-                        llm_error_message = "Keywords are empty after retrying"
                     else:
-                        # Check if the topics are valid
-                        for topic in normalized_total.topics:
-                            if topic.text not in available_topics:
-                                logger.warning(
-                                    f"Row {index + 1}: Topic {topic.text} is not valid after retrying, skipping row"
-                                )
-                                llm_processing_failed = True
-                                llm_error_message = f"Topic {topic.text} is not valid after retrying"
-                                break
-                        
-                        # Check if the departments are valid (only if topics were valid)
-                        if not llm_processing_failed:
-                            for department in normalized_total.departments:
-                                if department.text not in available_departments:
+                        # Normalize keywords
+                        normalized_total, _ = await asyncio.to_thread(_normalize_keywords_sync, comment, total.model_dump())
+                        # Check if the total is classified, if not, skip the row
+                        if normalized_total.cannot_classified:
+                            logger.warning(
+                                f"Row {index + 1}: Cannot classified in AI Analysis after retrying, skipping row"
+                            )
+                            llm_processing_failed = True
+                            llm_error_message = "Cannot classified in AI Analysis after retrying"
+                        # Check if the topics are not empty
+                        elif normalized_total.topics is None:
+                            logger.warning(
+                                f"Row {index + 1}: Topics are empty after retrying, skipping row"
+                            )
+                            llm_processing_failed = True
+                            llm_error_message = "Topics are empty after retrying"
+                        # Check if the departments are not empty
+                        elif normalized_total.departments is None:
+                            logger.warning(
+                                f"Row {index + 1}: Departments are empty after retrying, skipping row"
+                            )
+                            llm_processing_failed = True
+                            llm_error_message = "Departments are empty after retrying"
+                        # Check if the keywords are not empty
+                        elif normalized_total.keywords is None:
+                            logger.warning(
+                                f"Row {index + 1}: Keywords are empty after retrying, skipping row"
+                            )
+                            llm_processing_failed = True
+                            llm_error_message = "Keywords are empty after retrying"
+                        else:
+                            # Check if the topics are valid
+                            for topic in normalized_total.topics:
+                                if topic.text not in available_topics:
                                     logger.warning(
-                                        f"Row {index + 1}: Department {department.text} is not valid after retrying, skipping row"
+                                        f"Row {index + 1}: Topic {topic.text} is not valid after retrying, skipping row"
                                     )
                                     llm_processing_failed = True
-                                    llm_error_message = f"Department {department.text} is not valid after retrying"
+                                    llm_error_message = f"Topic {topic.text} is not valid after retrying"
                                     break
+                            
+                            # Check if the departments are valid (only if topics were valid)
+                            if not llm_processing_failed:
+                                for department in normalized_total.departments:
+                                    if department.text not in available_departments:
+                                        logger.warning(
+                                            f"Row {index + 1}: Department {department.text} is not valid after retrying, skipping row"
+                                        )
+                                        llm_processing_failed = True
+                                        llm_error_message = f"Department {department.text} is not valid after retrying"
+                                        break
 
                 if not llm_processing_failed:
                     total_topics = normalized_total.topics
