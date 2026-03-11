@@ -805,7 +805,7 @@ class StoreColumnSentimentDistributionResponse(BaseModel):
 async def get_store_column_sentiment_distribution(
     column: str = Query(
         ...,
-        description="The column name to get the sentiment distribution for store column, columns are bu_key, area_manager, store_format, store_type, operations_controller, regional_manager, px, csr, dr, mag_type, cf_grouping, store_brand, competitor, region, area, territory, toh, district, city, operations_manager, district_manager, sic, tech_life_type, operation_manager_tl, region_manager_tl, relocation, latitude, longitude, store_open_date, store_close_date, is_closed, store_key, store_english_name, store_local_name",
+        description="The column name to get the sentiment distribution for store column, columns are bu_key, area_manager, store_format, store_type, operations_controller, regional_manager, px, csr, dr, mag_type, cf_grouping, store_brand, competitor, region, area, province, territory, toh, district, city, operations_manager, district_manager, sic, tech_life_type, operation_manager_tl, region_manager_tl, relocation, latitude, longitude, store_open_date, store_close_date, is_closed, store_key, store_english_name, store_local_name",
     ),
     filter_params: FilterRequest = Depends(get_filter_params),
     db: Session = Depends(get_db),

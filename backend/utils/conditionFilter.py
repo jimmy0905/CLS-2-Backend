@@ -39,6 +39,7 @@ class FilterRequest(BaseModel):
     competitors: List[str] = []
     regions: List[str] = []
     areas: List[str] = []
+    provinces: List[str] = []
     territories: List[str] = []
     tohs: List[str] = []
     districts: List[str] = []
@@ -143,6 +144,10 @@ def get_filter_params(
     areas: List[str] = Query(
         default=[],
         description="The areas to filter by",
+    ),
+    provinces: List[str] = Query(
+        default=[],
+        description="The provinces to filter by",
     ),
     territories: List[str] = Query(
         default=[],
@@ -285,6 +290,7 @@ def get_filter_params(
         competitors=competitors,
         regions=regions,
         areas=areas,
+        provinces=provinces,
         territories=territories,
         tohs=tohs,
         districts=districts,
@@ -426,6 +432,9 @@ def build_store_filter_conditions(filter_dict: FilterRequest):
 
     if filter_dict.get("areas"):
         conditions.append(Store.area.in_(filter_dict["areas"]))
+
+    if filter_dict.get("provinces"):
+        conditions.append(Store.province.in_(filter_dict["provinces"]))
 
     if filter_dict.get("territories"):
         conditions.append(Store.territory.in_(filter_dict["territories"]))

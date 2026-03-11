@@ -19,7 +19,7 @@ router = APIRouter(
 
 class StoreResponse(BaseModel):
     store_key: int
-    store_name_english: str
+    store_name_english: Optional[str] = None
     store_name_local: Optional[str] = None
     bu_key: Optional[str] = None
     area_manager: Optional[str] = None
@@ -36,6 +36,7 @@ class StoreResponse(BaseModel):
     competitor: Optional[str] = None
     region: Optional[str] = None
     area: Optional[str] = None
+    province: Optional[str] = None
     territory: Optional[str] = None
     toh: Optional[str] = None
     district: Optional[str] = None
@@ -82,6 +83,7 @@ async def get_stores(db: Session = Depends(get_db)) -> List[StoreResponse]:
             competitor=store.competitor,
             region=store.region,
             area=store.area,
+            province=store.province,
             territory=store.territory,
             toh=store.toh,
             district=store.district,
@@ -133,6 +135,7 @@ async def get_store(store_key: int, db: Session = Depends(get_db)) -> StoreRespo
         competitor=store.competitor,
         region=store.region,
         area=store.area,
+        province=store.province,
         territory=store.territory,
         toh=store.toh,
         district=store.district,
@@ -154,7 +157,7 @@ async def get_store(store_key: int, db: Session = Depends(get_db)) -> StoreRespo
 
 class CreateStoreRequest(BaseModel):
     store_key: int
-    store_name_english: str
+    store_name_english: Optional[str] = None
     store_name_local: Optional[str] = None
     bu_key: Optional[str] = None
     area_manager: Optional[str] = None
@@ -171,6 +174,7 @@ class CreateStoreRequest(BaseModel):
     competitor: Optional[str] = None
     region: Optional[str] = None
     area: Optional[str] = None
+    province: Optional[str] = None
     territory: Optional[str] = None
     toh: Optional[str] = None
     district: Optional[str] = None
@@ -219,6 +223,7 @@ async def create_store(
         competitor=create_store_request.competitor,
         region=create_store_request.region,
         area=create_store_request.area,
+        province=create_store_request.province,
         territory=create_store_request.territory,
         toh=create_store_request.toh,
         district=create_store_request.district,
@@ -258,6 +263,7 @@ async def create_store(
         competitor=store.competitor,
         region=store.region,
         area=store.area,
+        province=store.province,
         territory=store.territory,
         toh=store.toh,
         district=store.district,
@@ -314,39 +320,40 @@ async def upsert_stores_from_csv(
         for index, row in df.iterrows():
             store = Store(
                 store_key=row["store_key"],
-                store_name_english=row["store_name_english"] if row["store_name_english"] is not None else "N/A",
-                store_name_local=row["store_name_local"] if row["store_name_local"] is not None else "N/A",
-                bu_key=row["bu_key"] if row["bu_key"] is not None else "N/A",
-                area_manager=row["area_manager"] if row["area_manager"] is not None else "N/A",
-                store_format=row["store_format"] if row["store_format"] is not None else "N/A",
-                store_type=row["store_type"] if row["store_type"] is not None else "N/A",
-                operations_controller=row["operations_controller"] if row["operations_controller"] is not None else "N/A",
-                regional_manager=row["regional_manager"] if row["regional_manager"] is not None else "N/A",
-                px=row["px"] if row["px"] is not None else "N/A",
-                csr=row["csr"] if row["csr"] is not None else "N/A",
-                dr=row["dr"] if row["dr"] is not None else "N/A",
-                mag_type=row["mag_type"] if row["mag_type"] is not None else "N/A",
-                cf_grouping=row["cf_grouping"] if row["cf_grouping"] is not None else "N/A",
-                store_brand=row["store_brand"] if row["store_brand"] is not None else "N/A",
-                competitor=row["competitor"] if row["competitor"] is not None else "N/A",
-                region=row["region"] if row["region"] is not None else "N/A",
-                area=row["area"] if row["area"] is not None else "N/A",
-                territory=row["territory"] if row["territory"] is not None else "N/A",
-                toh=row["toh"] if row["toh"] is not None else "N/A",
-                district=row["district"] if row["district"] is not None else "N/A",
-                city=row["city"] if row["city"] is not None else "N/A",
-                operations_manager=row["operations_manager"] if row["operations_manager"] is not None else "N/A",
-                district_manager=row["district_manager"] if row["district_manager"] is not None else "N/A",
-                sic=row["sic"] if row["sic"] is not None else "N/A",
-                tech_life_type=row["tech_life_type"] if row["tech_life_type"] is not None else "N/A",
-                operation_manager_tl=row["operation_manager_tl"] if row["operation_manager_tl"] is not None else "N/A",
-                region_manager_tl=row["region_manager_tl"] if row["region_manager_tl"] is not None else "N/A",
-                relocation=row["relocation"] if row["relocation"] is not None else "N/A",
-                latitude=row["latitude"] if row["latitude"] is not None else None,
-                longitude=row["longitude"] if row["longitude"] is not None else None,
-                store_open_date=datetime.strptime(row["store_open_date"], "%Y-%m-%d").date() if row["store_open_date"] else None,
-                store_close_date=datetime.strptime(row["store_close_date"], "%Y-%m-%d").date() if row["store_close_date"] else None,
-                is_closed=True if row["is_closed"] == "True" else False,
+                store_name_english=row.get("store_name_english"),
+                store_name_local=row.get("store_name_local"),
+                bu_key=row.get("bu_key"),
+                area_manager=row.get("area_manager"),
+                store_format=row.get("store_format"),
+                store_type=row.get("store_type"),
+                operations_controller=row.get("operations_controller"),
+                regional_manager=row.get("regional_manager"),
+                px=row.get("px"),
+                csr=row.get("csr"),
+                dr=row.get("dr"),
+                mag_type=row.get("mag_type"),
+                cf_grouping=row.get("cf_grouping"),
+                store_brand=row.get("store_brand"),
+                competitor=row.get("competitor"),
+                region=row.get("region"),
+                area=row.get("area"),
+                province=row.get("province"),
+                territory=row.get("territory"),
+                toh=row.get("toh"),
+                district=row.get("district"),
+                city=row.get("city"),
+                operations_manager=row.get("operations_manager"),
+                district_manager=row.get("district_manager"),
+                sic=row.get("sic"),
+                tech_life_type=row.get("tech_life_type"),
+                operation_manager_tl=row.get("operation_manager_tl"),
+                region_manager_tl=row.get("region_manager_tl"),
+                relocation=row.get("relocation"),
+                latitude=row.get("latitude"),
+                longitude=row.get("longitude"),
+                store_open_date=datetime.strptime(row.get("store_open_date"), "%Y-%m-%d").date() if row.get("store_open_date") else None,
+                store_close_date=datetime.strptime(row.get("store_close_date"), "%Y-%m-%d").date() if row.get("store_close_date") else None,
+                is_closed=True if row.get("is_closed") == "True" else False,
             )
             db.merge(store)
         

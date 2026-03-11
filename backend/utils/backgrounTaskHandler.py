@@ -196,8 +196,26 @@ async def process_single_row(
         store_key = row["store_key"] if pd.notna(row["store_key"]) else None
         comment = row["answer"] if pd.notna(row["answer"]) else None
         reported_at = row["survey_order_date"] if pd.notna(row["survey_order_date"]) else None
-        survey_id = str(int(row["survey_id"])) if pd.notna(row["survey_id"]) else None
-        respondent_id = str(int(row["respondent_id"])) if pd.notna(row["respondent_id"]) else None
+        
+        # Handle survey_id - can be int, float, or string (hash)
+        if pd.notna(row["survey_id"]):
+            survey_id_raw = row["survey_id"]
+            if isinstance(survey_id_raw, (int, float)):
+                survey_id = str(int(survey_id_raw))
+            else:
+                survey_id = str(survey_id_raw)
+        else:
+            survey_id = None
+        
+        # Handle respondent_id - can be int, float, or string (hash)
+        if pd.notna(row["respondent_id"]):
+            respondent_id_raw = row["respondent_id"]
+            if isinstance(respondent_id_raw, (int, float)):
+                respondent_id = str(int(respondent_id_raw))
+            else:
+                respondent_id = str(respondent_id_raw)
+        else:
+            respondent_id = None
         if is_comment_valid(comment) is False:
             logger.warning(f"Row {index + 1}: Comment is invalid, skipping row")
             # Create an error for the upload task
@@ -220,7 +238,7 @@ async def process_single_row(
             channel_name = row["channel"]
 
         delivery_service_name = None
-        if "delivery_mode" in row and pd.notna(row["processed_delivery_mode_detail"]):
+        if "processed_delivery_mode_detail" in row and pd.notna(row["processed_delivery_mode_detail"]):
             delivery_service_name = row["processed_delivery_mode_detail"]
 
         # Check if the store_key (store_key) is valid
@@ -241,7 +259,28 @@ async def process_single_row(
             result["error"] = "Store Key is required"
             return result
         # Check if the store_key is in the database
-        store = db.query(Store).filter(Store.store_key == int(store_key)).first()
+        # Handle store_key - can be int, float, or string
+        try:
+            if isinstance(store_key, (int, float)):
+                store_key_value = int(store_key)
+            else:
+                store_key_value = int(float(store_key))
+        except (ValueError, TypeError):
+            logger.warning(f"Row {index + 1}: Invalid store_key format: {store_key}")
+            error = UploadTaskError(
+                upload_task_id=upload_task_id,
+                input_store_key=store_key,
+                input_comment=comment,
+                input_reported_at=reported_at,
+                error_message=f"Invalid store_key format: {store_key}",
+                raw_row_data=json_row_data,
+            )
+            db.add(error)
+            db.commit()
+            result["error"] = "Invalid store_key format"
+            return result
+        
+        store = db.query(Store).filter(Store.store_key == store_key_value).first()
         if not store:
             logger.warning(
                 f"Row {index + 1}: Store Key {store_key} not found in database, skipping row"
