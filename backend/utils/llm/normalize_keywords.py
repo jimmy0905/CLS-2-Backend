@@ -29,7 +29,8 @@ client = AzureOpenAI(
 NORMALIZE_KEYWORDS_MODEL = os.getenv("NORMALIZE_KEYWORDS_MODEL", "gpt-4.1-mini-CLS-DataUpload")
 NORMALIZE_KEYWORDS_TEMPERATURE = float(os.getenv("NORMALIZE_KEYWORDS_TEMPERATURE", 0.2))
 
-system_prompt = """<Role and Objective>
+system_prompt = """
+<Role and Objective>
 Your task is to normalize keyword text only for dashboard-friendly consistency.
 
 You will receive:
@@ -98,6 +99,7 @@ Normalization means:
 - normalize safely, conservatively, and faithfully
 - do not introduce new concepts
 - do not paraphrase beyond what is supportable from the original comment
+- all normalization decisions must be grounded in the meaning of the keyword within the original comment context
 </Core Mission>
 
 <Normalization Priority>
@@ -110,11 +112,29 @@ Apply the following priority order for each keyword:
    - Chinese
    - mixed Chinese + non-Chinese
    - another non-English language
-4) If canonical_map is provided and there is a safe exact or clearly intended alias match, use the mapped canonical form.
-5) Otherwise apply the language-specific normalization policy below.
-6) Validate that only keyword text changed.
-7) Return valid JSON only.
+4) Use the original comment as the primary context for interpretation.
+5) If canonical_map is provided and there is a safe exact or clearly intended alias match, use the mapped canonical form.
+6) Otherwise apply the language-specific normalization policy below.
+7) Validate that only keyword text changed.
+8) Return valid JSON only.
 </Normalization Priority>
+
+<Context-Aware Normalization Rule>
+When normalizing a keyword, always use the original input comment as the primary context.
+
+Rules:
+- Interpret the keyword according to how it is used in the original comment, not in isolation.
+- Prefer the normalization that is most faithful to the meaning of the keyword within that specific comment.
+- Do not expand abbreviations, correct typos, lemmatize aggressively, or map to a canonical phrase if the context does not clearly support that interpretation.
+- If a keyword could map to multiple meanings, choose the one best supported by the comment.
+- If the context is insufficient to disambiguate safely, make the smallest safe normalization only, or leave the keyword unchanged except for harmless formatting cleanup.
+
+Examples:
+- "waiting" in "I am still waiting for delivery" -> "Wait"
+- "waiting" in "the waiting time is too long" -> "Waiting Time"
+- "cs" -> "Customer Service" only if the original comment clearly refers to customer service
+- "折扣馬" -> "折扣碼" only if the original comment clearly refers to a discount/code context
+</Context-Aware Normalization Rule>
 
 <Language-Specific Policy Overview>
 A) English:
@@ -188,6 +208,7 @@ Examples:
   - delayed delivery -> Delivery Delay
   - delivery delay -> Delivery Delay
   - member prices -> Member Price
+  - waiting time -> Waiting Time
 
 4. Abbreviation / shorthand / compressed-form expansion
 - Expand common abbreviations, shorthand, clipped forms, and compressed forms when meaning is clear from the keyword and original comment.
@@ -239,10 +260,9 @@ Examples:
 
 9. No semantic drift
 - Do not broaden, narrow, or replace the meaning.
-- Example:
+- Examples:
   - price tag -> Price Tag
   - NOT Price if the comment clearly refers to labels/tags
-- Example:
   - voucher -> Voucher
   - NOT Promotional Code unless canonical_map explicitly defines them as the same dashboard label
 
@@ -283,8 +303,8 @@ Examples:
 
 Examples:
 - 折扣馬 -> 折扣碼 only if the comment clearly refers to a discount/code context
-- 會員價 -> 會員價 only if clearly supported
-- 退貨單號嗎 -> 退貨單號碼 only if strongly supported by context
+- 推送通之 -> 推送通知 only if strongly supported by context
+- 訂單壯態 -> 訂單狀態 only if strongly supported by context
 
 3. Do NOT freely paraphrase Chinese
 - Do NOT rewrite one phrase into a different Chinese phrase unless canonical_map explicitly defines the canonical label.
@@ -361,7 +381,7 @@ If domain_lexicon is provided:
 <Disambiguation Rule>
 If a keyword can be normalized in multiple ways, choose the version that:
 1) stays closest to the original keyword text,
-2) stays faithful to the original comment,
+2) stays faithful to the original comment context,
 3) matches canonical_map if provided,
 4) is most useful as a stable dashboard label,
 5) uses the smallest safe change.
@@ -505,6 +525,38 @@ Output:
   "keywords": [
     {"text": "Wait", "sentiment": "negative"},
     {"text": "Delivery", "sentiment": "negative"}
+  ],
+  "overall_sentiment": "negative",
+  "cannot_classified": false
+}
+
+Input:
+comment: "The waiting time is too long."
+result_json:
+{
+  "topics": [
+    {"text": "Queue Experience", "sentiment": "negative"}
+  ],
+  "departments": [
+    {"text": "Store Operations", "sentiment": "negative"}
+  ],
+  "keywords": [
+    {"text": "waiting", "sentiment": "negative"}
+  ],
+  "overall_sentiment": "negative",
+  "cannot_classified": false
+}
+
+Output:
+{
+  "topics": [
+    {"text": "Queue Experience", "sentiment": "negative"}
+  ],
+  "departments": [
+    {"text": "Store Operations", "sentiment": "negative"}
+  ],
+  "keywords": [
+    {"text": "Waiting Time", "sentiment": "negative"}
   ],
   "overall_sentiment": "negative",
   "cannot_classified": false
