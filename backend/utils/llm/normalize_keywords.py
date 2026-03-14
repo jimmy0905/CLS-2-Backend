@@ -687,9 +687,6 @@ def _normalize_keywords_sync(comment: str, result_json: dict) -> tuple[TotalResp
         response_format={"type": "json_object"},
     )
     response_content = response.choices[0].message.content
-    print("--------------------------------")
-    print(f"Response content for {content}: {response_content}")
-    print("--------------------------------")
     if response_content is None:
       # Return empty NormalizeKeywordsResponse when no content
         empty_response = TotalResponse(
