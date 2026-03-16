@@ -8,7 +8,6 @@ from models.SurveyTopics import SurveyTopics
 from models.SurveyKeywords import SurveyKeywords
 from models.SurveyDepartments import SurveyDepartments
 from models.Store import Store
-from models.Hierarchy import Hierarchy
 from models.Department import Department
 from models.Channel import Channel
 from models.DeliveryService import DeliveryService
@@ -25,6 +24,7 @@ from utils.llm.extract_total import (
     extract_total,
     extract_total_retry,
 )
+from utils.llm.normalize_keywords import normalize_keywords
 from utils.security import get_current_user
 from fastapi_pagination import Page, paginate
 from fastapi.responses import StreamingResponse
@@ -49,13 +49,40 @@ class HierarchyResponse(BaseModel):
 
 
 class StoreResponse(BaseModel):
-    id: int
-    name: str
-    hierarchy_level_1: Optional[HierarchyResponse] = None
-    hierarchy_level_2: Optional[HierarchyResponse] = None
-    hierarchy_level_3: Optional[HierarchyResponse] = None
-    hierarchy_level_4: Optional[HierarchyResponse] = None
-    hierarchy_level_5: Optional[HierarchyResponse] = None
+    store_key: int
+    store_name_english: str
+    store_name_local: Optional[str] = None
+    bu_key: Optional[str] = None
+    area_manager: Optional[str] = None
+    store_format: Optional[str] = None
+    store_type: Optional[str] = None
+    operations_controller: Optional[str] = None
+    regional_manager: Optional[str] = None
+    px: Optional[str] = None
+    csr: Optional[str] = None
+    dr: Optional[str] = None
+    mag_type: Optional[str] = None
+    cf_grouping: Optional[str] = None
+    store_brand: Optional[str] = None
+    competitor: Optional[str] = None
+    region: Optional[str] = None
+    area: Optional[str] = None
+    territory: Optional[str] = None
+    toh: Optional[str] = None
+    district: Optional[str] = None
+    city: Optional[str] = None
+    operations_manager: Optional[str] = None
+    district_manager: Optional[str] = None
+    sic: Optional[str] = None
+    tech_life_type: Optional[str] = None
+    operation_manager_tl: Optional[str] = None
+    region_manager_tl: Optional[str] = None
+    relocation: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    store_open_date: Optional[str] = None
+    store_close_date: Optional[str] = None
+    is_closed: bool
 
 
 class ChannelResponse(BaseModel):
@@ -169,7 +196,7 @@ class CreateSurveyKeywordRequest(BaseModel):
 
 
 class CreateSurveyRequest(BaseModel):
-    store_id: int
+    store_key: int
     channel: Optional[str] = None
     delivery_service: Optional[str] = None
     departments: List[CreateSurveyDepartmentRequest]
@@ -187,7 +214,7 @@ async def create_survey(
 ):
 
     # Check if store exists
-    store = db.query(Store).filter(Store.id == survey_request.store_id).first()
+    store = db.query(Store).filter(Store.store_key == survey_request.store_key).first()
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
     # Check if departments exist
@@ -229,7 +256,7 @@ async def create_survey(
     try:
         # Create survey without departments, topics, and keywords relationships
         survey = Survey(
-            store_id=survey_request.store_id,
+            store_key=survey_request.store_key,
             comment=survey_request.comment,
             sentiment=survey_request.sentiment,
             reported_at=survey_request.reported_at,
@@ -323,13 +350,44 @@ async def download_surveys(
             "id",
             "survey_id",
             "respondent_id",
-            "store_id",
-            "store_name",
-            "hierarchy_level_1_name",
-            "hierarchy_level_2_name",
-            "hierarchy_level_3_name",
-            "hierarchy_level_4_name",
-            "hierarchy_level_5_name",
+            "store_key",
+            "store_name_english",
+            "store_name_local",
+            "bu_key",
+            "area_manager",
+            "store_format",
+            "store_type",
+            "operations_controller",
+            "regional_manager",
+            "px",
+            "csr",
+            "dr",
+            "mag_type",
+            "cf_grouping",
+            "store_brand",
+            "competitor",
+            "region",
+            "area",
+            "territory",
+            "toh",
+            "district",
+            "city",
+            "operations_manager",
+            "district_manager",
+            "sic",
+            "tech_life_type",
+            "operation_manager_tl",
+            "region_manager_tl",
+            "relocation",
+            "latitude",
+            "longitude",
+            "store_open_date",
+            "store_close_date",
+            "is_closed",
+            "department_id",
+            "department_name",
+            "channel_id",
+            "channel_name",
             "departments",
             "topics",
             "keywords",
@@ -429,7 +487,7 @@ class UpdateSurveyDepartmentRequest(BaseModel):
 
 
 class UpdateSurveyRequest(BaseModel):
-    store_id: Optional[int] = None
+    store_key: Optional[int] = None
     channel: Optional[str] = None
     delivery_service: Optional[str] = None
     departments: Optional[List[UpdateSurveyDepartmentRequest]] = None
@@ -458,8 +516,8 @@ async def update_survey(
         survey = query.first()
         if not survey:
             raise HTTPException(status_code=404, detail="Survey not found")
-        if survey_request.store_id:
-            survey.store_id = survey_request.store_id
+        if survey_request.store_key:
+            survey.store_key = survey_request.store_key
         if survey_request.channel:
             survey.channel_id = survey_request.channel
         if survey_request.delivery_service:
@@ -597,4 +655,6 @@ async def extract_total_route(
     if total.cannot_classified:
         print("Cannot classified in AI Analysis, retrying...")
         total, usage = await extract_total_retry(request.comment)
-    return total, usage
+    # Normalize keywords
+    normalized_total, usage = await normalize_keywords(request.comment, total.model_dump())
+    return normalized_total, usage

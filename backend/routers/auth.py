@@ -3,6 +3,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from models.User import User
+from models.LoginRecord import LoginRecord
 from utils.database import get_db
 from utils.security import (
     create_access_token,
@@ -63,6 +64,9 @@ async def azure_callback(request: Request, db: Session = Depends(get_db)):
                 "role": user.role,
             }
         )
+        login_record = LoginRecord(user_id=user.id)
+        db.add(login_record)
+        db.commit()
         print(f"{FRONTEND_URL}/auth/azure/callback?access_token={app_access_token}")
         return RedirectResponse(
             url=f"{FRONTEND_URL}/auth/azure/callback?access_token={app_access_token}"
@@ -103,6 +107,10 @@ async def token(
             "oauth_id": user.oauth_id,
         },
     )
+
+    login_record = LoginRecord(user_id=user.id)
+    db.add(login_record)
+    db.commit()
 
     return {"access_token": access_token, "token_type": "bearer"}
 

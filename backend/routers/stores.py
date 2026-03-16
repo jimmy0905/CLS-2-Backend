@@ -1,11 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session, joinedload
 from utils.database import get_db
 from models.Store import Store
-from models.Hierarchy import Hierarchy
 from utils.security import get_current_user
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Annotated    
+from datetime import datetime, date
+import pandas as pd
+import numpy as np
+import os
 
 router = APIRouter(
     prefix="/stores",
@@ -14,21 +17,42 @@ router = APIRouter(
 )
 
 
-class HierarchyResponse(BaseModel):
-    id: int
-    name: str
-    level: int
-
-
 class StoreResponse(BaseModel):
-    id: int
-    name: str
-    hierarchy_level_1: Optional[HierarchyResponse] = None
-    hierarchy_level_2: Optional[HierarchyResponse] = None
-    hierarchy_level_3: Optional[HierarchyResponse] = None
-    hierarchy_level_4: Optional[HierarchyResponse] = None
-    hierarchy_level_5: Optional[HierarchyResponse] = None
-    is_active: bool
+    store_key: int
+    store_name_english: Optional[str] = None
+    store_name_local: Optional[str] = None
+    bu_key: Optional[str] = None
+    area_manager: Optional[str] = None
+    store_format: Optional[str] = None
+    store_type: Optional[str] = None
+    operations_controller: Optional[str] = None
+    regional_manager: Optional[str] = None
+    px: Optional[str] = None
+    csr: Optional[str] = None
+    dr: Optional[str] = None
+    mag_type: Optional[str] = None
+    cf_grouping: Optional[str] = None
+    store_brand: Optional[str] = None
+    competitor: Optional[str] = None
+    region: Optional[str] = None
+    area: Optional[str] = None
+    province: Optional[str] = None
+    territory: Optional[str] = None
+    toh: Optional[str] = None
+    district: Optional[str] = None
+    city: Optional[str] = None
+    operations_manager: Optional[str] = None
+    district_manager: Optional[str] = None
+    sic: Optional[str] = None
+    tech_life_type: Optional[str] = None
+    operation_manager_tl: Optional[str] = None
+    region_manager_tl: Optional[str] = None
+    relocation: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    store_open_date: Optional[date] = None
+    store_close_date: Optional[date] = None
+    is_closed: bool
 
 
 @router.get("/")
@@ -36,312 +60,310 @@ async def get_stores(db: Session = Depends(get_db)) -> List[StoreResponse]:
     stores = (
         db.query(Store)
         .options(
-            joinedload(Store.hierarchy_level_1),
-            joinedload(Store.hierarchy_level_2),
-            joinedload(Store.hierarchy_level_3),
-            joinedload(Store.hierarchy_level_4),
-            joinedload(Store.hierarchy_level_5),
         )
         .all()
     )
     return [
         StoreResponse(
-            id=store.id,
-            name=store.name,
-            hierarchy_level_1=HierarchyResponse(
-                id=store.hierarchy_level_1.id,
-                name=store.hierarchy_level_1.name,
-                level=store.hierarchy_level_1.level,
-            ) if store.hierarchy_level_1 else None,
-            hierarchy_level_2=HierarchyResponse(
-                id=store.hierarchy_level_2.id,
-                name=store.hierarchy_level_2.name,
-                level=store.hierarchy_level_2.level,
-            ) if store.hierarchy_level_2 else None,
-            hierarchy_level_3=HierarchyResponse(
-                id=store.hierarchy_level_3.id,
-                name=store.hierarchy_level_3.name,
-                level=store.hierarchy_level_3.level,
-            ) if store.hierarchy_level_3 else None,
-            hierarchy_level_4=HierarchyResponse(
-                id=store.hierarchy_level_4.id,
-                name=store.hierarchy_level_4.name,
-                level=store.hierarchy_level_4.level,
-            ) if store.hierarchy_level_4 else None,
-            hierarchy_level_5=HierarchyResponse(
-                id=store.hierarchy_level_5.id,
-                name=store.hierarchy_level_5.name,
-                level=store.hierarchy_level_5.level,
-            ) if store.hierarchy_level_5 else None,
-            is_active=store.is_active,
+            store_key=store.store_key,
+            store_name_english=store.store_name_english,
+            store_name_local=store.store_name_local,
+            bu_key=store.bu_key,
+            area_manager=store.area_manager,
+            store_format=store.store_format,
+            store_type=store.store_type,
+            operations_controller=store.operations_controller,
+            regional_manager=store.regional_manager,
+            px=store.px,
+            csr=store.csr,
+            dr=store.dr,
+            mag_type=store.mag_type,
+            cf_grouping=store.cf_grouping,
+            store_brand=store.store_brand,
+            competitor=store.competitor,
+            region=store.region,
+            area=store.area,
+            province=store.province,
+            territory=store.territory,
+            toh=store.toh,
+            district=store.district,
+            city=store.city,
+            operations_manager=store.operations_manager,
+            district_manager=store.district_manager,
+            sic=store.sic,
+            tech_life_type=store.tech_life_type,
+            operation_manager_tl=store.operation_manager_tl,
+            region_manager_tl=store.region_manager_tl,
+            relocation=store.relocation,
+            latitude=store.latitude,
+            longitude=store.longitude,
+            store_open_date=store.store_open_date,
+            store_close_date=store.store_close_date,
+            is_closed=store.is_closed,
         )
         for store in stores
     ]
 
 
-@router.get("/{store_id}")
-async def get_store(store_id: int, db: Session = Depends(get_db)) -> StoreResponse:
+@router.get("/{store_key}")
+async def get_store(store_key: int, db: Session = Depends(get_db)) -> StoreResponse:
     store = (
         db.query(Store)
         .options(
-            joinedload(Store.hierarchy_level_1),
-            joinedload(Store.hierarchy_level_2),
-            joinedload(Store.hierarchy_level_3),
-            joinedload(Store.hierarchy_level_4),
-            joinedload(Store.hierarchy_level_5),
         )
-        .filter(Store.id == store_id)
+        .filter(Store.store_key == store_key)
         .first()
     )
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
     return StoreResponse(
-        id=store.id,
-        name=store.name,
-        hierarchy_level_1=HierarchyResponse(
-            id=store.hierarchy_level_1.id,
-            name=store.hierarchy_level_1.name,
-            level=store.hierarchy_level_1.level,
-        ) if store.hierarchy_level_1 else None,
-        hierarchy_level_2=HierarchyResponse(
-            id=store.hierarchy_level_2.id,
-            name=store.hierarchy_level_2.name,
-            level=store.hierarchy_level_2.level,
-        ) if store.hierarchy_level_2 else None,
-        hierarchy_level_3=HierarchyResponse(
-            id=store.hierarchy_level_3.id,
-            name=store.hierarchy_level_3.name,
-            level=store.hierarchy_level_3.level,
-        ) if store.hierarchy_level_3 else None,
-        hierarchy_level_4=HierarchyResponse(
-            id=store.hierarchy_level_4.id,
-            name=store.hierarchy_level_4.name,
-            level=store.hierarchy_level_4.level,
-        ) if store.hierarchy_level_4 else None,
-        hierarchy_level_5=HierarchyResponse(
-            id=store.hierarchy_level_5.id,
-            name=store.hierarchy_level_5.name,
-            level=store.hierarchy_level_5.level,
-        ) if store.hierarchy_level_5 else None,
-        is_active=store.is_active,
+        store_key=store.store_key,
+        store_name_english=store.store_name_english,
+        store_name_local=store.store_name_local,
+        bu_key=store.bu_key,
+        area_manager=store.area_manager,
+        store_format=store.store_format,
+        store_type=store.store_type,
+        operations_controller=store.operations_controller,
+        regional_manager=store.regional_manager,
+        px=store.px,
+        csr=store.csr,
+        dr=store.dr,
+        mag_type=store.mag_type,
+        cf_grouping=store.cf_grouping,
+        store_brand=store.store_brand,
+        competitor=store.competitor,
+        region=store.region,
+        area=store.area,
+        province=store.province,
+        territory=store.territory,
+        toh=store.toh,
+        district=store.district,
+        city=store.city,
+        operations_manager=store.operations_manager,
+        district_manager=store.district_manager,
+        sic=store.sic,
+        tech_life_type=store.tech_life_type,
+        operation_manager_tl=store.operation_manager_tl,
+        region_manager_tl=store.region_manager_tl,
+        relocation=store.relocation,
+        latitude=store.latitude,
+        longitude=store.longitude,
+        store_open_date=store.store_open_date,
+        store_close_date=store.store_close_date,
+        is_closed=store.is_closed,
     )
 
 
 class CreateStoreRequest(BaseModel):
-    store_id: int
-    name: str
-    hierarchy_level_1_id: Optional[int] = None
-    hierarchy_level_1_name: Optional[str] = None
-    hierarchy_level_2_id: Optional[int] = None
-    hierarchy_level_2_name: Optional[str] = None
-    hierarchy_level_3_id: Optional[int] = None
-    hierarchy_level_3_name: Optional[str] = None
-    hierarchy_level_4_id: Optional[int] = None
-    hierarchy_level_4_name: Optional[str] = None
-    hierarchy_level_5_id: Optional[int] = None
-    hierarchy_level_5_name: Optional[str] = None
+    store_key: int
+    store_name_english: Optional[str] = None
+    store_name_local: Optional[str] = None
+    bu_key: Optional[str] = None
+    area_manager: Optional[str] = None
+    store_format: Optional[str] = None
+    store_type: Optional[str] = None
+    operations_controller: Optional[str] = None
+    regional_manager: Optional[str] = None
+    px: Optional[str] = None
+    csr: Optional[str] = None
+    dr: Optional[str] = None
+    mag_type: Optional[str] = None
+    cf_grouping: Optional[str] = None
+    store_brand: Optional[str] = None
+    competitor: Optional[str] = None
+    region: Optional[str] = None
+    area: Optional[str] = None
+    province: Optional[str] = None
+    territory: Optional[str] = None
+    toh: Optional[str] = None
+    district: Optional[str] = None
+    city: Optional[str] = None
+    operations_manager: Optional[str] = None
+    district_manager: Optional[str] = None
+    sic: Optional[str] = None
+    tech_life_type: Optional[str] = None
+    operation_manager_tl: Optional[str] = None
+    region_manager_tl: Optional[str] = None
+    relocation: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    store_open_date: Optional[date] = None
+    store_close_date: Optional[date] = None
+    is_closed: bool
 
 
 @router.post("/")
 async def create_store(
     create_store_request: CreateStoreRequest, db: Session = Depends(get_db)
 ) -> StoreResponse:
-    # Helper function to validate hierarchy level
-    def validate_hierarchy_level(level_id, level_name, level_num):
-        if level_id is not None and level_name is not None:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Hierarchy level {level_num} id and name cannot be provided together",
-            )
-        
-        hierarchy = None
-        if level_id:
-            hierarchy = db.query(Hierarchy).filter(Hierarchy.id == level_id).first()
-            if not hierarchy:
-                raise HTTPException(status_code=404, detail=f"Hierarchy level {level_num} not found")
-        elif level_name:
-            hierarchy = db.query(Hierarchy).filter(Hierarchy.name == level_name).first()
-            if not hierarchy:
-                raise HTTPException(status_code=404, detail=f"Hierarchy level {level_num} not found")
-        
-        return hierarchy
 
     # If store id is provided, check if store exists
-    if create_store_request.store_id:
-        store = db.query(Store).filter(Store.id == create_store_request.store_id).first()
+    if create_store_request.store_key:
+        store = db.query(Store).filter(Store.store_key == create_store_request.store_key).first()
         if store:
             raise HTTPException(status_code=400, detail="Store id already exists")
     
-    # Validate hierarchy levels
-    hierarchy_1 = validate_hierarchy_level(
-        create_store_request.hierarchy_level_1_id,
-        create_store_request.hierarchy_level_1_name,
-        1
-    )
-    hierarchy_2 = validate_hierarchy_level(
-        create_store_request.hierarchy_level_2_id,
-        create_store_request.hierarchy_level_2_name,
-        2
-    )
-    hierarchy_3 = validate_hierarchy_level(
-        create_store_request.hierarchy_level_3_id,
-        create_store_request.hierarchy_level_3_name,
-        3
-    )
-    hierarchy_4 = validate_hierarchy_level(
-        create_store_request.hierarchy_level_4_id,
-        create_store_request.hierarchy_level_4_name,
-        4
-    )
-    hierarchy_5 = validate_hierarchy_level(
-        create_store_request.hierarchy_level_5_id,
-        create_store_request.hierarchy_level_5_name,
-        5
-    )
-
     store = Store(
-        id=create_store_request.store_id,
-        name=create_store_request.name,
-        hierarchy_level_1_id=hierarchy_1.id if hierarchy_1 else None,
-        hierarchy_level_2_id=hierarchy_2.id if hierarchy_2 else None,
-        hierarchy_level_3_id=hierarchy_3.id if hierarchy_3 else None,
-        hierarchy_level_4_id=hierarchy_4.id if hierarchy_4 else None,
-        hierarchy_level_5_id=hierarchy_5.id if hierarchy_5 else None,
+        store_key=create_store_request.store_key,
+        store_name_english=create_store_request.store_name_english,
+        store_name_local=create_store_request.store_name_local,
+        bu_key=create_store_request.bu_key,
+        area_manager=create_store_request.area_manager,
+        store_format=create_store_request.store_format,
+        store_type=create_store_request.store_type,
+        operations_controller=create_store_request.operations_controller,
+        regional_manager=create_store_request.regional_manager,
+        px=create_store_request.px,
+        csr=create_store_request.csr,
+        dr=create_store_request.dr,
+        mag_type=create_store_request.mag_type,
+        cf_grouping=create_store_request.cf_grouping,
+        store_brand=create_store_request.store_brand,
+        competitor=create_store_request.competitor,
+        region=create_store_request.region,
+        area=create_store_request.area,
+        province=create_store_request.province,
+        territory=create_store_request.territory,
+        toh=create_store_request.toh,
+        district=create_store_request.district,
+        city=create_store_request.city,
+        operations_manager=create_store_request.operations_manager,
+        district_manager=create_store_request.district_manager,
+        sic=create_store_request.sic,
+        tech_life_type=create_store_request.tech_life_type,
+        operation_manager_tl=create_store_request.operation_manager_tl,
+        region_manager_tl=create_store_request.region_manager_tl,
+        relocation=create_store_request.relocation,
+        latitude=create_store_request.latitude,
+        longitude=create_store_request.longitude,
+        store_open_date=create_store_request.store_open_date,
+        store_close_date=create_store_request.store_close_date,
+        is_closed=create_store_request.is_closed,
     )
     db.add(store)
     db.commit()
     db.refresh(store)
     return StoreResponse(
-        id=store.id,
-        name=store.name,
-        hierarchy_level_1=HierarchyResponse(
-            id=store.hierarchy_level_1.id,
-            name=store.hierarchy_level_1.name,
-            level=store.hierarchy_level_1.level,
-        ) if store.hierarchy_level_1 else None,
-        hierarchy_level_2=HierarchyResponse(
-            id=store.hierarchy_level_2.id,
-            name=store.hierarchy_level_2.name,
-            level=store.hierarchy_level_2.level,
-        ) if store.hierarchy_level_2 else None,
-        hierarchy_level_3=HierarchyResponse(
-            id=store.hierarchy_level_3.id,
-            name=store.hierarchy_level_3.name,
-            level=store.hierarchy_level_3.level,
-        ) if store.hierarchy_level_3 else None,
-        hierarchy_level_4=HierarchyResponse(
-            id=store.hierarchy_level_4.id,
-            name=store.hierarchy_level_4.name,
-            level=store.hierarchy_level_4.level,
-        ) if store.hierarchy_level_4 else None,
-        hierarchy_level_5=HierarchyResponse(
-            id=store.hierarchy_level_5.id,
-            name=store.hierarchy_level_5.name,
-            level=store.hierarchy_level_5.level,
-        ) if store.hierarchy_level_5 else None,
-        is_active=store.is_active,
+        store_key=store.store_key,
+        store_name_english=store.store_name_english,
+        store_name_local=store.store_name_local,
+        bu_key=store.bu_key,
+        area_manager=store.area_manager,
+        store_format=store.store_format,
+        store_type=store.store_type,
+        operations_controller=store.operations_controller,
+        regional_manager=store.regional_manager,
+        px=store.px,
+        csr=store.csr,
+        dr=store.dr,
+        mag_type=store.mag_type,
+        cf_grouping=store.cf_grouping,
+        store_brand=store.store_brand,
+        competitor=store.competitor,
+        region=store.region,
+        area=store.area,
+        province=store.province,
+        territory=store.territory,
+        toh=store.toh,
+        district=store.district,
+        city=store.city,
+        operations_manager=store.operations_manager,
+        district_manager=store.district_manager,
+        sic=store.sic,
+        tech_life_type=store.tech_life_type,
+        operation_manager_tl=store.operation_manager_tl,
+        region_manager_tl=store.region_manager_tl,
+        relocation=store.relocation,
+        latitude=store.latitude,
+        longitude=store.longitude,
+        store_open_date=store.store_open_date,
+        store_close_date=store.store_close_date,
+        is_closed=store.is_closed,
     )
 
-
-class UpdateStoreRequest(BaseModel):
-    name: Optional[str] = None
-    hierarchy_level_1_id: Optional[int] = None
-    hierarchy_level_2_id: Optional[int] = None
-    hierarchy_level_3_id: Optional[int] = None
-    hierarchy_level_4_id: Optional[int] = None
-    hierarchy_level_5_id: Optional[int] = None
-    is_active: Optional[bool] = None
-
-
-@router.put("/{store_id}")
-async def update_store(
-    store_id: int,
-    update_store_request: UpdateStoreRequest,
-    db: Session = Depends(get_db),
-):
-    store = db.query(Store).filter(Store.id == store_id).first()
-    if not store:
-        raise HTTPException(status_code=404, detail="Store not found")
-    
-    if update_store_request.name:
-        store.name = update_store_request.name
-    
-    # Update hierarchy levels
-    if update_store_request.hierarchy_level_1_id is not None:
-        hierarchy = db.query(Hierarchy).filter(Hierarchy.id == update_store_request.hierarchy_level_1_id).first()
-        if not hierarchy:
-            raise HTTPException(status_code=404, detail="Hierarchy level 1 not found")
-        store.hierarchy_level_1_id = update_store_request.hierarchy_level_1_id
-    
-    if update_store_request.hierarchy_level_2_id is not None:
-        hierarchy = db.query(Hierarchy).filter(Hierarchy.id == update_store_request.hierarchy_level_2_id).first()
-        if not hierarchy:
-            raise HTTPException(status_code=404, detail="Hierarchy level 2 not found")
-        store.hierarchy_level_2_id = update_store_request.hierarchy_level_2_id
-    
-    if update_store_request.hierarchy_level_3_id is not None:
-        hierarchy = db.query(Hierarchy).filter(Hierarchy.id == update_store_request.hierarchy_level_3_id).first()
-        if not hierarchy:
-            raise HTTPException(status_code=404, detail="Hierarchy level 3 not found")
-        store.hierarchy_level_3_id = update_store_request.hierarchy_level_3_id
-    
-    if update_store_request.hierarchy_level_4_id is not None:
-        hierarchy = db.query(Hierarchy).filter(Hierarchy.id == update_store_request.hierarchy_level_4_id).first()
-        if not hierarchy:
-            raise HTTPException(status_code=404, detail="Hierarchy level 4 not found")
-        store.hierarchy_level_4_id = update_store_request.hierarchy_level_4_id
-    
-    if update_store_request.hierarchy_level_5_id is not None:
-        hierarchy = db.query(Hierarchy).filter(Hierarchy.id == update_store_request.hierarchy_level_5_id).first()
-        if not hierarchy:
-            raise HTTPException(status_code=404, detail="Hierarchy level 5 not found")
-        store.hierarchy_level_5_id = update_store_request.hierarchy_level_5_id
-    
-    if update_store_request.is_active is not None:
-        store.is_active = update_store_request.is_active
-    
-    db.commit()
-    db.refresh(store)
-    return StoreResponse(
-        id=store.id,
-        name=store.name,
-        hierarchy_level_1=HierarchyResponse(
-            id=store.hierarchy_level_1.id,
-            name=store.hierarchy_level_1.name,
-            level=store.hierarchy_level_1.level,
-        ) if store.hierarchy_level_1 else None,
-        hierarchy_level_2=HierarchyResponse(
-            id=store.hierarchy_level_2.id,
-            name=store.hierarchy_level_2.name,
-            level=store.hierarchy_level_2.level,
-        ) if store.hierarchy_level_2 else None,
-        hierarchy_level_3=HierarchyResponse(
-            id=store.hierarchy_level_3.id,
-            name=store.hierarchy_level_3.name,
-            level=store.hierarchy_level_3.level,
-        ) if store.hierarchy_level_3 else None,
-        hierarchy_level_4=HierarchyResponse(
-            id=store.hierarchy_level_4.id,
-            name=store.hierarchy_level_4.name,
-            level=store.hierarchy_level_4.level,
-        ) if store.hierarchy_level_4 else None,
-        hierarchy_level_5=HierarchyResponse(
-            id=store.hierarchy_level_5.id,
-            name=store.hierarchy_level_5.name,
-            level=store.hierarchy_level_5.level,
-        ) if store.hierarchy_level_5 else None,
-        is_active=store.is_active,
-    )
-
-
-@router.delete("/{store_id}")
+@router.delete("/{store_key}")
 async def delete_store(
-    store_id: int,
+    store_key: int,
     db: Session = Depends(get_db),
 ):
-    store = db.query(Store).filter(Store.id == store_id).first()
+    store = db.query(Store).filter(Store.store_key == store_key).first()
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
-    store.is_active = False
+    store.is_closed = True
     db.commit()
     return {"message": "Store dseleted successfully"}
+
+@router.post("/upsert_stores_from_csv")
+async def upsert_stores_from_csv(
+    file: Annotated[UploadFile, File()],
+    db: Session = Depends(get_db),
+):
+    # Check if the file is a CSV file
+    if file.content_type != "text/csv":
+        raise HTTPException(status_code=400, detail="File must be a CSV file")
+    
+    tmp_file_path = None
+    try:
+        # Create a tmp file name with the current timestamp
+        tmp_file_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{file.filename}"
+        tmp_file_path = os.path.join("/tmp", tmp_file_name)
+        # Write the file to the tmp file
+        with open(tmp_file_path, "wb") as f:
+            contents = file.file.read()
+            f.write(contents)
+        # Read the file into a pandas dataframe
+        df = pd.read_csv(tmp_file_path, encoding="utf-8", sep=",", encoding_errors="ignore", on_bad_lines="warn", engine="python", quotechar='"', escapechar="\\", na_values=[''])
+        # Replace all NaN values with None for proper NULL insertion in database
+        df = df.replace({np.nan: None})
+        # Iterate over the dataframe and upsert the stores
+        for index, row in df.iterrows():
+            store = Store(
+                store_key=row["store_key"],
+                store_name_english=row.get("store_name_english"),
+                store_name_local=row.get("store_name_local"),
+                bu_key=row.get("bu_key"),
+                area_manager=row.get("area_manager"),
+                store_format=row.get("store_format"),
+                store_type=row.get("store_type"),
+                operations_controller=row.get("operations_controller"),
+                regional_manager=row.get("regional_manager"),
+                px=row.get("px"),
+                csr=row.get("csr"),
+                dr=row.get("dr"),
+                mag_type=row.get("mag_type"),
+                cf_grouping=row.get("cf_grouping"),
+                store_brand=row.get("store_brand"),
+                competitor=row.get("competitor"),
+                region=row.get("region"),
+                area=row.get("area"),
+                province=row.get("province"),
+                territory=row.get("territory"),
+                toh=row.get("toh"),
+                district=row.get("district"),
+                city=row.get("city"),
+                operations_manager=row.get("operations_manager"),
+                district_manager=row.get("district_manager"),
+                sic=row.get("sic"),
+                tech_life_type=row.get("tech_life_type"),
+                operation_manager_tl=row.get("operation_manager_tl"),
+                region_manager_tl=row.get("region_manager_tl"),
+                relocation=row.get("relocation"),
+                latitude=row.get("latitude"),
+                longitude=row.get("longitude"),
+                store_open_date=datetime.strptime(row.get("store_open_date"), "%Y-%m-%d").date() if row.get("store_open_date") else None,
+                store_close_date=datetime.strptime(row.get("store_close_date"), "%Y-%m-%d").date() if row.get("store_close_date") else None,
+                is_closed=True if row.get("is_closed") == "True" else False,
+            )
+            db.merge(store)
+        
+        db.commit()
+        return {"message": "Stores upserted successfully"}
+    except Exception as e:
+        db.rollback()
+        if tmp_file_path and os.path.exists(tmp_file_path):
+            os.remove(tmp_file_path)
+        raise HTTPException(status_code=400, detail=f"Invalid CSV file: {str(e)}")
+    finally:
+        if tmp_file_path and os.path.exists(tmp_file_path):
+            os.remove(tmp_file_path)

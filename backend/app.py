@@ -13,7 +13,6 @@ from routers import (
     userBehavoiorLogs,
     stores,
     departments,
-    hierarchies,
     tasks,
     users,
     channels,
@@ -54,7 +53,6 @@ app.add_middleware(
 
 add_pagination(app)
 
-
 @app.on_event("startup")
 async def startup_event():
     check_tables_exist()
@@ -78,7 +76,6 @@ app.include_router(strategy.router)
 app.include_router(stores.router)
 app.include_router(departments.router)
 app.include_router(userBehavoiorLogs.router)
-app.include_router(hierarchies.router)
 app.include_router(tasks.router)
 app.include_router(users.router)
 app.include_router(channels.router)

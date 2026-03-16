@@ -1,5 +1,5 @@
 from utils.database import Base
-from sqlalchemy import Column, Integer, String, DateTime, CHAR, event
+from sqlalchemy import Column, Integer, String, DateTime, CHAR
 import uuid
 from datetime import timezone
 from sqlalchemy.orm import relationship
@@ -16,11 +16,7 @@ class UploadTask(Base):
     total_rows = Column(Integer)
     processed_rows = Column(Integer)
     created_at = Column(DateTime(timezone=True), default=func.now())
-    updated_at = Column(DateTime(timezone=True), default=func.now())
-    completion_tokens = Column(Integer, default=0)
-    prompt_tokens = Column(Integer, default=0)
-    total_tokens = Column(Integer, default=0)
-    cached_tokens = Column(Integer, default=0)
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
 
     # Relationships
     errors = relationship("UploadTaskError", back_populates="upload_task")
@@ -33,21 +29,7 @@ class UploadTask(Base):
             "status": self.status,
             "total_rows": self.total_rows,
             "processed_rows": self.processed_rows,
-            "created_at": self.created_at.astimezone(timezone.utc) if self.created_at else None,
-            "updated_at": self.updated_at.astimezone(timezone.utc) if self.updated_at else None,
-            "completion_tokens": self.completion_tokens,
-            "prompt_tokens": self.prompt_tokens,
-            "total_tokens": self.total_tokens,
-            "cached_tokens": self.cached_tokens,
+            "created_at": self.created_at.astimezone(timezone.utc).isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.astimezone(timezone.utc).isoformat() if self.updated_at else None,
             "errors": [error.to_dict() for error in self.errors],
         }
-
-
-# Register the event listener to automatically update updated_at
-@event.listens_for(UploadTask, "before_update")
-def update_updated_at(mapper, connection, target):
-    connection.execute(
-        UploadTask.__table__.update()
-        .where(UploadTask.id == target.id)
-        .values(updated_at=func.now())
-    )

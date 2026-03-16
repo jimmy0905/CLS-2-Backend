@@ -14,6 +14,7 @@ from models.Channel import Channel
 from models.DeliveryService import DeliveryService
 from datetime import datetime, timezone
 from utils.llm.extract_total import extract_total, _extract_total_retry_sync
+from utils.llm.normalize_keywords import normalize_keywords, _normalize_keywords_sync
 from utils.logger import logger
 import dateutil.parser
 from typing import Union, Optional, List, Dict, Any
@@ -26,6 +27,11 @@ from sqlalchemy.orm import sessionmaker
 from utils.database import engine
 from config import MAX_WORKER_THREADS
 from utils.llm.models import TotalResponse
+from sqlalchemy.orm import Session
+import os
+
+# Thread-safe lock for updating progress
+progress_lock = threading.Lock()
 
 
 # ONLY FOR WTCHKECLS PROJECT
@@ -159,37 +165,12 @@ def parse_flexible_date(
         logger.error(f"{row_context}Unexpected error parsing date '{date_input}': {e}")
         return None
 
-
-# Thread-safe session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Thread-local storage for database sessions
-thread_local_data = threading.local()
-
-# Global locks for thread-safe statistics tracking
-stats_lock = threading.Lock()
-progress_lock = threading.Lock()
-
-
-def get_thread_db_session():
-    """Get a thread-local database session"""
-    if not hasattr(thread_local_data, "session"):
-        thread_local_data.session = SessionLocal()
-    return thread_local_data.session
-
-
-def close_thread_db_session():
-    """Close the thread-local database session"""
-    if hasattr(thread_local_data, "session"):
-        thread_local_data.session.close()
-        delattr(thread_local_data, "session")
-
-
-def process_single_row(
+async def process_single_row(
     row_data: Dict[str, Any],
     upload_task_id: int,
     available_topics: List[str],
     available_departments: List[str],
+    db: Session,
 ) -> Dict[str, Any]:
     """
     Process a single row in a separate thread.
@@ -197,7 +178,6 @@ def process_single_row(
     Returns a dictionary with processing results.
     """
     try:
-        db = get_thread_db_session()
         index = row_data["index"]
         row = row_data["row"]
 
@@ -213,17 +193,35 @@ def process_single_row(
         result = {"index": index, "success": False, "error": None}
 
         # Handle NaN values for critical fields
-        store_id = row["store_key"] if pd.notna(row["store_key"]) else None
+        store_key = row["store_key"] if pd.notna(row["store_key"]) else None
         comment = row["answer"] if pd.notna(row["answer"]) else None
         reported_at = row["survey_order_date"] if pd.notna(row["survey_order_date"]) else None
-        survey_id = str(int(row["survey_id"])) if pd.notna(row["survey_id"]) else None
-        respondent_id = str(int(row["respondent_id"])) if pd.notna(row["respondent_id"]) else None
+        
+        # Handle survey_id - can be int, float, or string (hash)
+        if pd.notna(row["survey_id"]):
+            survey_id_raw = row["survey_id"]
+            if isinstance(survey_id_raw, (int, float)):
+                survey_id = str(int(survey_id_raw))
+            else:
+                survey_id = str(survey_id_raw)
+        else:
+            survey_id = None
+        
+        # Handle respondent_id - can be int, float, or string (hash)
+        if pd.notna(row["respondent_id"]):
+            respondent_id_raw = row["respondent_id"]
+            if isinstance(respondent_id_raw, (int, float)):
+                respondent_id = str(int(respondent_id_raw))
+            else:
+                respondent_id = str(respondent_id_raw)
+        else:
+            respondent_id = None
         if is_comment_valid(comment) is False:
             logger.warning(f"Row {index + 1}: Comment is invalid, skipping row")
             # Create an error for the upload task
             error = UploadTaskError(
                 upload_task_id=upload_task_id,
-                input_store_id=store_id,
+                input_store_key=store_key,
                 input_comment=comment,
                 input_reported_at=reported_at,
                 error_message="Comment is invalid",
@@ -240,44 +238,65 @@ def process_single_row(
             channel_name = row["channel"]
 
         delivery_service_name = None
-        if "delivery_mode" in row and pd.notna(row["processed_delivery_mode_detail"]):
+        if "processed_delivery_mode_detail" in row and pd.notna(row["processed_delivery_mode_detail"]):
             delivery_service_name = row["processed_delivery_mode_detail"]
 
-        # Check if the store_id (store_key) is valid
-        # Check if the store_id is empty
-        if not store_id:
-            logger.warning(f"Row {index + 1}: Store ID is empty, skipping row")
+        # Check if the store_key (store_key) is valid
+        # Check if the store_key is empty
+        if not store_key:
+            logger.warning(f"Row {index + 1}: Store Key is empty, skipping row")
             # Create an error for the upload task
             error = UploadTaskError(
                 upload_task_id=upload_task_id,
-                input_store_id=store_id,
+                input_store_key=store_key,
                 input_comment=comment,
                 input_reported_at=reported_at,
-                error_message="Store ID is required",
+                error_message="Store Key is required",
                 raw_row_data=json_row_data,
             )
             db.add(error)
             db.commit()
-            result["error"] = "Store ID is required"
+            result["error"] = "Store Key is required"
             return result
-        # Check if the store_id is in the database
-        store = db.query(Store).filter(Store.id == int(store_id)).first()
+        # Check if the store_key is in the database
+        # Handle store_key - can be int, float, or string
+        try:
+            if isinstance(store_key, (int, float)):
+                store_key_value = int(store_key)
+            else:
+                store_key_value = int(float(store_key))
+        except (ValueError, TypeError):
+            logger.warning(f"Row {index + 1}: Invalid store_key format: {store_key}")
+            error = UploadTaskError(
+                upload_task_id=upload_task_id,
+                input_store_key=store_key,
+                input_comment=comment,
+                input_reported_at=reported_at,
+                error_message=f"Invalid store_key format: {store_key}",
+                raw_row_data=json_row_data,
+            )
+            db.add(error)
+            db.commit()
+            result["error"] = "Invalid store_key format"
+            return result
+        
+        store = db.query(Store).filter(Store.store_key == store_key_value).first()
         if not store:
             logger.warning(
-                f"Row {index + 1}: Store ID {store_id} not found in database, skipping row"
+                f"Row {index + 1}: Store Key {store_key} not found in database, skipping row"
             )
             # Create an error for the upload task
             error = UploadTaskError(
                 upload_task_id=upload_task_id,
-                input_store_id=store_id,
+                input_store_key=store_key,
                 input_comment=comment,
                 input_reported_at=reported_at,
-                error_message="Store ID is not valid",
+                error_message="Store Key is not valid",
                 raw_row_data=json_row_data,
             )
             db.add(error)
             db.commit()
-            result["error"] = "Store ID is not valid"
+            result["error"] = "Store Key is not valid"
             return result
 
         # Check if the comment is valid
@@ -287,7 +306,7 @@ def process_single_row(
             # Create an error for the upload task
             error = UploadTaskError(
                 upload_task_id=upload_task_id,
-                input_store_id=store_id,
+                input_store_key=store_key,
                 input_comment=comment,
                 input_reported_at=reported_at,
                 error_message="Comment is required",
@@ -304,7 +323,7 @@ def process_single_row(
             # Create an error for the upload task
             error = UploadTaskError(
                 upload_task_id=upload_task_id,
-                input_store_id=store_id,
+                input_store_key=store_key,
                 input_comment=comment,
                 input_reported_at=reported_at,
                 error_message="Reported at is required",
@@ -324,7 +343,7 @@ def process_single_row(
             # Create an error for the upload task
             error = UploadTaskError(
                 upload_task_id=upload_task_id,
-                input_store_id=store_id,
+                input_store_key=store_key,
                 input_comment=comment,
                 input_reported_at=str(reported_at),
                 error_message=f"Could not parse date format: {reported_at}",
@@ -341,21 +360,11 @@ def process_single_row(
         if channel_name is not None and str(channel_name).strip():
             channel = db.query(Channel).filter(Channel.name == channel_name).first()
             if not channel:
-                logger.warning(
-                    f"Row {index + 1}: Channel {channel_name} not found in database, skipping row"
-                )
-                error = UploadTaskError(
-                    upload_task_id=upload_task_id,
-                    input_store_id=store_id,
-                    input_comment=comment,
-                    input_reported_at=reported_at,
-                    error_message="Channel is not valid",
-                    raw_row_data=json_row_data,
-                )
-                db.add(error)
+                # Create a new channel if it doesn't exist
+                channel = Channel(name=channel_name)
+                db.add(channel)
                 db.commit()
-                result["error"] = "Channel is not valid"
-                return result
+                db.refresh(channel)
             channel_id = channel.id
         else:
             channel_id = None
@@ -367,275 +376,278 @@ def process_single_row(
                 .first()
             )
             if not delivery_service:
-                logger.warning(
-                    f"Row {index + 1}: Delivery service {delivery_service_name} not found in database, skipping row"
-                )
-                error = UploadTaskError(
-                    upload_task_id=upload_task_id,
-                    input_store_id=store_id,
-                    input_comment=comment,
-                    input_reported_at=reported_at,
-                    error_message="Delivery service is not valid",
-                    raw_row_data=json_row_data,
-                )
-                db.add(error)
+                delivery_service = DeliveryService(name=delivery_service_name)
+                db.add(delivery_service)
                 db.commit()
-                result["error"] = "Delivery service is not valid"
-                return result
+                db.refresh(delivery_service)
             delivery_service_id = delivery_service.id
         else:
             delivery_service_id = None
 
         # Topic (Survey sentiment, topics, departments, keywords)
+        llm_processing_failed = False
+        llm_error_message = None
+        total_topics = None
+        total_departments = None
+        total_sentiment = None
+        total_keywords = None
+        
         try:
             # Use synchronous extract_total in thread pool
             from utils.llm.extract_total import _extract_total_sync
 
-            total, usage = _extract_total_sync(comment)
-
-            # Update usage statistics atomically
-            if usage:
-                with stats_lock:
-                    upload_task = (
-                        db.query(UploadTask)
-                        .filter(UploadTask.id == upload_task_id)
-                        .first()
-                    )
-                    if upload_task:
-                        upload_task.completion_tokens += usage.get(
-                            "completion_tokens", 0
-                        )
-                        upload_task.prompt_tokens += usage.get("prompt_tokens", 0)
-                        upload_task.total_tokens += usage.get("total_tokens", 0)
-                        db.commit()
+            total, _ = await asyncio.to_thread(_extract_total_sync, comment)
 
             # ONLY FOR WTCHKECLS PROJECT
             # Check if the total is valid
             is_valid, error_message = is_total_valid(total)
             if not is_valid:
-                error = UploadTaskError(
-                    upload_task_id=upload_task_id,
-                    input_store_id=store_id,
-                    input_comment=comment,
-                    input_reported_at=reported_at,
-                    error_message=error_message,
-                )
-                db.add(error)
-                db.commit()
-                result["error"] = error_message
-                return result
-
-            # if total.cannot_classified is True, set have_to_retry to True
-            if total.cannot_classified:
-                logger.warning(
-                    f"Row {index + 1}: Cannot classified in AI Analysis after first try, retrying..."
-                )
-                have_to_retry = True
-            # Check if the topics are not empty
-            if total.topics is None or len(total.topics) == 0:
-                logger.warning(f"Row {index + 1}: Topics are empty after first try, skipping row")
-                have_to_retry = True
-            # Check if the departments are not empty
-            if total.departments is None or len(total.departments) == 0:
-                logger.warning(f"Row {index + 1}: Departments are empty after first try, skipping row")
-                have_to_retry = True
-            # Check if the keywords are not empty
-            if total.keywords is None or len(total.keywords) == 0:
-                logger.warning(f"Row {index + 1}: Keywords are empty after first try, skipping row")
-                have_to_retry = True
-            # Check if the topics are valid
-            for topic in total.topics:
-                if topic.text not in available_topics:
-                    logger.warning(
-                        f"Row {index + 1}: Topic {topic.text} is not valid after first try, retrying..."
-                    )
-                    have_to_retry = True
-            # Check if the departments are valid
-            for department in total.departments:
-                if department.text not in available_departments:
-                    logger.warning(
-                        f"Row {index + 1}: Department {department.text} is not valid after first try, retrying..."
-                    )
-                    have_to_retry = True
-
-            if have_to_retry:
-                total, usage = _extract_total_retry_sync(comment)
-                # Update usage statistics atomically
-                if usage:
-                    with stats_lock:
-                        upload_task = (
-                            db.query(UploadTask)
-                            .filter(UploadTask.id == upload_task_id)
-                            .first()
-                        )
-                        if upload_task:
-                            upload_task.completion_tokens += usage.get(
-                                "completion_tokens", 0
-                            )
-                            upload_task.prompt_tokens += usage.get("prompt_tokens", 0)
-                            upload_task.total_tokens += usage.get("total_tokens", 0)
-                            db.commit()
-                # Check if the total is classified, if not, skip the row
+                llm_processing_failed = True
+                llm_error_message = error_message
+            else:
+                # if total.cannot_classified is True, set have_to_retry to True
                 if total.cannot_classified:
                     logger.warning(
-                        f"Row {index + 1}: Cannot classified in AI Analysis after retrying, skipping row"
+                        f"Row {index + 1}: Cannot classified in AI Analysis after first try, retrying..."
                     )
-                    error = UploadTaskError(
-                        upload_task_id=upload_task_id,
-                        input_store_id=store_id,
-                        input_comment=comment,
-                        input_reported_at=reported_at,
-                        error_message="Cannot classified in AI Analysis after retrying",
-                        raw_row_data=json_row_data,
-                    )
-                    db.add(error)
-                    db.commit()
-                    result["error"] = "Cannot classified in AI Analysis after retrying"
-                    return result
+                    have_to_retry = True
+                # Normalize keywords
+                if not have_to_retry:
+                    normalized_total, _ = await asyncio.to_thread(_normalize_keywords_sync, comment, total.model_dump())
+                else:
+                    normalized_total = total
                 # Check if the topics are not empty
-                if total.topics is None:
-                    logger.warning(
-                        f"Row {index + 1}: Topics are empty after retrying, skipping row"
-                    )
-                    error = UploadTaskError(
-                        upload_task_id=upload_task_id,
-                        input_store_id=store_id,
-                        input_comment=comment,
-                        input_reported_at=reported_at,
-                        error_message="Topics are empty after retrying",
-                        raw_row_data=json_row_data,
-                    )
-                    db.add(error)
-                    db.commit()
-                    result["error"] = "Topics are empty after retrying"
-                    return result
+                if normalized_total.topics is None or len(normalized_total.topics) == 0:
+                    logger.warning(f"Row {index + 1}: Topics are empty after first try, skipping row")
+                    have_to_retry = True
                 # Check if the departments are not empty
-                if total.departments is None:
-                    logger.warning(
-                        f"Row {index + 1}: Departments are empty after retrying, skipping row"
-                    )
-                    error = UploadTaskError(
-                        upload_task_id=upload_task_id,
-                        input_store_id=store_id,
-                        input_comment=comment,
-                        input_reported_at=reported_at,
-                        error_message="Departments are empty after retrying",
-                        raw_row_data=json_row_data,
-                    )
-                    db.add(error)
-                    db.commit()
-                    result["error"] = "Departments are empty after retrying"
-                    return result
+                if normalized_total.departments is None or len(normalized_total.departments) == 0:
+                    logger.warning(f"Row {index + 1}: Departments are empty after first try, skipping row")
+                    have_to_retry = True
                 # Check if the keywords are not empty
-                if total.keywords is None:
-                    logger.warning(
-                        f"Row {index + 1}: Keywords are empty after retrying, skipping row"
-                    )
-                    error = UploadTaskError(
-                        upload_task_id=upload_task_id,
-                        input_store_id=store_id,
-                        input_comment=comment,
-                        input_reported_at=reported_at,
-                        error_message="Keywords are empty after retrying",
-                        raw_row_data=json_row_data,
-                    )
-                    db.add(error)
-                    db.commit()
-                    result["error"] = "Keywords are empty after retrying"
-                    return result
+                if normalized_total.keywords is None or len(normalized_total.keywords) == 0:
+                    logger.warning(f"Row {index + 1}: Keywords are empty after first try, skipping row")
+                    have_to_retry = True
                 # Check if the topics are valid
-                for topic in total.topics:
+                for topic in normalized_total.topics:
                     if topic.text not in available_topics:
                         logger.warning(
-                            f"Row {index + 1}: Topic {topic.text} is not valid after retrying, skipping row"
+                            f"Row {index + 1}: Topic {topic.text} is not valid after first try, retrying..."
                         )
-                        error = UploadTaskError(
-                            upload_task_id=upload_task_id,
-                            input_store_id=store_id,
-                            input_comment=comment,
-                            input_reported_at=reported_at,
-                            error_message=f"Topic {topic.text} is not valid after retrying",
-                            raw_row_data=json_row_data,
-                        )
-                        db.add(error)
-                        db.commit()
-                        result["error"] = (
-                            f"Topic {topic.text} is not valid after retrying"
-                        )
-                        return result
+                        have_to_retry = True
                 # Check if the departments are valid
-                for department in total.departments:
+                for department in normalized_total.departments:
                     if department.text not in available_departments:
                         logger.warning(
-                            f"Row {index + 1}: Department {department.text} is not valid after retrying, skipping row"
+                            f"Row {index + 1}: Department {department.text} is not valid after first try, retrying..."
                         )
-                        error = UploadTaskError(
-                            upload_task_id=upload_task_id,
-                            input_store_id=store_id,
-                            input_comment=comment,
-                            input_reported_at=reported_at,
-                            error_message=f"Department {department.text} is not valid after retrying",
-                            raw_row_data=json_row_data,
+                        have_to_retry = True
+
+                if have_to_retry:
+                    total, _ = await asyncio.to_thread(_extract_total_retry_sync, comment)
+                    if total.cannot_classified:
+                        logger.warning(
+                            f"Row {index + 1}: Cannot classified in AI Analysis after retrying, skipping row"
                         )
-                        db.add(error)
-                        db.commit()
-                        result["error"] = (
-                            f"Department {department.text} is not valid after retrying"
-                        )
-                        return result
+                        llm_processing_failed = True
+                        llm_error_message = "Cannot classified in AI Analysis after retrying"
+                    else:
+                        # Normalize keywords
+                        normalized_total, _ = await asyncio.to_thread(_normalize_keywords_sync, comment, total.model_dump())
+                        # Check if the total is classified, if not, skip the row
+                        if normalized_total.cannot_classified:
+                            logger.warning(
+                                f"Row {index + 1}: Cannot classified in AI Analysis after retrying, skipping row"
+                            )
+                            llm_processing_failed = True
+                            llm_error_message = "Cannot classified in AI Analysis after retrying"
+                        # Check if the topics are not empty
+                        elif normalized_total.topics is None:
+                            logger.warning(
+                                f"Row {index + 1}: Topics are empty after retrying, skipping row"
+                            )
+                            llm_processing_failed = True
+                            llm_error_message = "Topics are empty after retrying"
+                        # Check if the departments are not empty
+                        elif normalized_total.departments is None:
+                            logger.warning(
+                                f"Row {index + 1}: Departments are empty after retrying, skipping row"
+                            )
+                            llm_processing_failed = True
+                            llm_error_message = "Departments are empty after retrying"
+                        # Check if the keywords are not empty
+                        elif normalized_total.keywords is None:
+                            logger.warning(
+                                f"Row {index + 1}: Keywords are empty after retrying, skipping row"
+                            )
+                            llm_processing_failed = True
+                            llm_error_message = "Keywords are empty after retrying"
+                        else:
+                            # Check if the topics are valid
+                            for topic in normalized_total.topics:
+                                if topic.text not in available_topics:
+                                    logger.warning(
+                                        f"Row {index + 1}: Topic {topic.text} is not valid after retrying, skipping row"
+                                    )
+                                    llm_processing_failed = True
+                                    llm_error_message = f"Topic {topic.text} is not valid after retrying"
+                                    break
+                            
+                            # Check if the departments are valid (only if topics were valid)
+                            if not llm_processing_failed:
+                                for department in normalized_total.departments:
+                                    if department.text not in available_departments:
+                                        logger.warning(
+                                            f"Row {index + 1}: Department {department.text} is not valid after retrying, skipping row"
+                                        )
+                                        llm_processing_failed = True
+                                        llm_error_message = f"Department {department.text} is not valid after retrying"
+                                        break
+
+                if not llm_processing_failed:
+                    total_topics = normalized_total.topics
+                    total_departments = normalized_total.departments
+                    total_sentiment = normalized_total.overall_sentiment.upper() if normalized_total.overall_sentiment else None
+                    total_keywords = normalized_total.keywords if normalized_total.keywords else []
 
         except Exception as e:
             logger.error(
                 f"Row {index + 1}: Failed to extract topics and sentiment. Error: {e}"
             )
-            # Create an error for the upload task
-            error = UploadTaskError(
-                upload_task_id=upload_task_id,
-                input_store_id=store_id,
-                input_comment=comment,
-                input_reported_at=reported_at,
-                error_message=f"Error conducting AI Analysis for topics: {e}",
+            llm_processing_failed = True
+            llm_error_message = f"Error conducting AI Analysis for topics: {e}"
+        
+        # If LLM processing failed, check if we need to update an existing record
+        if llm_processing_failed:
+            # Check if survey already exists
+            existing_survey = db.query(Survey).filter(
+                Survey.survey_id == survey_id,
+                Survey.respondent_id == respondent_id
+            ).first()
+            
+            if existing_survey:
+                # Update existing survey with new data and mark as deleted
+                logger.info(
+                    f"Row {index + 1}: LLM processing failed but found existing survey (ID: {existing_survey.id}), updating and marking as deleted..."
+                )
+                existing_survey.store_key = store_key
+                existing_survey.comment = comment
+                existing_survey.reported_at = reported_at
+                existing_survey.channel_id = channel_id
+                existing_survey.delivery_service_id = delivery_service_id
+                existing_survey.raw_row_data = json_row_data
+                existing_survey.is_deleted = True
+                
+                db.commit()
+                
+                # Log the error
+                error = UploadTaskError(
+                    upload_task_id=upload_task_id,
+                    input_store_key=store_key,
+                    input_comment=comment,
+                    input_reported_at=reported_at,
+                    error_message=llm_error_message,
+                    raw_row_data=json_row_data,
+                )
+                db.add(error)
+                db.commit()
+                
+                # Update processed rows count
+                with progress_lock:
+                    upload_task = (
+                        db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
+                    )
+                    if upload_task:
+                        upload_task.processed_rows += 1
+                        processed_count = upload_task.processed_rows
+                        total_rows = upload_task.total_rows
+                        db.commit()
+
+                        if (processed_count % 10 == 0) or (processed_count == total_rows):
+                            logger.info(f"Processed {processed_count}/{total_rows} rows")
+                
+                result["success"] = True
+                result["error"] = f"Updated existing survey with is_deleted=True due to: {llm_error_message}"
+                logger.info(
+                    f"Row {index + 1}: Updated existing survey (ID: {existing_survey.id}) and marked as deleted"
+                )
+                return result
+            else:
+                # No existing survey, just log the error
+                error = UploadTaskError(
+                    upload_task_id=upload_task_id,
+                    input_store_key=store_key,
+                    input_comment=comment,
+                    input_reported_at=reported_at,
+                    error_message=llm_error_message,
+                    raw_row_data=json_row_data,
+                )
+                db.add(error)
+                db.commit()
+                result["error"] = llm_error_message
+                return result
+
+        # Check if survey already exists (upsert logic)
+        existing_survey = db.query(Survey).filter(
+            Survey.survey_id == survey_id,
+            Survey.respondent_id == respondent_id
+        ).first()
+
+        if existing_survey:
+            # Update existing survey
+            logger.info(
+                f"Row {index + 1}: Found existing survey (ID: {existing_survey.id}) with survey_id={survey_id} and respondent_id={respondent_id}, updating..."
+            )
+            existing_survey.store_key = store_key
+            existing_survey.comment = comment
+            existing_survey.reported_at = reported_at
+            existing_survey.sentiment = total_sentiment
+            existing_survey.channel_id = channel_id
+            existing_survey.delivery_service_id = delivery_service_id
+            existing_survey.raw_row_data = json_row_data
+            existing_survey.is_deleted = False
+            
+            # Delete old relationships to replace with new analysis
+            db.query(SurveyKeywords).filter(SurveyKeywords.survey_id == existing_survey.id).delete()
+            db.query(SurveyTopics).filter(SurveyTopics.survey_id == existing_survey.id).delete()
+            db.query(SurveyDepartments).filter(SurveyDepartments.survey_id == existing_survey.id).delete()
+            
+            db.commit()
+            survey = existing_survey
+            logger.debug(
+                f"Row {index + 1}: Survey updated successfully with ID: {survey.id}"
+            )
+        else:
+            # Create a new survey
+            survey = Survey(
+                survey_id=survey_id,
+                respondent_id=respondent_id,
+                store_key=store_key,
+                comment=comment,
+                reported_at=reported_at,
+                sentiment=total_sentiment,
+                channel_id=channel_id,
+                delivery_service_id=delivery_service_id,
                 raw_row_data=json_row_data,
             )
-            db.add(error)
+            db.add(survey)
             db.commit()
-            result["error"] = f"Error conducting AI Analysis for topics: {e}"
-            return result
-        total_topics = total.topics
-        total_departments = total.departments
-        total_sentiment = total.overall_sentiment.upper() if total.overall_sentiment else None
-        total_keywords = total.keywords
-
-        # Create a new survey
-        survey = Survey(
-            survey_id=survey_id,
-            respondent_id=respondent_id,
-            store_id=store_id,
-            comment=comment,
-            reported_at=reported_at,
-            sentiment=total_sentiment,
-            channel_id=channel_id,
-            delivery_service_id=delivery_service_id,
-            raw_row_data=json_row_data,
-        )
-        db.add(survey)
-        db.commit()
-        db.refresh(survey)
-        logger.debug(
-            f"Row {index + 1}: Survey created successfully with ID: {survey.id}"
-        )
+            db.refresh(survey)
+            logger.debug(
+                f"Row {index + 1}: Survey created successfully with ID: {survey.id}"
+            )
 
         # Add keywords
         for keyword_obj in total_keywords:
             # Get or create keyword
             keyword = (
-                db.query(Keyword).filter(Keyword.keyword == keyword_obj.text).first()
+                db.query(Keyword).filter(Keyword.keyword == keyword_obj.text.lower()).first()
             )
             if not keyword:
                 logger.debug(
-                    f"Row {index + 1}: Creating new keyword: {keyword_obj.text}"
+                    f"Row {index + 1}: Creating new keyword: {keyword_obj.text.lower()}"
                 )
-                keyword = Keyword(keyword=keyword_obj.text)
+                keyword = Keyword(keyword=keyword_obj.text.lower())
                 db.add(keyword)
                 db.commit()
                 db.refresh(keyword)
@@ -651,6 +663,7 @@ def process_single_row(
                 sentiment=keyword_obj.sentiment.upper() if keyword_obj.sentiment else None,
             )
             db.add(survey_keyword)
+            db.flush()
 
         # Add topics
         for topic_obj in total_topics:
@@ -672,6 +685,7 @@ def process_single_row(
                 sentiment=topic_obj.sentiment.upper() if topic_obj.sentiment else None,
             )
             db.add(survey_topic)
+            db.flush()
 
         # Add departments
         for department_obj in total_departments:
@@ -730,7 +744,7 @@ def process_single_row(
         result["error"] = f"Unexpected error: {e}"
         return result
     finally:
-        close_thread_db_session()
+        db.close()
 
 
 async def process_upload_task(file_path, db, upload_task_id):
@@ -738,101 +752,130 @@ async def process_upload_task(file_path, db, upload_task_id):
     Process upload task with multi-threading support.
     Uses ThreadPoolExecutor to process multiple rows concurrently.
     """
-    # Get the available topics and departments from the database
-    topics = db.query(Topic).all()
-    available_topics = [topic.topic for topic in topics]
-    departments = db.query(Department).all()
-    available_departments = [department.name for department in departments]
-
-    # Read the file from csv file with improved error handling
     try:
-        df = pd.read_csv(
-            file_path,
-            encoding="utf-8",
-            sep=",",
-            encoding_errors="ignore",
-            on_bad_lines="warn",  # Warn about bad lines but continue
-            engine="python",  # Use Python engine for more flexible parsing
-            quotechar='"',
-            escapechar='\\',
-            na_values=['']
+        # Get the available topics and departments from the database
+        topics = db.query(Topic).all()
+        available_topics = [topic.topic for topic in topics]
+        departments = db.query(Department).all()
+        available_departments = [department.name for department in departments]
+
+        # Read the file from csv file with improved error handling
+        try:
+            df = pd.read_csv(
+                file_path,
+                encoding="utf-8",
+                sep=",",
+                encoding_errors="ignore",
+                on_bad_lines="warn",  # Warn about bad lines but continue
+                engine="python",  # Use Python engine for more flexible parsing
+                quotechar='"',
+                escapechar='\\',
+                na_values=['']
+            )
+            logger.info(f"Successfully parsed CSV file with {len(df)} rows for processing")
+        except Exception as e:
+            logger.error(f"Failed to read CSV file {file_path}: {e}")
+            raise Exception(f"Failed to read CSV file: {e}")
+
+        # Prepare row data for processing
+        row_data_list = []
+        for index, row in df.iterrows():
+            row_data_list.append({"index": index, "row": row})
+
+        # Configure thread pool size - adjust based on your system capabilities
+        # Consider API rate limits and database connection pool size
+        max_workers = min(MAX_WORKER_THREADS, len(row_data_list))
+
+        logger.info(
+            f"Processing {len(row_data_list)} rows with {max_workers} worker threads"
         )
-        logger.info(f"Successfully parsed CSV file with {len(df)} rows for processing")
-    except Exception as e:
-        logger.error(f"Failed to read CSV file {file_path}: {e}")
-        raise Exception(f"Failed to read CSV file: {e}")
 
-    # Prepare row data for processing
-    row_data_list = []
-    for index, row in df.iterrows():
-        row_data_list.append({"index": index, "row": row})
+        # Track processing time
+        start_time = time.time()
 
-    # Configure thread pool size - adjust based on your system capabilities
-    # Consider API rate limits and database connection pool size
-    max_workers = min(MAX_WORKER_THREADS, len(row_data_list))
-
-    logger.info(
-        f"Processing {len(row_data_list)} rows with {max_workers} worker threads"
-    )
-
-    # Track processing time
-    start_time = time.time()
-
-    # Process rows in parallel using ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all tasks
-        future_to_row = {
-            executor.submit(
-                process_single_row,
-                row_data,
-                upload_task_id,
-                available_topics,
-                available_departments,
-            ): row_data["index"]
-            for row_data in row_data_list
-        }
-
-        # Wait for all tasks to complete
-        completed_tasks = 0
-        failed_tasks = 0
-
-        for future in as_completed(future_to_row):
-            row_index = future_to_row[future]
+        # Create a session factory for thread-safe database access
+        SessionLocal = sessionmaker(bind=engine)
+        
+        # Synchronous wrapper function to run async process_single_row in a thread
+        def process_row_sync(row_data, upload_task_id, available_topics, available_departments):
+            thread_db = SessionLocal()
             try:
-                result = future.result()
-                if result.get("success"):
-                    completed_tasks += 1
-                else:
+                # Create a new event loop for this thread
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    return loop.run_until_complete(
+                        process_single_row(row_data, upload_task_id, available_topics, available_departments, thread_db)
+                    )
+                finally:
+                    loop.close()
+            finally:
+                thread_db.close()
+        
+        # Process rows in parallel using ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_row = {
+                executor.submit(
+                    process_row_sync,
+                    row_data,
+                    upload_task_id,
+                    available_topics,
+                    available_departments,
+                ): row_data["index"]
+                for row_data in row_data_list
+            }
+
+            # Wait for all tasks to complete
+            completed_tasks = 0
+            failed_tasks = 0
+
+            for future in as_completed(future_to_row):
+                row_index = future_to_row[future]
+                try:
+                    result = future.result()
+                    if result.get("success"):
+                        completed_tasks += 1
+                    else:
+                        failed_tasks += 1
+
+                except Exception as e:
                     failed_tasks += 1
+                    logger.error(f"Error processing row {row_index + 1}: {e}")
 
-            except Exception as e:
-                failed_tasks += 1
-                logger.error(f"Error processing row {row_index + 1}: {e}")
+        # Update final task status
+        upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
+        if upload_task:
+            upload_task.status = "completed"
+            db.commit()
 
-    # Update final task status
-    upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
-    if upload_task:
-        upload_task.status = "completed"
-        db.commit()
+        # Calculate and log performance metrics
+        end_time = time.time()
+        processing_time = end_time - start_time
+        rows_per_second = len(row_data_list) / processing_time if processing_time > 0 else 0
 
-    # Calculate and log performance metrics
-    end_time = time.time()
-    processing_time = end_time - start_time
-    rows_per_second = len(row_data_list) / processing_time if processing_time > 0 else 0
+        # Get final statistics from database
+        final_upload_task = (
+            db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
+        )
+        final_processed_count = final_upload_task.processed_rows if final_upload_task else 0
 
-    # Get final statistics from database
-    final_upload_task = (
-        db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
-    )
-    final_processed_count = final_upload_task.processed_rows if final_upload_task else 0
-
-    logger.info(
-        f"Upload task {upload_task_id} completed in {processing_time:.2f} seconds."
-    )
-    logger.info(
-        f"Processed {final_processed_count}/{len(row_data_list)} rows successfully."
-    )
-    logger.info(f"Failed tasks: {failed_tasks}, Completed tasks: {completed_tasks}")
-    logger.info(
-        f"Processing rate: {rows_per_second:.2f} rows/second with {max_workers} threads."
-    )
+        logger.info(
+            f"Upload task {upload_task_id} completed in {processing_time:.2f} seconds."
+        )
+        logger.info(
+            f"Processed {final_processed_count}/{len(row_data_list)} rows successfully."
+        )
+        logger.info(f"Failed tasks: {failed_tasks}, Completed tasks: {completed_tasks}")
+        logger.info(
+            f"Processing rate: {rows_per_second:.2f} rows/second with {max_workers} threads."
+        )
+    except Exception as e:
+        logger.error(f"Failed to process upload task {upload_task_id}: {e}")
+        raise Exception(f"Failed to process upload task: {e}")
+    finally:
+        #Remove the upload task file
+        try:
+            os.remove(file_path)
+        except Exception as e:
+            logger.error(f"Failed to remove upload task file {file_path}: {e}")
