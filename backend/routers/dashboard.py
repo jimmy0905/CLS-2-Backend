@@ -522,8 +522,8 @@ async def get_store_distribution(
 
 
 class ChannelAndDeliveryServiceDistributionResponse(BaseModel):
-    channel: str
-    delivery_service: str
+    channel: Optional[str] = None
+    delivery_service: Optional[str] = None
     neutral_count: int
     positive_count: int
     negative_count: int
@@ -539,20 +539,17 @@ async def get_channel_and_delivery_service_distribution(
 ) -> List[ChannelAndDeliveryServiceDistributionResponse]:
     filter_dict = filter_params.model_dump()
 
-    # Get all channels and delivery services
-    all_channels = db.query(Channel).all()
-    all_delivery_services = db.query(DeliveryService).all()
-
     # Single query to get sentiment counts with channel and delivery service filter
     base_query, _joined_tables, _ = build_optimized_query(db, filter_dict)
 
-    # Add necessary joins if not already present
+    # Use LEFT JOIN to handle cases where channel or delivery service might be null
     if "channel" not in _joined_tables:
-        base_query = base_query.join(Channel, Survey.channel_id == Channel.id)
+        base_query = base_query.outerjoin(Channel, Survey.channel_id == Channel.id)
     if "delivery_service" not in _joined_tables:
-        base_query = base_query.join(
+        base_query = base_query.outerjoin(
             DeliveryService, Survey.delivery_service_id == DeliveryService.id
         )
+    
     # Get sentiment counts grouped by channel and delivery service
     results_grouped_by_channel_and_delivery_service = (
         base_query.with_entities(
@@ -582,7 +579,7 @@ async def get_channel_and_delivery_service_distribution(
             ).label("mixed_count"),
             func.avg(Survey.topic_sentiment_score).label("sentiment_score"),
         )
-        .group_by(Channel.id, DeliveryService.id)
+        .group_by(Channel.id, Channel.name, DeliveryService.id, DeliveryService.name)
         .all()
     )
 
@@ -598,13 +595,13 @@ async def get_channel_and_delivery_service_distribution(
         ],
     )
 
-    # Add necessary joins if not already present
+    # Use LEFT JOIN for total count query as well
     if "channel" not in total_count_joins:
-        total_count_query = total_count_query.join(
+        total_count_query = total_count_query.outerjoin(
             Channel, Survey.channel_id == Channel.id
         )
     if "delivery_service" not in total_count_joins:
-        total_count_query = total_count_query.join(
+        total_count_query = total_count_query.outerjoin(
             DeliveryService, Survey.delivery_service_id == DeliveryService.id
         )
 
@@ -620,6 +617,7 @@ async def get_channel_and_delivery_service_distribution(
 
     # Combine results
     # Create dictionaries keyed by (channel_id, delivery_service_id)
+    # Note: channel_id or delivery_service_id can be None
     sentiment_dict = {
         (row.channel_id, row.delivery_service_id): row
         for row in results_grouped_by_channel_and_delivery_service
@@ -630,43 +628,26 @@ async def get_channel_and_delivery_service_distribution(
         for row in total_count_results
     }
 
-    # Iterate through ALL possible channel and delivery service combinations
+    # Build response from actual data combinations (not all possible combinations)
     channel_and_delivery_service_distribution = []
-    for channel in all_channels:
-        for delivery_service in all_delivery_services:
-            # Look up sentiment data for this channel/delivery service combination
-            sentiment_data = sentiment_dict.get((channel.id, delivery_service.id))
+    for key, sentiment_data in sentiment_dict.items():
+        channel_id, delivery_service_id = key
+        
+        # Get total count for this combination
+        total_count = total_count_dict.get(key, 0)
 
-            if sentiment_data:
-                # Use actual sentiment counts
-                neutral_count = sentiment_data.neutral_count
-                positive_count = sentiment_data.positive_count
-                negative_count = sentiment_data.negative_count
-                mixed_count = sentiment_data.mixed_count
-                sentiment_score = float(sentiment_data.sentiment_score or 0.0)
-            else:
-                # No sentiment data found, use 0
-                neutral_count = 0
-                positive_count = 0
-                negative_count = 0
-                mixed_count = 0
-                sentiment_score = 0.0
-
-            # Get total count (from query with all filters)
-            total_count = total_count_dict.get((channel.id, delivery_service.id), 0)
-
-            channel_and_delivery_service_distribution.append(
-                ChannelAndDeliveryServiceDistributionResponse(
-                    channel=channel.name,
-                    delivery_service=delivery_service.name,
-                    neutral_count=neutral_count,
-                    positive_count=positive_count,
-                    negative_count=negative_count,
-                    mixed_count=mixed_count,
-                    sentiment_score=sentiment_score,
-                    total_count_for_option=total_count,
-                )
+        channel_and_delivery_service_distribution.append(
+            ChannelAndDeliveryServiceDistributionResponse(
+                channel=sentiment_data.channel,
+                delivery_service=sentiment_data.delivery_service,
+                neutral_count=sentiment_data.neutral_count,
+                positive_count=sentiment_data.positive_count,
+                negative_count=sentiment_data.negative_count,
+                mixed_count=sentiment_data.mixed_count,
+                sentiment_score=float(sentiment_data.sentiment_score or 0.0),
+                total_count_for_option=total_count,
             )
+        )
 
     return channel_and_delivery_service_distribution
 
@@ -827,6 +808,7 @@ async def get_store_column_sentiment_distribution(
         "competitor": Store.competitor,
         "region": Store.region,
         "area": Store.area,
+        "province": Store.province,
         "territory": Store.territory,
         "toh": Store.toh,
         "district": Store.district,
