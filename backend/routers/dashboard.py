@@ -827,6 +827,7 @@ async def get_store_column_sentiment_distribution(
         "competitor": Store.competitor,
         "region": Store.region,
         "area": Store.area,
+        "province": Store.province,
         "territory": Store.territory,
         "toh": Store.toh,
         "district": Store.district,
