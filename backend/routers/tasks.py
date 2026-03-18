@@ -84,9 +84,8 @@ async def upload_tasks(
     # Check if the file is a CSV file
     if file.content_type != "text/csv":
         raise HTTPException(status_code=400, detail="File must be a CSV file")
-    # Save the file first
-    try:
-
+    
+    def save_and_validate_file():
         # Rename the file with the current timestamp
         file_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{file.filename}"
         file_path = os.path.join(PATH_TO_UPLOAD_FOLDER, file_name)
@@ -97,33 +96,26 @@ async def upload_tasks(
             f.write(contents)
 
         # Validate the saved file
-        try:
-            # First, try to read with error reporting to see which lines are problematic
-            df = pd.read_csv(
-                file_path,
-                encoding="utf-8",
-                sep=",",
-                encoding_errors="ignore",
-                on_bad_lines="warn",  # Warn about bad lines but continue
-                engine="python",  # Use Python engine for more flexible parsing
-                quotechar='"',
-                escapechar="\\",
-            )
+        df = pd.read_csv(
+            file_path,
+            encoding="utf-8",
+            sep=",",
+            encoding_errors="ignore",
+            on_bad_lines="warn",
+            engine="python",
+            quotechar='"',
+            escapechar="\\",
+        )
 
-            # Log any warnings about skipped lines
-            logger.info(f"Successfully parsed CSV file with {len(df)} rows")
-
-        except pd.errors.EmptyDataError:
-            os.remove(file_path)
-            raise HTTPException(status_code=400, detail="CSV file is empty")
-        except Exception as e:
-            os.remove(file_path)
-            raise HTTPException(status_code=400, detail=f"Invalid CSV file: {str(e)}")
-
+        logger.info(f"Successfully parsed CSV file with {len(df)} rows")
+        return file_name, file_path, len(df)
+    
+    # Save the file first
+    try:
+        file_name, file_path, row_count = await asyncio.to_thread(save_and_validate_file)
+    except pd.errors.EmptyDataError:
+        raise HTTPException(status_code=400, detail="CSV file is empty")
     except Exception as e:
-        # Clean up if file was created
-        if "file_path" in locals() and os.path.exists(file_path):
-            os.remove(file_path)
         raise HTTPException(status_code=400, detail=f"Invalid CSV file: {str(e)}")
 
     # File has been validated and saved successfully
@@ -133,7 +125,7 @@ async def upload_tasks(
         file_name=file_name,
         file_path=file_name,
         status="pending",
-        total_rows=len(df),
+        total_rows=row_count,
         processed_rows=0,
     )
     db.add(upload_task)
