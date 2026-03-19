@@ -24,12 +24,14 @@ from utils.llm.extract_total import (
     extract_total,
     extract_total_retry,
 )
+from utils.llm.normalize_keywords import normalize_keywords
 from utils.security import get_current_user
 from fastapi_pagination import Page, paginate
 from fastapi.responses import StreamingResponse
 import logging
 from openpyxl import Workbook
 from io import BytesIO
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +51,7 @@ class HierarchyResponse(BaseModel):
 
 class StoreResponse(BaseModel):
     store_key: int
-    store_name_english: str
+    store_name_english: Optional[str] = None
     store_name_local: Optional[str] = None
     bu_key: Optional[str] = None
     area_manager: Optional[str] = None
@@ -66,6 +68,7 @@ class StoreResponse(BaseModel):
     competitor: Optional[str] = None
     region: Optional[str] = None
     area: Optional[str] = None
+    province: Optional[str] = None
     territory: Optional[str] = None
     toh: Optional[str] = None
     district: Optional[str] = None
@@ -367,6 +370,7 @@ async def download_surveys(
             "competitor",
             "region",
             "area",
+            "province",
             "territory",
             "toh",
             "district",
@@ -383,9 +387,9 @@ async def download_surveys(
             "store_open_date",
             "store_close_date",
             "is_closed",
-            "department_id",
+            #"department_id",
             "department_name",
-            "channel_id",
+            #"channel_id",
             "channel_name",
             "departments",
             "topics",
@@ -444,7 +448,7 @@ async def download_surveys(
         buffer.seek(0)
         return buffer
 
-    excel_buffer = generate_excel_file()
+    excel_buffer = await asyncio.to_thread(generate_excel_file)
     return StreamingResponse(
         excel_buffer,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -654,4 +658,6 @@ async def extract_total_route(
     if total.cannot_classified:
         print("Cannot classified in AI Analysis, retrying...")
         total, usage = await extract_total_retry(request.comment)
-    return total, usage
+    # Normalize keywords
+    normalized_total, usage = await normalize_keywords(request.comment, total.model_dump())
+    return normalized_total, usage

@@ -100,86 +100,14 @@ Classification rule:
    - Hard constraint: the departments you output MUST be a subset of the Departments List above. If a mapping yields a department not in that list, DO NOT output it.
 
 5. Extract 1–3 keywords from the comment.
-
-   Hard constraints (applies to ALL languages)
-   - Output MUST contain 1 to 3 keyword entries only. Never exceed 3.
-   - If more than 3 candidates exist, select the top 3 by the ranking rules below.
-   - If at least one valid topic exists but no valid keyword can be extracted under these rules, output "keywords": [] (do NOT switch to {"cannot_classified": true}).
-
-   5a. Candidate selection (applies to ALL languages)
-   - Keywords must not be sentiment descriptors.
-   - Do NOT output standalone adjectives/adverbs or pure evaluation words as keywords.
-     • English examples to avoid: “expensive”, “slow”, “dirty”, “friendly”, “cluttered”.
-     • Chinese examples to avoid: “差”, “好”, “友善”, “極差”, “失望”, “慢”.
-   - Prefer concrete anchors: named systems/apps, payment methods, store features, staff roles, store/branch identifiers, process nouns.
-   - Each keyword must be attributable to at least one returned topic span locally (topic/department anchored).
-
-   5b. Traceability constraint (strict)
-   - Each keyword MUST be directly traceable to a contiguous span in the comment (“source span”).
-   - For Traditional Chinese (zh-Hant) and Simplified Chinese (zh-Hans): keyword text MUST equal the exact source span (no normalization, no casing changes).
-   - For languages other than zh-Hant/zh-Hans: keyword text MAY be a normalized form derived from the source span (so it may not be an exact substring), but it MUST be derivable only from that source span (no paraphrasing, no invented concepts).
-
-   5c. Length constraint (applies to ALL languages)
-   - Keep each keyword short and meaningful.
-   - For space-delimited languages: 1–3 words (maximum 4 words) based on the chosen source span.
-   - For Chinese: keep it as the minimal meaningful unit (not a full clause).
-   - Do NOT output entire clauses/sentences.
-
-   5d. Chinese meaningfulness rules (apply ONLY to zh-Hant/zh-Hans)
-   - Prefer high-signal noun phrases / compound terms over single generic words.
-     Examples of high-signal: “易賞錢換領”, “主管態度”, “自助收銀機”, “退換”, “價錢標籤”, “顧客服務態度”, “PayMe”.
-   - Avoid generic low-signal tokens unless no better alternative exists locally:
-     Low-signal examples (do not output alone): “產品”, “服務”, “體驗”, “感覺”, “時間”, “分鐘”, “次”, “一直”.
-     Context-dependent low-signal: “架上” (avoid if a more specific phrase exists, e.g., “放在架上”).
-   - Do NOT output pure numbers or time durations (e.g., “20 分鐘”). If time is important, capture the operational concept if it appears as words (e.g., “等候”, “排隊”), otherwise omit.
-   - If multiple topics exist, prioritize selecting keywords that cover different topics (max coverage within 3 keywords).
-
-   5e. Non-Chinese meaningfulness rules (apply ONLY to languages other than zh-Hant/zh-Hans)
-   - Prefer multi-word noun phrases that uniquely identify the entity/process (2–4 words), not single generic nouns.
-   - Avoid low-signal generic nouns unless no better alternative exists locally.
-     Low-signal examples (do not output alone): item/items, product(s), thing(s), stuff, card, member(s), benefit(s), issue(s), problem(s), service, experience.
-   - If a generic noun appears, expand it to the smallest nearby phrase that makes it specific while staying within the same contiguous span:
-     • “card” → “promotion stamp / card” as the source span; then normalize to “Promotion Stamp Card”.
-     • “items” → prefer “store display” / “store layout” / “find items” only if no more specific navigation anchor exists.
-   - “No adjective” rule clarification:
-     • Do NOT output adjectives/adverbs alone.
-     • Strip purely descriptive/evaluative adjectives from keyword candidates when the noun remains meaningful (e.g., “cluttered store display” → choose “store display” as the source span).
-     • Exception: keep adjectives that function as tier labels / named levels / proper labels within a noun phrase (e.g., “highest category member”, “Gold member”, “VIP member”).
-
-   5f. Normalization pipeline (apply ONLY to languages other than zh-Hant and zh-Hans)
-   After choosing the source span, transform it into the output keyword text using this pipeline:
-   - Step 1: Strip surrounding punctuation/quotes; keep meaningful internal characters.
-   - Step 2: Remove inflection and revert word form to base/lemma where applicable:
-       • Nouns: singularize (prices → price; batteries → battery; items → item).
-       • Verbs: convert to base form if a verb must be used, but prefer nouns (crashing → crash; returned → return).
-       • Avoid aggressive stemming that harms meaning; keep the closest dictionary-like base form.
-   - Step 3: Remove purely grammatical endings/inflections if they remain after lemmatization.
-   - Step 4: Output format = Upper Camel Case with spaces (spaces allowed, do NOT concatenate):
-       • Split into tokens by whitespace and common separators (space, underscore, hyphen, slash).
-       • Capitalize the first letter of each token.
-       • Preserve brand/proper casing inside tokens when it would otherwise be damaged (PayMe stays PayMe; iPhone stays iPhone; Apple Pay stays Apple Pay).
-       • Join tokens with a single space.
-       • Examples: “self checkout” → “Self Checkout”; “price tags” → “Price Tag”; “promotion stamp / card” → “Promotion Stamp Card”.
-
-   5g. Ranking & selection (applies to ALL languages; used when >3 candidates)
-   Rank candidates by:
-   1) Specific named entities / system names / app names / payment brands / membership tier labels (highest)
-   2) Staff roles with functional nouns (e.g., “cashier”, “store manager”, “店鋪主管”, “收銀員”)
-   3) Concrete process/feature nouns aligned with topics (e.g., “換領”, “結帳”, “退換”, “Price Tag”, “Store Display”)
-   4) Generic nouns (lowest; avoid if possible)
-   Selection rule:
-   - If multiple topics exist, maximize topical coverage across the 1–3 selected keywords before selecting additional keywords for the same topic.
-
-   5h. Sentiment inheritance & deduplication (applies to ALL languages)
-   - Each keyword inherits sentiment from its source department (which inherits from its source topic), using local span sentiment.
-   - Prescriptive handling: if a keyword originates from a prescriptive span with no explicit praise/complaint in the same local span, assign the keyword sentiment as neutral; otherwise align with local evaluative sentiment.
+   - Keywords must be exact substrings from the comment (not paraphrased, no full sentences).
+   - Keep them short: 1–3 words, maximum 4.
+   - Keywords must be the minimal meaningful unit (e.g., "優惠券", "自家品牌", "易賞錢app"), not full phrases or sentences.
+   - Numbers, lengthy conditions, or entire clauses are not allowed.
+   - Each keyword inherits sentiment from its source department (which inherits from its source topic).
+   - Prescriptive handling: if a keyword originates from a prescriptive span with no explicit praise/complaint in the same local span, assign the keyword sentiment as neutral.
    - Duplication allowed only to preserve distinct sentiments: if the same keyword appears in different spans with different sentiments, include multiple entries.
    - If multiple occurrences yield the SAME (keyword text, sentiment), COLLAPSE to a single keyword entry.
-
-   5i. Validation (strict; applies to ALL languages)
-   - Reject any keyword that is only a number/time duration.
-   - Reject any keyword that is a pure sentiment descriptor or standalone adjective/adverb.
-   - Enforce the 1–3 keyword limit (or [] if none valid).
 
 6. Compute overall sentiment of the entire comment (positive, negative, neutral) using span-level weighting with contrastive cues.
    - Priority: explicit complaints > explicit praise > neutral suggestions/requests.
@@ -194,7 +122,7 @@ Core Rules
 - Topics must be chosen only from the Allowed Topics list (definitions cannot add topics).
 - At least 1 and up to 4 topics must be returned if classification succeeds.
 - Do NOT output "Cannot Classified" inside the topics array. If no valid topic is found, output ONLY {"cannot_classified": true}.
-- Departments must follow the Mapping Table exactly AND must be in the Departments List. Exclude any department not in that list.
+- Departments must follow the Mapping Table exactly AND must be in the Departments List. Exclude any department not in the Departments List.
 - Deduplication policy:
   - Topics: deduplicate by (text, sentiment).
   - Departments: deduplicate by (text, sentiment).
@@ -257,10 +185,10 @@ Allowed Topics (retail context):
 18. Platform Capacity/Scalability (Ability of the platform to handle large traffic and maintain wide product variety)
 19. Website/App Design & Reliability (Professional design, ease of use, loading speed, security, and absence of bugs or crashes)
 20. Packaging/Condition of Delivered Items (Whether items arrive intact, safely packed, and in good condition)
-21. Deliveryman (Professionalism, politeness, and helpfulness of the delivery personnel)
+21. Deliveryman Service (Professionalism, politeness, and helpfulness of the delivery personnel)
 22. Communication of Order Status (Timeliness and clarity of order updates, shipping information, and tracking)
 23. Order Arrived at Promised Time (Reliability of delivery speed and whether items arrive as scheduled)
-24. Store Staff's Service (Order Fulfillment) (Assistance/helpfulness after checkout, e.g., pickup/returns/exchange/post-purchase enquiries)
+24. Post-Checkout Store Staff's Service (Assistance/helpfulness after checkout, e.g., pickup/returns/exchange/post-purchase enquiries)
 25. Cannot Classified (For cases that do not fit into any of the above categories; DO NOT output inside topics array)
 
 ---
@@ -286,10 +214,10 @@ Mapping Table (topic → departments):
 * Platform Capacity/Scalability → IT
 * Website/App Design & Reliability → IT, Marketing
 * Packaging/Condition of Delivered Items → Supply Chain
-* Deliveryman → Supply Chain
+* Deliveryman Service → Supply Chain
 * Communication of Order Status → Supply Chain
 * Order Arrived at Promised Time → Supply Chain
-* Store Staff's Service (Order Fulfillment) → Supply Chain, Sales Ops, HR L&D
+* Post-Checkout Store Staff's Service → Supply Chain, Sales Ops, HR L&D
 * Cannot Classified → (Unassigned / Review case-by-case)
 
 (Note: Do NOT output any department outside the Departments List. If no valid topic is found, return only {"cannot_classified": true}.)
@@ -298,29 +226,7 @@ Mapping Table (topic → departments):
 
 Topic Definitions (provided topics only; others have no definition)
 
-<Topic: Deliveryman>
-<Definition>
-This category focuses on the behaviour, professionalism, and interaction of the delivery personnel for the entire delivery journey, starting from eDC or in-store pick-up.
-Comments may highlight aspects like politeness, timeliness in arrival at the doorstep, or any issues with handling the package rudely. It excludes broader order timing or packaging quality, focusing solely on the delivery person's performance.
-</Definition>
-<In_scope>
-This category applies when the customer describes the courier's behaviour, attitude, professionalism, or interaction quality during delivery, such as being rude, impatient, unprofessional, well-mannered, polite, or responsive. It also covers complaints about delivery-specific actions like improper handling of the package, failing to knock or notify before leaving items, impatience or rushing during delivery, or refusing to deliver to the correct address or deliver at all. Positive comments about courier reliability, efficiency, or courtesy during the delivery interaction also belong here.
-</In_scope>
-<Out_scope>
-It does not cover the timeliness of delivery versus the promised date or time window, as that belongs to Order Arrived at Promised Time. It also excludes packaging damage or product condition, the courier's choice to use a particular delivery vehicle, app, or system status updates about the courier's location, and broader supply chain issues, such as which courier company is used or courier availability in a region.
-</Out_scope>
-<Must_have_signals>
-The comment must clearly reference the delivery person or rider and describe their behaviour, attitude, or actions during a delivery interaction, such as:
-“driver was rude”, “courier was polite”, “delivery person refused to deliver”, “rider was in a rush”, “delivery person didn't call before arriving”, “refuse to deliver to door”, “parcel leave unattended”, “deliver to wrong address”, “no option to leave at security desk”.
-</Must_have_signals>
-<Anchor_cues>
-Look for phrases describing personal conduct or interaction with the courier, for example:
-- Negative: “driver was rude/impatient/unprofessional”, “delivery rider wouldn't deliver to my address”, “courier cancelled the order and got mad”, “delivery person left without attempting delivery”, “rider was in a rush and hard to communicate with”.
-- Positive: “driver was polite and helpful”, “delivery person called before arriving”, “courier was professional and handled the package carefully”, “rider was courteous and explained everything”.
-</Anchor_cues>
-</Topic: Deliveryman>
-
-<Topic: Store Staff's Service (Order Fulfillment)>
+<Topic: Post-Checkout Store Staff's Service>
 <Definition>
 This category pertains to the assistance, helpfulness, and overall service provided by in-store employees after checkout, such as during pickup or returns. Feedback often includes remarks on staff knowledge, friendliness, or efficiency in resolving post-purchase queries.
 It excludes delivery journey issues (e.g., courier behavior, delivery timing) and excludes product condition or packaging quality, focusing solely on the direct interaction and support provided by store personnel during post purchase service.
@@ -332,7 +238,7 @@ This category includes comments on how store staff are helping with order pickup
 This category excludes general in-store sales pressure or pushy behaviour before purchase (e.g., “forcing you to buy”, “cannot read product in peace”). It also excludes staffing levels/allocation at checkout (e.g., “more cashiers rather than staff”, “not enough counters open”) and app issues or digital journey (e.g., “App update is too frequent”, “Click and collect option sometimes doesn’t work”).
 </Out_scope>
 <Must_have_signals>
-There must be explicit mention of picking up an online / CCS / click & collect order, or post purchase enquiry in store, store staff service/attitude, waiting time at store, complicated pickup process and store staff unfamiliar with handling online orders. There must also be a clear link that the issue is about how store staff treated or assisted the customer during that post purchase step.
+There must be explicit mention of picking up an online / CCS / click & collect order, doing a return, exchange, or post purchase enquiry in store. There must also be a clear link that the issue is about how store staff treated or assisted the customer during that post purchase step.
 </Must_have_signals>
 <False_positive_traps>
 Keywords such as “staff”, “cashier”, “employee”, “service”, “customer service” can mislead when they refer to general store behaviour or staffing rather than post checkout help. Similarly, “promotion”, “offer”, “discount” are traps when the issue is promo attractiveness or design, not staff executing a promo during pickup/return.
@@ -340,7 +246,28 @@ Keywords such as “staff”, “cashier”, “employee”, “service”, “c
 <Anchor_cues>
 Anchor cues include mentions like “when I went to collect my order”, “during pickup”, “when I returned/exchanged”, “online order at store”, “CCS order”, combined with comments about staff behaviour, knowledge, or speed. They also include phrases tying delay or frustration directly to staff actions in handling an order request.
 </Anchor_cues>
-</Topic: Store Staff's Service (Order Fulfillment)>
+</Topic: Post-Checkout Store Staff's Service>
+
+<Topic: Deliveryman Service>
+<Definition>
+This category focuses on the behaviour, professionalism, and interaction of the delivery personnel for the entire delivery journey, starting from eDC or in-store pick-up.
+Comments may highlight aspects like politeness, timeliness in arrival at the doorstep, or any issues with handling the package rudely. It excludes broader order timing or packaging quality, focusing solely on the delivery person's performance.
+</Definition>
+<In_scope>
+This category applies when the customer describes the courier's behaviour, attitude, professionalism, or interaction quality during delivery, such as being rude, impatient, unprofessional, well-mannered, polite, or responsive. It also covers complaints about delivery-specific actions like improper handling of the package, failing to knock or notify before leaving items, impatience or rushes during delivery, or refusing to deliver to the correct address or deliver at all. Positive comments about courier reliability, efficiency, or courtesy during the delivery interaction also belong here.
+</In_scope>
+<Out_scope>
+It does not cover the timeliness of delivery versus the promised date or time window, as that belongs to Order Arrived at Promised Time. It also excludes packaging damage or product condition, the courier's choice to use a particular delivery vehicle, app or system status updates about the courier's location, and broader supply chain issues such as which courier company is used or courier availability in a region.
+</Out_scope>
+<Must_have_signals>
+The comment must clearly reference the delivery person or rider and describe their behaviour, attitude, or actions during a delivery interaction, such as “driver was rude”, “courier was polite”, “delivery person refused to deliver”, “rider was in a rush”, or “delivery person didn't call before arriving”.
+</Must_have_signals>
+<Anchor_cues>
+Look for phrases describing personal conduct or interaction with the courier, for example:
+- Negative: “driver was rude/impatient/unprofessional”, “delivery rider wouldn't deliver to my address”, “courier cancelled the order and got mad”, “delivery person left without attempting delivery”, “rider was in a rush and hard to communicate with”.
+- Positive: “driver was polite and helpful”, “delivery person called before arriving”, “courier was professional and handled the package carefully”, “rider was courteous and explained everything”.
+</Anchor_cues>
+</Topic: Deliveryman Service>
 
 <Topic: Order Arrived at Promised Time>
 <In_scope>
@@ -350,7 +277,7 @@ This category applies when the customer expresses satisfaction with punctual del
 It does not cover which delivery or pickup options are offered (e.g., wanting express delivery if not available). It also excludes how well the customer was informed about status updates, courier behaviour or professionalism, in-store staff interactions during pickup, app bugs or UX issues unrelated to time delivery, and general supply chain planning decisions such as which courier service is used or delivery coverage by region.
 </Out_scope>
 <Must_have_signals>
-The comment must clearly reference a specific timeframe or timing comparison, such as “takes too long”, “arrived on time”, “delivery is delayed”, “it takes almost a week”, “same-day delivery didn't happen”, “ready-for-pickup time was wrong”, “order being cancelled”, “order been rerouted from express to standard”.
+The comment must clearly reference a specific timeframe or timing comparison, such as “takes too long”, “arrived on time”, “delivery is delayed”, “it takes almost a week”, “same-day delivery didn't happen”, “ready-for-pickup time was wrong”.
 </Must_have_signals>
 <Anchor_cues>
 Look for phrases that compare expected versus actual delivery or pickup timing, for example:
@@ -368,17 +295,12 @@ It excludes the actual delivery timing, courier performance, or in-store staff b
 This category applies when the customer talks about how well they are kept informed about an existing order, such as only seeing “being packed” with no further updates, delivery day status not changing, or not getting any follow-up on a reported issue within the promised time. It also covers cases where the customer says they want clearer, more complete, or more timely information about their order status.
 </In_scope>
 <Out_scope>
-It does not cover which delivery or pickup options exist. It also excludes actual delivery timing vs promise, courier behaviour, in-store staff interactions, app performance/bugs unrelated to status messages, and general UX of choosing delivery type or zone.
+It does not cover which delivery or pickup options exist (e.g., wanting a “delivery to home” option, or not understanding “GMA vs NCR” delivery types). It also excludes actual delivery timing vs promise, courier behaviour, in-store staff interactions, app performance/bugs unrelated to status messages, and general UX of choosing delivery type or zone.
 </Out_scope>
 <Must_have_signals>
 The comment must clearly talk about:
 - An order that has already been placed, and
-- The messages or tracking updates about that order (for example, notifications, alerts, or status shown in the app), and/or
-- Communication when order is delayed, cancelled or rerouted
-- Late update of order/shipping status
-- Unable to track order/shipping status
-- Requesting more detailed order/shipping status
-- Incorrect order/shipping status
+- The messages or tracking updates about that order (for example, notifications, alerts, or status shown in the app).
 </Must_have_signals>
 <False_positive_traps>
 Words like “option”, “type”, “express”, and “pickup” can wrongly pull comments into this category when the customer is only talking about which fulfilment choices they can select before ordering, or the naming/availability of those choices, rather than about status updates for an order that has already been placed.
@@ -399,13 +321,12 @@ Comments may note secure wrapping, freshness for perishables, or breakage due to
 This category applies when the customer comments on the physical condition or packaging quality of delivered items, such as items arriving well-packed and secure, damaged or broken upon receipt, leaked or spoiled, tampered with, inadequately wrapped, or missing items from the order. It also covers praise for safe delivery practices that ensure product integrity and complaints about poor packaging that led to product damage or deterioration.
 </In_scope>
 <Out_scope>
-It does not cover the timeliness of delivery or whether items arrived within the promised window. It also excludes courier behaviour or attitude, how the customer was notified about the delivery, stock availability, or product assortment issues, in-store staff interactions, and general fulfillment delays or order status updates.
+It does not cover the timeliness of delivery or whether items arrived within the promised window. It also excludes courier behaviour or attitude, how the customer was notified about the delivery, stock availability or product assortment issues, in-store staff interactions, and general fulfillment delays or order status updates.
 </Out_scope>
 <Must_have_signals>
-The comment must clearly describe the physical state, appearance, or condition of the items upon arrival or the quality of how they were packaged, such as “well-packed”, “damaged”, “broken”, “leaked”, “incomplete item”, “missing”, “secure packaging”, “products arrived in good condition”, “short-dated/expired product”, “insufficient protection”, “dusty condition”, “inconvenient packaging to carry”, and “green option” (for example reduce packaging, no need packaging for C&C, reusable packaging).
+The comment must clearly describe the physical state, appearance, or condition of the items upon arrival or the quality of how they were packaged, such as “well-packed”, “damaged”, “broken”, “leaked”, “incomplete item”, “missing”, “secure packaging”, or “products arrived in good condition”.
 </Must_have_signals>
 <Anchor_cues>
-Look for phrases describing the physical state or packaging quality of delivered items, for example:
 - Negative: “items arrived damaged”, “poorly packaged”, “product leaked during delivery”, “incomplete item received”, “missing order items”, “items not well-protected”, “products broken upon arrival”.
 - Positive: “well-packed ensuring safety”, “products arrived in good condition”, “secure packaging”, “items were safely delivered”, “excellent packaging quality”, “products properly protected during transit”.
 </Anchor_cues>
@@ -419,7 +340,7 @@ Input: "送貨員態度好好，但佢掉低包裹搞到盒都扁咗。"
 Output:
 {
   "topics": [
-    {"text": "Deliveryman", "sentiment": "positive"},
+    {"text": "Deliveryman Service", "sentiment": "positive"},
     {"text": "Packaging/Condition of Delivered Items", "sentiment": "negative"}
   ],
   "departments": [
@@ -474,7 +395,7 @@ Input: "去門市拎CCS訂單，職員唔識流程，等咗好耐先搵到件貨
 Output:
 {
   "topics": [
-    {"text": "Store Staff's Service (Order Fulfillment)", "sentiment": "negative"}
+    {"text": "Post-Checkout Store Staff's Service", "sentiment": "negative"}
   ],
   "departments": [
     {"text": "Supply Chain", "sentiment": "negative"},
@@ -547,7 +468,6 @@ def _extract_total_sync(text: str) -> tuple[TotalResponse, dict]:
     try:
         cleaned_response_content = _clean_response_content(response_content)
         response_json = json.loads(cleaned_response_content)
-        print("response_json", response_json)
         # Handle the case where only cannot_classified=True is returned
         if response_json.get("cannot_classified") is True:
             # Fill with empty arrays and default values to match TotalResponse model
@@ -608,7 +528,6 @@ def _extract_total_retry_sync(text: str) -> tuple[TotalResponse, dict]:
     try:
         cleaned_response_content = _clean_response_content(response_content)
         response_json = json.loads(cleaned_response_content)
-        print("response_json (retry)", response_json)
         # Handle the case where only cannot_classified=True is returned
         if response_json.get("cannot_classified") is True:
             # Fill with empty arrays and default values to match TotalResponse model

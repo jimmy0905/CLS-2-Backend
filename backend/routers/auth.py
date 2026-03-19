@@ -33,9 +33,7 @@ async def azure_callback(request: Request, db: Session = Depends(get_db)):
         # Get token from Azure AD (proxy configuration is handled via environment variables)
         token_response = await oauth.azure.authorize_access_token(request)
         access_token = token_response.get("access_token")
-        print(access_token)
         id_token = token_response.get("id_token")
-        print(id_token)
         if not access_token:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -44,14 +42,12 @@ async def azure_callback(request: Request, db: Session = Depends(get_db)):
 
         # Method 1: Verify the ID token (contains user claims)
         user_data = {}
-        print(id_token)
         if id_token:
             try:
                 user_claims = await verify_azure_token(id_token)
                 user_data = extract_user_claims(user_claims)
             except Exception as e:
                 print(f"ID token verification failed: {e}")
-        print(user_data)
         # Create or update user in your database
         user = await create_or_update_user_from_azure(user_data, db)
 
@@ -115,26 +111,26 @@ async def token(
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-class RegisterRequest(BaseModel):
-    username: str
-    password: str
-    role: str
+# class RegisterRequest(BaseModel):
+#     username: str
+#     password: str
+#     role: str
 
 
-@router.post("/register")
-async def register(request: RegisterRequest, db: Session = Depends(get_db)):
-    # Check if user already exists
-    if db.query(User).filter(User.username == request.username).first():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User already exists",
-        )
+# @router.post("/register")
+# async def register(request: RegisterRequest, db: Session = Depends(get_db)):
+#     # Check if user already exists
+#     if db.query(User).filter(User.username == request.username).first():
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="User already exists",
+#         )
 
-    user = User(username=request.username, role=request.role)
-    user.set_password(request.password)
-    db.add(user)
-    db.commit()
-    return {"message": "User registered successfully"}
+#     user = User(username=request.username, role=request.role)
+#     user.set_password(request.password)
+#     db.add(user)
+#     db.commit()
+#     return {"message": "User registered successfully"}
 
 
 @router.post("/renew-token")

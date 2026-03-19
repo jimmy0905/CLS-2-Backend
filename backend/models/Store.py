@@ -23,6 +23,9 @@ class Store(Base):
     competitor=Column(String(100), nullable=True) # competitor
     region=Column(String(100), nullable=True) # region
     area=Column(String(100), nullable=True) # area
+    # TODO: Add province to the database
+    # ALTER TABLE stores ADD COLUMN province VARCHAR(100) NULL;
+    province=Column(String(100), nullable=True) # province
     territory=Column(String(100), nullable=True) # territory
     toh=Column(String(100), nullable=True) # toh
     district=Column(String(100), nullable=True) # district
@@ -65,6 +68,7 @@ class Store(Base):
             "competitor": self.competitor,
             "region": self.region,
             "area": self.area,
+            "province": self.province,
             "territory": self.territory,
             "toh": self.toh,
             "district": self.district,

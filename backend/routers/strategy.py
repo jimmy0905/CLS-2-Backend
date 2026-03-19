@@ -24,6 +24,8 @@ from io import BytesIO
 import requests
 from openpyxl import Workbook
 import os
+import asyncio
+from fastapi import BackgroundTasks
 
 
 router = APIRouter(
@@ -214,7 +216,7 @@ class TopKPerformanceColumnResponse(BaseModel):
 
 @router.get("/get_top_k_performance_columns")
 async def get_top_k_performance_columns(
-    column: str = Query(..., description="The column name to get the sentiment distribution for store column, columns are bu_key, area_manager, store_format, store_type, operations_controller, regional_manager, px, csr, dr, mag_type, cf_grouping, store_brand, competitor, region, area, territory, toh, district, city, operations_manager, district_manager, sic, tech_life_type, operation_manager_tl, region_manager_tl, relocation, latitude, longitude, store_open_date, store_close_date, is_closed, store_key, store_english_name, store_local_name"),
+    column: str = Query(..., description="The column name to get the sentiment distribution for store column, columns are bu_key, area_manager, store_format, store_type, operations_controller, regional_manager, px, csr, dr, mag_type, cf_grouping, store_brand, competitor, region, area, province, territory, toh, district, city, operations_manager, district_manager, sic, tech_life_type, operation_manager_tl, region_manager_tl, relocation, latitude, longitude, store_open_date, store_close_date, is_closed, store_key, store_english_name, store_local_name"),
     db: Session = Depends(get_db),
     filter_params: FilterRequest = Depends(get_filter_params),
     k: int = Query(
@@ -239,6 +241,7 @@ async def get_top_k_performance_columns(
         "competitor": Store.competitor,
         "region": Store.region,
         "area": Store.area,
+        "province": Store.province,
         "territory": Store.territory,
         "toh": Store.toh,
         "district": Store.district,
@@ -336,6 +339,7 @@ async def get_strategy_for_column_by_value(
         "competitor": Store.competitor,
         "region": Store.region,
         "area": Store.area,
+        "province": Store.province,
         "territory": Store.territory,
         "toh": Store.toh,
         "district": Store.district,
@@ -581,7 +585,7 @@ async def get_strategy_v2(
         else:
             return str(value)
 
-    def generate_excel_file():
+    def generate_excel_and_call_api():
         # Create a workbook and worksheet
         wb = Workbook()
         ws = wb.active
@@ -687,47 +691,38 @@ async def get_strategy_v2(
         buffer = BytesIO()
         wb.save(buffer)
         buffer.seek(0)
-        return buffer
-    excel_buffer = generate_excel_file()
-    # Await the whole excel file is generated
-    url = os.getenv("ANALYZE_FEEDBACK_API_URL")
-    if not url:
-        raise HTTPException(status_code=500, detail="ANALYZE_FEEDBACK_API_URL is not set")
-    
-    url = url.rstrip('/') + "/analyze-feedback"
-    payload = {'analysis_mode': 'STAT',
-    'sampling_method': 'DIRECT',
-    'top_n_stores': '10',
-    'bottom_n_stores': '10',
-    'top_n_topics': '10',
-    'quote_sample_size': '5'}
-    files=[
-    ('file',('surveys.xlsx',excel_buffer,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
-    ]
-    
-    # Define headers to look like a standard request and bypass potential firewall blocks
-    request_headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
+        
+        # Make API request
+        url = os.getenv("ANALYZE_FEEDBACK_API_URL")
+        if not url:
+            raise Exception("ANALYZE_FEEDBACK_API_URL is not set")
+        
+        url = url.rstrip('/') + "/analyze-feedback"
+        # payload = {'analysis_mode': 'STAT',
+        # 'sampling_method': 'DIRECT',
+        # 'top_n_stores': '10',
+        # 'bottom_n_stores': '10',
+        # 'top_n_topics': '10',
+        # 'quote_sample_size': '5'}
+        payload = {
+            'include_channel': os.getenv("ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL") == "true",
+        }
+        files=[
+        ('file',('surveys.xlsx',buffer,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
+        ]
+        
+        request_headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
 
-    try:
-        # Added timeout and session with trust_env=False to bypass system proxies
         session = requests.Session()
-        session.trust_env = False  # This prevents requests from using system-level proxies
+        session.trust_env = False
         response = session.post(url, data=payload, files=files, headers=request_headers, timeout=300)
-    except requests.exceptions.Timeout:
-        raise HTTPException(status_code=504, detail="Analysis API request timed out")
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=500, detail=f"Failed to connect to Analysis API: {str(e)}")
-    
-    if response.status_code != 200:
-        print(f"Error from analysis API: {response.status_code}")
-        print(f"Response content: {response.text}")
-        raise HTTPException(status_code=response.status_code, detail=f"Analysis API error: {response.text[:500]}")
-
-    try:
+        
+        if response.status_code != 200:
+            raise Exception(f"Analysis API error: {response.text[:500]}")
+        
         return response.json()
-    except Exception as e:
-        print(f"Failed to parse JSON response: {e}")
-        print(f"Raw response: {response.text}")
-        raise HTTPException(status_code=500, detail=f"Analysis API returned invalid JSON: {response.text[:200]}")
+    
+    result = await asyncio.to_thread(generate_excel_and_call_api)
+    return result

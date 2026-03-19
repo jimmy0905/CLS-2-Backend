@@ -14,6 +14,7 @@ from models.Channel import Channel
 from models.DeliveryService import DeliveryService
 from datetime import datetime, timezone
 from utils.llm.extract_total import extract_total, _extract_total_retry_sync
+from utils.llm.normalize_keywords import normalize_keywords, _normalize_keywords_sync
 from utils.logger import logger
 import dateutil.parser
 from typing import Union, Optional, List, Dict, Any
@@ -27,6 +28,7 @@ from utils.database import engine
 from config import MAX_WORKER_THREADS
 from utils.llm.models import TotalResponse
 from sqlalchemy.orm import Session
+import os
 
 # Thread-safe lock for updating progress
 progress_lock = threading.Lock()
@@ -194,8 +196,26 @@ async def process_single_row(
         store_key = row["store_key"] if pd.notna(row["store_key"]) else None
         comment = row["answer"] if pd.notna(row["answer"]) else None
         reported_at = row["survey_order_date"] if pd.notna(row["survey_order_date"]) else None
-        survey_id = str(int(row["survey_id"])) if pd.notna(row["survey_id"]) else None
-        respondent_id = str(int(row["respondent_id"])) if pd.notna(row["respondent_id"]) else None
+        
+        # Handle survey_id - can be int, float, or string (hash)
+        if pd.notna(row["survey_id"]):
+            survey_id_raw = row["survey_id"]
+            if isinstance(survey_id_raw, (int, float)):
+                survey_id = str(int(survey_id_raw))
+            else:
+                survey_id = str(survey_id_raw)
+        else:
+            survey_id = None
+        
+        # Handle respondent_id - can be int, float, or string (hash)
+        if pd.notna(row["respondent_id"]):
+            respondent_id_raw = row["respondent_id"]
+            if isinstance(respondent_id_raw, (int, float)):
+                respondent_id = str(int(respondent_id_raw))
+            else:
+                respondent_id = str(respondent_id_raw)
+        else:
+            respondent_id = None
         if is_comment_valid(comment) is False:
             logger.warning(f"Row {index + 1}: Comment is invalid, skipping row")
             # Create an error for the upload task
@@ -218,7 +238,7 @@ async def process_single_row(
             channel_name = row["channel"]
 
         delivery_service_name = None
-        if "delivery_mode" in row and pd.notna(row["processed_delivery_mode_detail"]):
+        if "processed_delivery_mode_detail" in row and pd.notna(row["processed_delivery_mode_detail"]):
             delivery_service_name = row["processed_delivery_mode_detail"]
 
         # Check if the store_key (store_key) is valid
@@ -239,7 +259,28 @@ async def process_single_row(
             result["error"] = "Store Key is required"
             return result
         # Check if the store_key is in the database
-        store = db.query(Store).filter(Store.store_key == int(store_key)).first()
+        # Handle store_key - can be int, float, or string
+        try:
+            if isinstance(store_key, (int, float)):
+                store_key_value = int(store_key)
+            else:
+                store_key_value = int(float(store_key))
+        except (ValueError, TypeError):
+            logger.warning(f"Row {index + 1}: Invalid store_key format: {store_key}")
+            error = UploadTaskError(
+                upload_task_id=upload_task_id,
+                input_store_key=store_key,
+                input_comment=comment,
+                input_reported_at=reported_at,
+                error_message=f"Invalid store_key format: {store_key}",
+                raw_row_data=json_row_data,
+            )
+            db.add(error)
+            db.commit()
+            result["error"] = "Invalid store_key format"
+            return result
+        
+        store = db.query(Store).filter(Store.store_key == store_key_value).first()
         if not store:
             logger.warning(
                 f"Row {index + 1}: Store Key {store_key} not found in database, skipping row"
@@ -319,21 +360,11 @@ async def process_single_row(
         if channel_name is not None and str(channel_name).strip():
             channel = db.query(Channel).filter(Channel.name == channel_name).first()
             if not channel:
-                logger.warning(
-                    f"Row {index + 1}: Channel {channel_name} not found in database, skipping row"
-                )
-                error = UploadTaskError(
-                    upload_task_id=upload_task_id,
-                    input_store_key=store_key,
-                    input_comment=comment,
-                    input_reported_at=reported_at,
-                    error_message="Channel is not valid",
-                    raw_row_data=json_row_data,
-                )
-                db.add(error)
+                # Create a new channel if it doesn't exist
+                channel = Channel(name=channel_name)
+                db.add(channel)
                 db.commit()
-                result["error"] = "Channel is not valid"
-                return result
+                db.refresh(channel)
             channel_id = channel.id
         else:
             channel_id = None
@@ -345,21 +376,10 @@ async def process_single_row(
                 .first()
             )
             if not delivery_service:
-                logger.warning(
-                    f"Row {index + 1}: Delivery service {delivery_service_name} not found in database, skipping row"
-                )
-                error = UploadTaskError(
-                    upload_task_id=upload_task_id,
-                    input_store_key=store_key,
-                    input_comment=comment,
-                    input_reported_at=reported_at,
-                    error_message="Delivery service is not valid",
-                    raw_row_data=json_row_data,
-                )
-                db.add(error)
+                delivery_service = DeliveryService(name=delivery_service_name)
+                db.add(delivery_service)
                 db.commit()
-                result["error"] = "Delivery service is not valid"
-                return result
+                db.refresh(delivery_service)
             delivery_service_id = delivery_service.id
         else:
             delivery_service_id = None
@@ -391,27 +411,32 @@ async def process_single_row(
                         f"Row {index + 1}: Cannot classified in AI Analysis after first try, retrying..."
                     )
                     have_to_retry = True
+                # Normalize keywords
+                if not have_to_retry:
+                    normalized_total, _ = await asyncio.to_thread(_normalize_keywords_sync, comment, total.model_dump())
+                else:
+                    normalized_total = total
                 # Check if the topics are not empty
-                if total.topics is None or len(total.topics) == 0:
+                if normalized_total.topics is None or len(normalized_total.topics) == 0:
                     logger.warning(f"Row {index + 1}: Topics are empty after first try, skipping row")
                     have_to_retry = True
                 # Check if the departments are not empty
-                if total.departments is None or len(total.departments) == 0:
+                if normalized_total.departments is None or len(normalized_total.departments) == 0:
                     logger.warning(f"Row {index + 1}: Departments are empty after first try, skipping row")
                     have_to_retry = True
                 # Check if the keywords are not empty
-                if total.keywords is None or len(total.keywords) == 0:
+                if normalized_total.keywords is None or len(normalized_total.keywords) == 0:
                     logger.warning(f"Row {index + 1}: Keywords are empty after first try, skipping row")
                     have_to_retry = True
                 # Check if the topics are valid
-                for topic in total.topics:
+                for topic in normalized_total.topics:
                     if topic.text not in available_topics:
                         logger.warning(
                             f"Row {index + 1}: Topic {topic.text} is not valid after first try, retrying..."
                         )
                         have_to_retry = True
                 # Check if the departments are valid
-                for department in total.departments:
+                for department in normalized_total.departments:
                     if department.text not in available_departments:
                         logger.warning(
                             f"Row {index + 1}: Department {department.text} is not valid after first try, retrying..."
@@ -420,61 +445,70 @@ async def process_single_row(
 
                 if have_to_retry:
                     total, _ = await asyncio.to_thread(_extract_total_retry_sync, comment)
-                    # Check if the total is classified, if not, skip the row
                     if total.cannot_classified:
                         logger.warning(
                             f"Row {index + 1}: Cannot classified in AI Analysis after retrying, skipping row"
                         )
                         llm_processing_failed = True
                         llm_error_message = "Cannot classified in AI Analysis after retrying"
-                    # Check if the topics are not empty
-                    elif total.topics is None:
-                        logger.warning(
-                            f"Row {index + 1}: Topics are empty after retrying, skipping row"
-                        )
-                        llm_processing_failed = True
-                        llm_error_message = "Topics are empty after retrying"
-                    # Check if the departments are not empty
-                    elif total.departments is None:
-                        logger.warning(
-                            f"Row {index + 1}: Departments are empty after retrying, skipping row"
-                        )
-                        llm_processing_failed = True
-                        llm_error_message = "Departments are empty after retrying"
-                    # Check if the keywords are not empty
-                    elif total.keywords is None:
-                        logger.warning(
-                            f"Row {index + 1}: Keywords are empty after retrying, skipping row"
-                        )
-                        llm_processing_failed = True
-                        llm_error_message = "Keywords are empty after retrying"
                     else:
-                        # Check if the topics are valid
-                        for topic in total.topics:
-                            if topic.text not in available_topics:
-                                logger.warning(
-                                    f"Row {index + 1}: Topic {topic.text} is not valid after retrying, skipping row"
-                                )
-                                llm_processing_failed = True
-                                llm_error_message = f"Topic {topic.text} is not valid after retrying"
-                                break
-                        
-                        # Check if the departments are valid (only if topics were valid)
-                        if not llm_processing_failed:
-                            for department in total.departments:
-                                if department.text not in available_departments:
+                        # Normalize keywords
+                        normalized_total, _ = await asyncio.to_thread(_normalize_keywords_sync, comment, total.model_dump())
+                        # Check if the total is classified, if not, skip the row
+                        if normalized_total.cannot_classified:
+                            logger.warning(
+                                f"Row {index + 1}: Cannot classified in AI Analysis after retrying, skipping row"
+                            )
+                            llm_processing_failed = True
+                            llm_error_message = "Cannot classified in AI Analysis after retrying"
+                        # Check if the topics are not empty
+                        elif normalized_total.topics is None:
+                            logger.warning(
+                                f"Row {index + 1}: Topics are empty after retrying, skipping row"
+                            )
+                            llm_processing_failed = True
+                            llm_error_message = "Topics are empty after retrying"
+                        # Check if the departments are not empty
+                        elif normalized_total.departments is None:
+                            logger.warning(
+                                f"Row {index + 1}: Departments are empty after retrying, skipping row"
+                            )
+                            llm_processing_failed = True
+                            llm_error_message = "Departments are empty after retrying"
+                        # Check if the keywords are not empty
+                        elif normalized_total.keywords is None:
+                            logger.warning(
+                                f"Row {index + 1}: Keywords are empty after retrying, skipping row"
+                            )
+                            llm_processing_failed = True
+                            llm_error_message = "Keywords are empty after retrying"
+                        else:
+                            # Check if the topics are valid
+                            for topic in normalized_total.topics:
+                                if topic.text not in available_topics:
                                     logger.warning(
-                                        f"Row {index + 1}: Department {department.text} is not valid after retrying, skipping row"
+                                        f"Row {index + 1}: Topic {topic.text} is not valid after retrying, skipping row"
                                     )
                                     llm_processing_failed = True
-                                    llm_error_message = f"Department {department.text} is not valid after retrying"
+                                    llm_error_message = f"Topic {topic.text} is not valid after retrying"
                                     break
+                            
+                            # Check if the departments are valid (only if topics were valid)
+                            if not llm_processing_failed:
+                                for department in normalized_total.departments:
+                                    if department.text not in available_departments:
+                                        logger.warning(
+                                            f"Row {index + 1}: Department {department.text} is not valid after retrying, skipping row"
+                                        )
+                                        llm_processing_failed = True
+                                        llm_error_message = f"Department {department.text} is not valid after retrying"
+                                        break
 
                 if not llm_processing_failed:
-                    total_topics = total.topics
-                    total_departments = total.departments
-                    total_sentiment = total.overall_sentiment.upper() if total.overall_sentiment else None
-                    total_keywords = total.keywords if total.keywords else []
+                    total_topics = normalized_total.topics
+                    total_departments = normalized_total.departments
+                    total_sentiment = normalized_total.overall_sentiment.upper() if normalized_total.overall_sentiment else None
+                    total_keywords = normalized_total.keywords if normalized_total.keywords else []
 
         except Exception as e:
             logger.error(
@@ -629,6 +663,7 @@ async def process_single_row(
                 sentiment=keyword_obj.sentiment.upper() if keyword_obj.sentiment else None,
             )
             db.add(survey_keyword)
+            db.flush()
 
         # Add topics
         for topic_obj in total_topics:
@@ -650,6 +685,7 @@ async def process_single_row(
                 sentiment=topic_obj.sentiment.upper() if topic_obj.sentiment else None,
             )
             db.add(survey_topic)
+            db.flush()
 
         # Add departments
         for department_obj in total_departments:
@@ -716,120 +752,130 @@ async def process_upload_task(file_path, db, upload_task_id):
     Process upload task with multi-threading support.
     Uses ThreadPoolExecutor to process multiple rows concurrently.
     """
-    # Get the available topics and departments from the database
-    topics = db.query(Topic).all()
-    available_topics = [topic.topic for topic in topics]
-    departments = db.query(Department).all()
-    available_departments = [department.name for department in departments]
-
-    # Read the file from csv file with improved error handling
     try:
-        df = pd.read_csv(
-            file_path,
-            encoding="utf-8",
-            sep=",",
-            encoding_errors="ignore",
-            on_bad_lines="warn",  # Warn about bad lines but continue
-            engine="python",  # Use Python engine for more flexible parsing
-            quotechar='"',
-            escapechar='\\',
-            na_values=['']
-        )
-        logger.info(f"Successfully parsed CSV file with {len(df)} rows for processing")
-    except Exception as e:
-        logger.error(f"Failed to read CSV file {file_path}: {e}")
-        raise Exception(f"Failed to read CSV file: {e}")
+        # Get the available topics and departments from the database
+        topics = db.query(Topic).all()
+        available_topics = [topic.topic for topic in topics]
+        departments = db.query(Department).all()
+        available_departments = [department.name for department in departments]
 
-    # Prepare row data for processing
-    row_data_list = []
-    for index, row in df.iterrows():
-        row_data_list.append({"index": index, "row": row})
-
-    # Configure thread pool size - adjust based on your system capabilities
-    # Consider API rate limits and database connection pool size
-    max_workers = min(MAX_WORKER_THREADS, len(row_data_list))
-
-    logger.info(
-        f"Processing {len(row_data_list)} rows with {max_workers} worker threads"
-    )
-
-    # Track processing time
-    start_time = time.time()
-
-    # Create a session factory for thread-safe database access
-    SessionLocal = sessionmaker(bind=engine)
-    
-    # Synchronous wrapper function to run async process_single_row in a thread
-    def process_row_sync(row_data, upload_task_id, available_topics, available_departments):
-        thread_db = SessionLocal()
+        # Read the file from csv file with improved error handling
         try:
-            # Create a new event loop for this thread
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            df = pd.read_csv(
+                file_path,
+                encoding="utf-8",
+                sep=",",
+                encoding_errors="ignore",
+                on_bad_lines="warn",  # Warn about bad lines but continue
+                engine="python",  # Use Python engine for more flexible parsing
+                quotechar='"',
+                escapechar='\\',
+                na_values=['']
+            )
+            logger.info(f"Successfully parsed CSV file with {len(df)} rows for processing")
+        except Exception as e:
+            logger.error(f"Failed to read CSV file {file_path}: {e}")
+            raise Exception(f"Failed to read CSV file: {e}")
+
+        # Prepare row data for processing
+        row_data_list = []
+        for index, row in df.iterrows():
+            row_data_list.append({"index": index, "row": row})
+
+        # Configure thread pool size - adjust based on your system capabilities
+        # Consider API rate limits and database connection pool size
+        max_workers = min(MAX_WORKER_THREADS, len(row_data_list))
+
+        logger.info(
+            f"Processing {len(row_data_list)} rows with {max_workers} worker threads"
+        )
+
+        # Track processing time
+        start_time = time.time()
+
+        # Create a session factory for thread-safe database access
+        SessionLocal = sessionmaker(bind=engine)
+        
+        # Synchronous wrapper function to run async process_single_row in a thread
+        def process_row_sync(row_data, upload_task_id, available_topics, available_departments):
+            thread_db = SessionLocal()
             try:
-                return loop.run_until_complete(
-                    process_single_row(row_data, upload_task_id, available_topics, available_departments, thread_db)
-                )
+                # Create a new event loop for this thread
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    return loop.run_until_complete(
+                        process_single_row(row_data, upload_task_id, available_topics, available_departments, thread_db)
+                    )
+                finally:
+                    loop.close()
             finally:
-                loop.close()
-        finally:
-            thread_db.close()
-    
-    # Process rows in parallel using ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all tasks
-        future_to_row = {
-            executor.submit(
-                process_row_sync,
-                row_data,
-                upload_task_id,
-                available_topics,
-                available_departments,
-            ): row_data["index"]
-            for row_data in row_data_list
-        }
+                thread_db.close()
+        
+        # Process rows in parallel using ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_row = {
+                executor.submit(
+                    process_row_sync,
+                    row_data,
+                    upload_task_id,
+                    available_topics,
+                    available_departments,
+                ): row_data["index"]
+                for row_data in row_data_list
+            }
 
-        # Wait for all tasks to complete
-        completed_tasks = 0
-        failed_tasks = 0
+            # Wait for all tasks to complete
+            completed_tasks = 0
+            failed_tasks = 0
 
-        for future in as_completed(future_to_row):
-            row_index = future_to_row[future]
-            try:
-                result = future.result()
-                if result.get("success"):
-                    completed_tasks += 1
-                else:
+            for future in as_completed(future_to_row):
+                row_index = future_to_row[future]
+                try:
+                    result = future.result()
+                    if result.get("success"):
+                        completed_tasks += 1
+                    else:
+                        failed_tasks += 1
+
+                except Exception as e:
                     failed_tasks += 1
+                    logger.error(f"Error processing row {row_index + 1}: {e}")
 
-            except Exception as e:
-                failed_tasks += 1
-                logger.error(f"Error processing row {row_index + 1}: {e}")
+        # Update final task status
+        upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
+        if upload_task:
+            upload_task.status = "completed"
+            db.commit()
 
-    # Update final task status
-    upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
-    if upload_task:
-        upload_task.status = "completed"
-        db.commit()
+        # Calculate and log performance metrics
+        end_time = time.time()
+        processing_time = end_time - start_time
+        rows_per_second = len(row_data_list) / processing_time if processing_time > 0 else 0
 
-    # Calculate and log performance metrics
-    end_time = time.time()
-    processing_time = end_time - start_time
-    rows_per_second = len(row_data_list) / processing_time if processing_time > 0 else 0
+        # Get final statistics from database
+        final_upload_task = (
+            db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
+        )
+        final_processed_count = final_upload_task.processed_rows if final_upload_task else 0
 
-    # Get final statistics from database
-    final_upload_task = (
-        db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
-    )
-    final_processed_count = final_upload_task.processed_rows if final_upload_task else 0
-
-    logger.info(
-        f"Upload task {upload_task_id} completed in {processing_time:.2f} seconds."
-    )
-    logger.info(
-        f"Processed {final_processed_count}/{len(row_data_list)} rows successfully."
-    )
-    logger.info(f"Failed tasks: {failed_tasks}, Completed tasks: {completed_tasks}")
-    logger.info(
-        f"Processing rate: {rows_per_second:.2f} rows/second with {max_workers} threads."
-    )
+        logger.info(
+            f"Upload task {upload_task_id} completed in {processing_time:.2f} seconds."
+        )
+        logger.info(
+            f"Processed {final_processed_count}/{len(row_data_list)} rows successfully."
+        )
+        logger.info(f"Failed tasks: {failed_tasks}, Completed tasks: {completed_tasks}")
+        logger.info(
+            f"Processing rate: {rows_per_second:.2f} rows/second with {max_workers} threads."
+        )
+    except Exception as e:
+        logger.error(f"Failed to process upload task {upload_task_id}: {e}")
+        raise Exception(f"Failed to process upload task: {e}")
+    finally:
+        #Remove the upload task file
+        try:
+            os.remove(file_path)
+        except Exception as e:
+            logger.error(f"Failed to remove upload task file {file_path}: {e}")

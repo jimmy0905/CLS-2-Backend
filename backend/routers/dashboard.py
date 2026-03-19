@@ -522,8 +522,8 @@ async def get_store_distribution(
 
 
 class ChannelAndDeliveryServiceDistributionResponse(BaseModel):
-    channel: str
-    delivery_service: str
+    channel: Optional[str] = None
+    delivery_service: Optional[str] = None
     neutral_count: int
     positive_count: int
     negative_count: int
@@ -539,20 +539,17 @@ async def get_channel_and_delivery_service_distribution(
 ) -> List[ChannelAndDeliveryServiceDistributionResponse]:
     filter_dict = filter_params.model_dump()
 
-    # Get all channels and delivery services
-    all_channels = db.query(Channel).all()
-    all_delivery_services = db.query(DeliveryService).all()
-
     # Single query to get sentiment counts with channel and delivery service filter
     base_query, _joined_tables, _ = build_optimized_query(db, filter_dict)
 
-    # Add necessary joins if not already present
+    # Use LEFT JOIN to handle cases where channel or delivery service might be null
     if "channel" not in _joined_tables:
-        base_query = base_query.join(Channel, Survey.channel_id == Channel.id)
+        base_query = base_query.outerjoin(Channel, Survey.channel_id == Channel.id)
     if "delivery_service" not in _joined_tables:
-        base_query = base_query.join(
+        base_query = base_query.outerjoin(
             DeliveryService, Survey.delivery_service_id == DeliveryService.id
         )
+    
     # Get sentiment counts grouped by channel and delivery service
     results_grouped_by_channel_and_delivery_service = (
         base_query.with_entities(
@@ -582,7 +579,7 @@ async def get_channel_and_delivery_service_distribution(
             ).label("mixed_count"),
             func.avg(Survey.topic_sentiment_score).label("sentiment_score"),
         )
-        .group_by(Channel.id, DeliveryService.id)
+        .group_by(Channel.id, Channel.name, DeliveryService.id, DeliveryService.name)
         .all()
     )
 
@@ -598,13 +595,13 @@ async def get_channel_and_delivery_service_distribution(
         ],
     )
 
-    # Add necessary joins if not already present
+    # Use LEFT JOIN for total count query as well
     if "channel" not in total_count_joins:
-        total_count_query = total_count_query.join(
+        total_count_query = total_count_query.outerjoin(
             Channel, Survey.channel_id == Channel.id
         )
     if "delivery_service" not in total_count_joins:
-        total_count_query = total_count_query.join(
+        total_count_query = total_count_query.outerjoin(
             DeliveryService, Survey.delivery_service_id == DeliveryService.id
         )
 
@@ -620,6 +617,7 @@ async def get_channel_and_delivery_service_distribution(
 
     # Combine results
     # Create dictionaries keyed by (channel_id, delivery_service_id)
+    # Note: channel_id or delivery_service_id can be None
     sentiment_dict = {
         (row.channel_id, row.delivery_service_id): row
         for row in results_grouped_by_channel_and_delivery_service
@@ -630,43 +628,26 @@ async def get_channel_and_delivery_service_distribution(
         for row in total_count_results
     }
 
-    # Iterate through ALL possible channel and delivery service combinations
+    # Build response from actual data combinations (not all possible combinations)
     channel_and_delivery_service_distribution = []
-    for channel in all_channels:
-        for delivery_service in all_delivery_services:
-            # Look up sentiment data for this channel/delivery service combination
-            sentiment_data = sentiment_dict.get((channel.id, delivery_service.id))
+    for key, sentiment_data in sentiment_dict.items():
+        channel_id, delivery_service_id = key
+        
+        # Get total count for this combination
+        total_count = total_count_dict.get(key, 0)
 
-            if sentiment_data:
-                # Use actual sentiment counts
-                neutral_count = sentiment_data.neutral_count
-                positive_count = sentiment_data.positive_count
-                negative_count = sentiment_data.negative_count
-                mixed_count = sentiment_data.mixed_count
-                sentiment_score = float(sentiment_data.sentiment_score or 0.0)
-            else:
-                # No sentiment data found, use 0
-                neutral_count = 0
-                positive_count = 0
-                negative_count = 0
-                mixed_count = 0
-                sentiment_score = 0.0
-
-            # Get total count (from query with all filters)
-            total_count = total_count_dict.get((channel.id, delivery_service.id), 0)
-
-            channel_and_delivery_service_distribution.append(
-                ChannelAndDeliveryServiceDistributionResponse(
-                    channel=channel.name,
-                    delivery_service=delivery_service.name,
-                    neutral_count=neutral_count,
-                    positive_count=positive_count,
-                    negative_count=negative_count,
-                    mixed_count=mixed_count,
-                    sentiment_score=sentiment_score,
-                    total_count_for_option=total_count,
-                )
+        channel_and_delivery_service_distribution.append(
+            ChannelAndDeliveryServiceDistributionResponse(
+                channel=sentiment_data.channel,
+                delivery_service=sentiment_data.delivery_service,
+                neutral_count=sentiment_data.neutral_count,
+                positive_count=sentiment_data.positive_count,
+                negative_count=sentiment_data.negative_count,
+                mixed_count=sentiment_data.mixed_count,
+                sentiment_score=float(sentiment_data.sentiment_score or 0.0),
+                total_count_for_option=total_count,
             )
+        )
 
     return channel_and_delivery_service_distribution
 
@@ -805,7 +786,7 @@ class StoreColumnSentimentDistributionResponse(BaseModel):
 async def get_store_column_sentiment_distribution(
     column: str = Query(
         ...,
-        description="The column name to get the sentiment distribution for store column, columns are bu_key, area_manager, store_format, store_type, operations_controller, regional_manager, px, csr, dr, mag_type, cf_grouping, store_brand, competitor, region, area, territory, toh, district, city, operations_manager, district_manager, sic, tech_life_type, operation_manager_tl, region_manager_tl, relocation, latitude, longitude, store_open_date, store_close_date, is_closed, store_key, store_english_name, store_local_name",
+        description="The column name to get the sentiment distribution for store column, columns are bu_key, area_manager, store_format, store_type, operations_controller, regional_manager, px, csr, dr, mag_type, cf_grouping, store_brand, competitor, region, area, province, territory, toh, district, city, operations_manager, district_manager, sic, tech_life_type, operation_manager_tl, region_manager_tl, relocation, latitude, longitude, store_open_date, store_close_date, is_closed, store_key, store_english_name, store_local_name",
     ),
     filter_params: FilterRequest = Depends(get_filter_params),
     db: Session = Depends(get_db),
@@ -827,6 +808,7 @@ async def get_store_column_sentiment_distribution(
         "competitor": Store.competitor,
         "region": Store.region,
         "area": Store.area,
+        "province": Store.province,
         "territory": Store.territory,
         "toh": Store.toh,
         "district": Store.district,
@@ -847,9 +829,52 @@ async def get_store_column_sentiment_distribution(
         "store_english_name": Store.store_name_english,
         "store_local_name": Store.store_name_local,
     }
+    
+    column_to_filter_key_mapper = {
+        "bu_key": "bu_keys",
+        "area_manager": "area_managers",
+        "store_format": "store_formats",
+        "store_type": "store_types",
+        "operations_controller": "operations_controllers",
+        "regional_manager": "regional_managers",
+        "px": "px",
+        "csr": "csr",
+        "dr": "dr",
+        "mag_type": "mag_types",
+        "cf_grouping": "cf_groupings",
+        "store_brand": "store_brands",
+        "competitor": "competitors",
+        "region": "regions",
+        "area": "areas",
+        "province": "provinces",
+        "territory": "territories",
+        "toh": "tohs",
+        "district": "districts",
+        "city": "cities",
+        "operations_manager": "operations_managers",
+        "district_manager": "district_managers",
+        "sic": "sic",
+        "tech_life_type": "tech_life_types",
+        "operation_manager_tl": "operation_manager_tls",
+        "region_manager_tl": "region_manager_tls",
+        "relocation": "relocations",
+        "latitude": "latitude",
+        "longitude": "longitude",
+        "store_open_date": "store_open_date",
+        "store_close_date": "store_close_date",
+        "is_closed": "is_closed",
+        "store_key": "store_keys",
+        "store_english_name": "store_english_names",
+        "store_local_name": "store_local_names",
+    }
+    
     column_name = column_name_mapper.get(column)
     if column_name is None:
         raise HTTPException(status_code=404, detail="Column name not found")
+    
+    filter_key = column_to_filter_key_mapper.get(column)
+    if filter_key is None:
+        raise HTTPException(status_code=404, detail="Filter key not found for column")
 
     filter_dict = filter_params.model_dump()
 
@@ -894,7 +919,7 @@ async def get_store_column_sentiment_distribution(
     total_count_query, total_count_joins, _ = build_optimized_query(
         db,
         filter_dict,
-        exclude_filters=[column_name],
+        exclude_filters=[filter_key],
     )
     # Add store column join if not already present
     if "store" not in total_count_joins:
