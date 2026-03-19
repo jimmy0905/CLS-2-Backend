@@ -829,9 +829,52 @@ async def get_store_column_sentiment_distribution(
         "store_english_name": Store.store_name_english,
         "store_local_name": Store.store_name_local,
     }
+    
+    column_to_filter_key_mapper = {
+        "bu_key": "bu_keys",
+        "area_manager": "area_managers",
+        "store_format": "store_formats",
+        "store_type": "store_types",
+        "operations_controller": "operations_controllers",
+        "regional_manager": "regional_managers",
+        "px": "px",
+        "csr": "csr",
+        "dr": "dr",
+        "mag_type": "mag_types",
+        "cf_grouping": "cf_groupings",
+        "store_brand": "store_brands",
+        "competitor": "competitors",
+        "region": "regions",
+        "area": "areas",
+        "province": "provinces",
+        "territory": "territories",
+        "toh": "tohs",
+        "district": "districts",
+        "city": "cities",
+        "operations_manager": "operations_managers",
+        "district_manager": "district_managers",
+        "sic": "sic",
+        "tech_life_type": "tech_life_types",
+        "operation_manager_tl": "operation_manager_tls",
+        "region_manager_tl": "region_manager_tls",
+        "relocation": "relocations",
+        "latitude": "latitude",
+        "longitude": "longitude",
+        "store_open_date": "store_open_date",
+        "store_close_date": "store_close_date",
+        "is_closed": "is_closed",
+        "store_key": "store_keys",
+        "store_english_name": "store_english_names",
+        "store_local_name": "store_local_names",
+    }
+    
     column_name = column_name_mapper.get(column)
     if column_name is None:
         raise HTTPException(status_code=404, detail="Column name not found")
+    
+    filter_key = column_to_filter_key_mapper.get(column)
+    if filter_key is None:
+        raise HTTPException(status_code=404, detail="Filter key not found for column")
 
     filter_dict = filter_params.model_dump()
 
@@ -876,7 +919,7 @@ async def get_store_column_sentiment_distribution(
     total_count_query, total_count_joins, _ = build_optimized_query(
         db,
         filter_dict,
-        exclude_filters=[column_name],
+        exclude_filters=[filter_key],
     )
     # Add store column join if not already present
     if "store" not in total_count_joins:

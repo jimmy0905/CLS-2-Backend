@@ -9,6 +9,7 @@ from datetime import datetime, date
 import pandas as pd
 import numpy as np
 import os
+import asyncio
 
 router = APIRouter(
     prefix="/stores",
@@ -303,67 +304,74 @@ async def upsert_stores_from_csv(
     if file.content_type != "text/csv":
         raise HTTPException(status_code=400, detail="File must be a CSV file")
     
-    tmp_file_path = None
+    def process_csv_file():
+        tmp_file_path = None
+        try:
+            # Create a tmp file name with the current timestamp
+            tmp_file_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{file.filename}"
+            tmp_file_path = os.path.join("/tmp", tmp_file_name)
+            # Write the file to the tmp file
+            with open(tmp_file_path, "wb") as f:
+                contents = file.file.read()
+                f.write(contents)
+            # Read the file into a pandas dataframe
+            df = pd.read_csv(tmp_file_path, encoding="utf-8", sep=",", encoding_errors="ignore", on_bad_lines="warn", engine="python", quotechar='"', escapechar="\\", na_values=[''])
+            # Replace all NaN values with None for proper NULL insertion in database
+            df = df.replace({np.nan: None})
+            # Iterate over the dataframe and upsert the stores
+            for index, row in df.iterrows():
+                store = Store(
+                    store_key=row["store_key"],
+                    store_name_english=row.get("store_name_english"),
+                    store_name_local=row.get("store_name_local"),
+                    bu_key=row.get("bu_key"),
+                    area_manager=row.get("area_manager"),
+                    store_format=row.get("store_format"),
+                    store_type=row.get("store_type"),
+                    operations_controller=row.get("operations_controller"),
+                    regional_manager=row.get("regional_manager"),
+                    px=row.get("px"),
+                    csr=row.get("csr"),
+                    dr=row.get("dr"),
+                    mag_type=row.get("mag_type"),
+                    cf_grouping=row.get("cf_grouping"),
+                    store_brand=row.get("store_brand"),
+                    competitor=row.get("competitor"),
+                    region=row.get("region"),
+                    area=row.get("area"),
+                    province=row.get("province"),
+                    territory=row.get("territory"),
+                    toh=row.get("toh"),
+                    district=row.get("district"),
+                    city=row.get("city"),
+                    operations_manager=row.get("operations_manager"),
+                    district_manager=row.get("district_manager"),
+                    sic=row.get("sic"),
+                    tech_life_type=row.get("tech_life_type"),
+                    operation_manager_tl=row.get("operation_manager_tl"),
+                    region_manager_tl=row.get("region_manager_tl"),
+                    relocation=row.get("relocation"),
+                    latitude=row.get("latitude"),
+                    longitude=row.get("longitude"),
+                    store_open_date=datetime.strptime(row.get("store_open_date"), "%Y-%m-%d").date() if row.get("store_open_date") else None,
+                    store_close_date=datetime.strptime(row.get("store_close_date"), "%Y-%m-%d").date() if row.get("store_close_date") else None,
+                    is_closed=True if row.get("is_closed") == "True" else False,
+                )
+                db.merge(store)
+            
+            db.commit()
+            return {"message": "Stores upserted successfully"}
+        except Exception as e:
+            db.rollback()
+            if tmp_file_path and os.path.exists(tmp_file_path):
+                os.remove(tmp_file_path)
+            raise e
+        finally:
+            if tmp_file_path and os.path.exists(tmp_file_path):
+                os.remove(tmp_file_path)
+    
     try:
-        # Create a tmp file name with the current timestamp
-        tmp_file_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{file.filename}"
-        tmp_file_path = os.path.join("/tmp", tmp_file_name)
-        # Write the file to the tmp file
-        with open(tmp_file_path, "wb") as f:
-            contents = file.file.read()
-            f.write(contents)
-        # Read the file into a pandas dataframe
-        df = pd.read_csv(tmp_file_path, encoding="utf-8", sep=",", encoding_errors="ignore", on_bad_lines="warn", engine="python", quotechar='"', escapechar="\\", na_values=[''])
-        # Replace all NaN values with None for proper NULL insertion in database
-        df = df.replace({np.nan: None})
-        # Iterate over the dataframe and upsert the stores
-        for index, row in df.iterrows():
-            store = Store(
-                store_key=row["store_key"],
-                store_name_english=row.get("store_name_english"),
-                store_name_local=row.get("store_name_local"),
-                bu_key=row.get("bu_key"),
-                area_manager=row.get("area_manager"),
-                store_format=row.get("store_format"),
-                store_type=row.get("store_type"),
-                operations_controller=row.get("operations_controller"),
-                regional_manager=row.get("regional_manager"),
-                px=row.get("px"),
-                csr=row.get("csr"),
-                dr=row.get("dr"),
-                mag_type=row.get("mag_type"),
-                cf_grouping=row.get("cf_grouping"),
-                store_brand=row.get("store_brand"),
-                competitor=row.get("competitor"),
-                region=row.get("region"),
-                area=row.get("area"),
-                province=row.get("province"),
-                territory=row.get("territory"),
-                toh=row.get("toh"),
-                district=row.get("district"),
-                city=row.get("city"),
-                operations_manager=row.get("operations_manager"),
-                district_manager=row.get("district_manager"),
-                sic=row.get("sic"),
-                tech_life_type=row.get("tech_life_type"),
-                operation_manager_tl=row.get("operation_manager_tl"),
-                region_manager_tl=row.get("region_manager_tl"),
-                relocation=row.get("relocation"),
-                latitude=row.get("latitude"),
-                longitude=row.get("longitude"),
-                store_open_date=datetime.strptime(row.get("store_open_date"), "%Y-%m-%d").date() if row.get("store_open_date") else None,
-                store_close_date=datetime.strptime(row.get("store_close_date"), "%Y-%m-%d").date() if row.get("store_close_date") else None,
-                is_closed=True if row.get("is_closed") == "True" else False,
-            )
-            db.merge(store)
-        
-        db.commit()
-        return {"message": "Stores upserted successfully"}
+        result = await asyncio.to_thread(process_csv_file)
+        return result
     except Exception as e:
-        db.rollback()
-        if tmp_file_path and os.path.exists(tmp_file_path):
-            os.remove(tmp_file_path)
         raise HTTPException(status_code=400, detail=f"Invalid CSV file: {str(e)}")
-    finally:
-        if tmp_file_path and os.path.exists(tmp_file_path):
-            os.remove(tmp_file_path)

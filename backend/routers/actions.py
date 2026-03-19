@@ -21,6 +21,7 @@ from models.Action import Action as ActionDatabaseModel
 from models.GeneratedEmail import GeneratedEmail
 from models.EmailRecord import EmailRecord
 from sqlalchemy import func
+import asyncio
 
 router = APIRouter(
     prefix="/actions",
