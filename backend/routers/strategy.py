@@ -698,12 +698,15 @@ async def get_strategy_v2(
             raise Exception("ANALYZE_FEEDBACK_API_URL is not set")
         
         url = url.rstrip('/') + "/analyze-feedback"
-        payload = {'analysis_mode': 'STAT',
-        'sampling_method': 'DIRECT',
-        'top_n_stores': '10',
-        'bottom_n_stores': '10',
-        'top_n_topics': '10',
-        'quote_sample_size': '5'}
+        # payload = {'analysis_mode': 'STAT',
+        # 'sampling_method': 'DIRECT',
+        # 'top_n_stores': '10',
+        # 'bottom_n_stores': '10',
+        # 'top_n_topics': '10',
+        # 'quote_sample_size': '5'}
+        payload = {
+            'include_channel': os.getenv("ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL") == "true",
+        }
         files=[
         ('file',('surveys.xlsx',buffer,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
         ]
