@@ -1,17 +1,17 @@
-name: WTCUA-ECLS CLSense Backend Dev Pipeline
+name: WTCUA-ECLS CLSense Backend Prod Pipeline
 
 on:
   push:
     branches:
-      - wtcua-ecls-dev
+      - wtcua-ecls-prod
     paths:
       - backend/**
       - requirements.txt
       - Dockerfile
-      - .github/workflows/pipeline-wtcua-ecls-dev.yml
+      - .github/workflows/pipeline-wtcua-ecls-prod.yml
 
 env:
-  DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/clsense-wtcua-ecls-backend-dev
+  DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/clsense-wtcua-ecls-backend-prod
 
 jobs:
   build-image:
