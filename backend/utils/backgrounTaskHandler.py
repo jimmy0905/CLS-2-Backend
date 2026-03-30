@@ -282,22 +282,16 @@ async def process_single_row(
         
         store = db.query(Store).filter(Store.store_key == store_key_value).first()
         if not store:
-            logger.warning(
-                f"Row {index + 1}: Store Key {store_key} not found in database, skipping row"
+            logger.info(
+                f"Row {index + 1}: Store Key {store_key} not found in database, creating new store"
             )
-            # Create an error for the upload task
-            error = UploadTaskError(
-                upload_task_id=upload_task_id,
-                input_store_key=store_key,
-                input_comment=comment,
-                input_reported_at=reported_at,
-                error_message="Store Key is not valid",
-                raw_row_data=json_row_data,
+            store = Store(
+                store_key=store_key_value,
+                store_name_local=str(store_key),
             )
-            db.add(error)
+            db.add(store)
             db.commit()
-            result["error"] = "Store Key is not valid"
-            return result
+            db.refresh(store)
 
         # Check if the comment is valid
         # Check if the comment is empty
