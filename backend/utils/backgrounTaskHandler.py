@@ -28,6 +28,7 @@ from utils.database import engine
 from config import MAX_WORKER_THREADS
 from utils.llm.models import TotalResponse
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 import os
 
 # Thread-safe lock for updating progress
@@ -285,13 +286,17 @@ async def process_single_row(
             logger.info(
                 f"Row {index + 1}: Store Key {store_key} not found in database, creating new store"
             )
-            store = Store(
-                store_key=store_key_value,
-                store_name_local=str(store_key),
-            )
-            db.add(store)
-            db.commit()
-            db.refresh(store)
+            try:
+                store = Store(
+                    store_key=store_key_value,
+                    store_name_local=str(store_key),
+                )
+                db.add(store)
+                db.commit()
+                db.refresh(store)
+            except IntegrityError:
+                db.rollback()
+                store = db.query(Store).filter(Store.store_key == store_key_value).first()
 
         # Check if the comment is valid
         # Check if the comment is empty
