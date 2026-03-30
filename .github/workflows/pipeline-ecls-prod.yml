@@ -1,17 +1,17 @@
-name: MRO CLSense Backend Prod Pipeline
+name: ECLS CLSense Backend Prod Pipeline
 
 on:
   push:
     branches:
-      - mro-prod
+      - main-ecls
     paths:
       - backend/**
       - requirements.txt
       - Dockerfile
-      - .github/workflows/pipeline-mro-prod.yml
+      - .github/workflows/pipeline-ecls-prod.yml
 
 env:
-  DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/clsense-mro-backend-prod
+  DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/clsense-ecls-backend-prod
 
 jobs:
   build-image:
