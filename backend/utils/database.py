@@ -10,6 +10,12 @@ timezone = os.getenv("DATABASE_TIMEZONE", "UTC")
 # Create engine with timezone configuration
 engine = create_engine(
     SQLALCHEMY_DATABASE_URI,
+    pool_pre_ping=True,
+    pool_size=20,
+    max_overflow=20,
+    pool_timeout=60,
+    pool_recycle=1800,
+    pool_use_lifo=True,
     connect_args={"options": f"-c timezone={timezone}"}
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

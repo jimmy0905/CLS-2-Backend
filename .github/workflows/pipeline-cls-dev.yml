@@ -1,17 +1,17 @@
-name: WTCHK-ECLS CLSense Backend Dev Pipeline
+name: CLSense Backend Dev Pipeline
 
 on:
   push:
     branches:
-      - wtchk-ecls-dev
+      - dev
     paths:
       - backend/**
       - requirements.txt
       - Dockerfile
-      - .github/workflows/pipeline-wtchk-ecls-dev.yml
+      - .github/workflows/pipeline-cls-dev.yml
 
 env:
-  DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/clsense-wtchk-ecls-backend-dev
+  DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/clsense-backend-dev
 
 jobs:
   build-image:

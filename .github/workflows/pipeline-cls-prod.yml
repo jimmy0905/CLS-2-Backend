@@ -1,17 +1,17 @@
-name: WTCID-ECLS CLSense Backend Dev Pipeline
+name: CLSense Backend Prod Pipeline
 
 on:
   push:
     branches:
-      - wtcid-ecls-dev
+      - main
     paths:
       - backend/**
       - requirements.txt
       - Dockerfile
-      - .github/workflows/pipeline-wtcid-ecls-dev.yml
+      - .github/workflows/pipeline-cls-prod.yml
 
 env:
-  DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/clsense-wtcid-ecls-backend-dev
+  DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/clsense-backend-prod
 
 jobs:
   build-image:

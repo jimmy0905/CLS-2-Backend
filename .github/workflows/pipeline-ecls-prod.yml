@@ -1,17 +1,17 @@
-name: WWHK CLSense Backend Prod Pipeline
+name: ECLS CLSense Backend Prod Pipeline
 
 on:
   push:
     branches:
-      - wwhk-prod
+      - main-ecls
     paths:
       - backend/**
       - requirements.txt
       - Dockerfile
-      - .github/workflows/pipeline-wwhk-prod.yml
+      - .github/workflows/pipeline-ecls-prod.yml
 
 env:
-  DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/clsense-wwhk-backend-prod
+  DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/clsense-ecls-backend-prod
 
 jobs:
   build-image:
