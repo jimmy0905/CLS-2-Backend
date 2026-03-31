@@ -1,21 +1,46 @@
 services:
-  backend:
+  backend-sd:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: connex_backend
+    container_name: backend-sd
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      - DATABASE_HOST=postgres
+      - DATABASE_NAME=sd
+      - DATABASE_TIMEZONE=Europe/London
     ports:
       - "8000:8000"
     networks:
       - connex_network
     volumes:
-      - upload_tasks:/app/upload_tasks
+      - sd-upload_tasks:/app/upload_tasks
+
+  backend-wtctr:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: backend-wtctr
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DATABASE_HOST=postgres
+      - DATABASE_NAME=wtctr
+      - DATABASE_TIMEZONE=Europe/Istanbul
+    ports:
+      - "8001:8000"
+    networks:
+      - connex_network
+    volumes:
+      - wtctr-upload_tasks:/app/upload_tasks
 
 volumes:
-  upload_tasks:
+  sd-upload_tasks:
+    driver: local
+  wtctr-upload_tasks:
     driver: local
 
 networks:

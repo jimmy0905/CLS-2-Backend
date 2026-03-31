@@ -846,6 +846,7 @@ async def process_upload_task(file_path, db, upload_task_id):
         upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
         if upload_task:
             upload_task.status = "completed"
+            upload_task.updated_at = datetime.now(timezone.utc)
             db.commit()
 
         # Calculate and log performance metrics
