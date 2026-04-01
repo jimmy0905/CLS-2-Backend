@@ -22,6 +22,7 @@ from routers import (
 )
 import os
 from fastapi_pagination import add_pagination
+from utils.logger import logger
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from utils.database import get_db
@@ -56,6 +57,32 @@ add_pagination(app)
 @app.on_event("startup")
 async def startup_event():
     check_tables_exist()
+    _reset_processing_upload_tasks()
+
+
+def _reset_processing_upload_tasks():
+    from models.UploadTask import UploadTask
+    from utils.database import SessionLocal
+    from datetime import datetime, timezone
+
+    db = SessionLocal()
+    try:
+        updated = (
+            db.query(UploadTask)
+            .filter(UploadTask.status == "processing")
+            .update(
+                {"status": "Stop: Restart", "updated_at": datetime.now(timezone.utc)},
+                synchronize_session="fetch",
+            )
+        )
+        db.commit()
+        if updated:
+            logger.info(f"Reset {updated} processing upload task(s) to 'Stop: Restart'")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to reset processing upload tasks: {e}")
+    finally:
+        db.close()
 
 
 @app.get("/health")

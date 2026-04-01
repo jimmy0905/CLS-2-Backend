@@ -28,6 +28,7 @@ from utils.database import engine
 from config import MAX_WORKER_THREADS
 from utils.llm.models import TotalResponse
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 import os
 
 # Thread-safe lock for updating progress
@@ -282,22 +283,20 @@ async def process_single_row(
         
         store = db.query(Store).filter(Store.store_key == store_key_value).first()
         if not store:
-            logger.warning(
-                f"Row {index + 1}: Store Key {store_key} not found in database, skipping row"
+            logger.info(
+                f"Row {index + 1}: Store Key {store_key} not found in database, creating new store"
             )
-            # Create an error for the upload task
-            error = UploadTaskError(
-                upload_task_id=upload_task_id,
-                input_store_key=store_key,
-                input_comment=comment,
-                input_reported_at=reported_at,
-                error_message="Store Key is not valid",
-                raw_row_data=json_row_data,
-            )
-            db.add(error)
-            db.commit()
-            result["error"] = "Store Key is not valid"
-            return result
+            try:
+                store = Store(
+                    store_key=store_key_value,
+                    store_name_local=str(store_key),
+                )
+                db.add(store)
+                db.commit()
+                db.refresh(store)
+            except IntegrityError:
+                db.rollback()
+                store = db.query(Store).filter(Store.store_key == store_key_value).first()
 
         # Check if the comment is valid
         # Check if the comment is empty
@@ -847,6 +846,7 @@ async def process_upload_task(file_path, db, upload_task_id):
         upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
         if upload_task:
             upload_task.status = "completed"
+            upload_task.updated_at = datetime.now(timezone.utc)
             db.commit()
 
         # Calculate and log performance metrics
