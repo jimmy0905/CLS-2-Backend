@@ -234,14 +234,24 @@ async def process_single_row(
                 # Update existing survey with new data and mark as deleted
                 existing_survey.is_deleted = True
                 db.commit()
-                result["success"] = True
-                result["error"] = "Survey is deleted"
-                return result
-            else:
-                # Create a new skip row
-                result["success"] = True
-                result["error"] = "Survey is deleted"
-                return result
+
+            # Update processed rows count for successful deleted-row handling
+            with progress_lock:
+                upload_task = (
+                    db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
+                )
+                if upload_task:
+                    upload_task.processed_rows += 1
+                    processed_count = upload_task.processed_rows
+                    total_rows = upload_task.total_rows
+                    db.commit()
+
+                    if (processed_count % 10 == 0) or (processed_count == total_rows):
+                        logger.info(f"Processed {processed_count}/{total_rows} rows")
+
+            result["success"] = True
+            result["error"] = "Survey is deleted"
+            return result
         
         if is_comment_valid(comment) is False:
             logger.warning(f"Row {index + 1}: Comment is invalid, skipping row")
