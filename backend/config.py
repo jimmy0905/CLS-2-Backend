@@ -15,3 +15,24 @@ SQLALCHEMY_DATABASE_URI = f"postgresql://{DATABASE_USER}:{DATABASE_PASSWORD}@{DA
 
 # Multi-threading configuration for survey processing
 MAX_WORKER_THREADS = int(os.getenv("MAX_WORKER_THREADS", "4"))  # Default to 4 threads
+
+
+def parse_bool_env(env_name: str, default: bool = False) -> bool:
+    raw_value = os.getenv(env_name)
+    if raw_value is None:
+        return default
+
+    normalized_value = raw_value.strip().lower()
+    if not normalized_value:
+        return default
+
+    if normalized_value in {"1", "true", "yes", "on"}:
+        return True
+    if normalized_value in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
+def is_survey_export_column_enabled(column_name: str) -> bool:
+    env_name = f"SURVEY_EXPORT_COLUMN_{column_name.upper()}"
+    return parse_bool_env(env_name, default=False)
