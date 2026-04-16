@@ -197,7 +197,8 @@ async def process_single_row(
         store_key = row["store_key"] if pd.notna(row["store_key"]) else None
         comment = row["answer"] if pd.notna(row["answer"]) else None
         reported_at = row["survey_order_date"] if pd.notna(row["survey_order_date"]) else None
-        
+        is_deleted_value = row["is_delete"] if "is_delete" in row and pd.notna(row["is_delete"]) else None
+        logger.info(f"Row {index + 1}: Is deleted value: {is_deleted_value}")
         # Handle survey_id - can be int, float, or string (hash)
         if pd.notna(row["survey_id"]):
             survey_id_raw = row["survey_id"]
@@ -217,6 +218,41 @@ async def process_single_row(
                 respondent_id = str(respondent_id_raw)
         else:
             respondent_id = None
+        logger.info(f"Row {index + 1}: Survey ID: {survey_id}, Respondent ID: {respondent_id}, Is deleted: {is_deleted_value}")
+        if is_deleted_value and is_deleted_value == "Y":
+            is_deleted = True
+        else:
+            is_deleted = False
+        logger.info(f"Row {index + 1}: Is deleted: {is_deleted}")
+        if is_deleted:
+            #Check of the survey_id and respondent_id is in the database
+            existing_survey = db.query(Survey).filter(
+                Survey.survey_id == survey_id,
+                Survey.respondent_id == respondent_id
+            ).first()
+            if existing_survey:
+                # Update existing survey with new data and mark as deleted
+                existing_survey.is_deleted = True
+                db.commit()
+
+            # Update processed rows count for successful deleted-row handling
+            with progress_lock:
+                upload_task = (
+                    db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
+                )
+                if upload_task:
+                    upload_task.processed_rows += 1
+                    processed_count = upload_task.processed_rows
+                    total_rows = upload_task.total_rows
+                    db.commit()
+
+                    if (processed_count % 10 == 0) or (processed_count == total_rows):
+                        logger.info(f"Processed {processed_count}/{total_rows} rows")
+
+            result["success"] = True
+            result["error"] = "Survey is deleted"
+            return result
+        
         if is_comment_valid(comment) is False:
             logger.warning(f"Row {index + 1}: Comment is invalid, skipping row")
             # Create an error for the upload task

@@ -32,6 +32,7 @@ import logging
 from openpyxl import Workbook
 from io import BytesIO
 import asyncio
+from config import is_survey_export_column_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -404,8 +405,17 @@ async def download_surveys(
             "updated_at",
         ]
 
+        export_headers = [
+            header for header in headers if is_survey_export_column_enabled(header)
+        ]
+        if not export_headers:
+            raise HTTPException(
+                status_code=500,
+                detail="No survey export columns enabled. Set SURVEY_EXPORT_COLUMN_<COLUMN_NAME>=true for required columns.",
+            )
+
         # Write headers to first row
-        for col_idx, header in enumerate(headers, start=1):
+        for col_idx, header in enumerate(export_headers, start=1):
             ws.cell(row=1, column=col_idx, value=header)
 
         # Stream surveys in batches using offset
@@ -436,8 +446,8 @@ async def download_surveys(
             for survey in surveys:
                 csv_value = survey.to_csv()
                 # Write row values
-                for col_idx, header in enumerate(headers, start=1):
-                    value = format_excel_value(csv_value[header])
+                for col_idx, header in enumerate(export_headers, start=1):
+                    value = format_excel_value(csv_value.get(header))
                     ws.cell(row=row_num, column=col_idx, value=value)
                 row_num += 1
             offset += batch_size
