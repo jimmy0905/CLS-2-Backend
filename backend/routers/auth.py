@@ -12,9 +12,13 @@ from utils.security import (
     extract_user_claims,
     create_or_update_user_from_azure,
 )
+from authlib.integrations.base_client import OAuthError
 from pydantic import BaseModel
 import os
+import logging
 from utils.security import oauth
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 AZURE_REDIRECT_URI = os.getenv("AZURE_REDIRECT_URI")
@@ -29,7 +33,6 @@ async def azure_login(request: Request):
 @router.get("/azure/callback")
 async def azure_callback(request: Request, db: Session = Depends(get_db)):
     try:
-        print("Azure callback")
         # Get token from Azure AD (proxy configuration is handled via environment variables)
         token_response = await oauth.azure.authorize_access_token(request)
         access_token = token_response.get("access_token")
@@ -40,21 +43,23 @@ async def azure_callback(request: Request, db: Session = Depends(get_db)):
                 detail="No access token received",
             )
 
-        # Method 1: Verify the ID token (contains user claims)
-        user_data = {}
-        if id_token:
-            try:
-                user_claims = await verify_azure_token(id_token)
-                user_data = extract_user_claims(user_claims)
-            except Exception as e:
-                print(f"ID token verification failed: {e}")
+        # Verify the ID token (contains user claims) — abort if verification fails
+        if not id_token:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No ID token received",
+            )
+
+        user_claims = await verify_azure_token(id_token)
+        user_data = extract_user_claims(user_claims)
+
         # Create or update user in your database
         user = await create_or_update_user_from_azure(user_data, db)
 
         # Create your application's JWT token
         app_access_token = create_access_token(
             data={
-                "sub": str(user.id),  # Ensure user.id is converted to string
+                "sub": str(user.id),
                 "oauth_provider": user.oauth_provider,
                 "oauth_id": user.oauth_id,
                 "role": user.role,
@@ -63,15 +68,24 @@ async def azure_callback(request: Request, db: Session = Depends(get_db)):
         login_record = LoginRecord(user_id=user.id)
         db.add(login_record)
         db.commit()
-        print(f"{FRONTEND_URL}/auth/azure/callback?access_token={app_access_token}")
+
+        # Use URL fragment (#) instead of query param (?) to avoid token leaking in server logs
         return RedirectResponse(
-            url=f"{FRONTEND_URL}/auth/azure/callback?access_token={app_access_token}"
+            url=f"{FRONTEND_URL}/auth/azure/callback#access_token={app_access_token}"
         )
 
+    except HTTPException:
+        raise
+    except OAuthError as e:
+        logger.warning("OAuth state error (stale session cookie?): %s", e)
+        # Redirect back to login so the user can retry with a fresh state
+        root_path = os.getenv("FASTAPI_ROOT_PATH", "")
+        return RedirectResponse(url=f"{root_path}/auth/azure/login")
     except Exception as e:
+        logger.error("Azure callback failed: %s", e)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Authentication failed: {str(e)}",
+            detail="Authentication failed",
         )
 
 

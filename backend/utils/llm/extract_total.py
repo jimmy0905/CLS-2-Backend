@@ -30,8 +30,7 @@ EXTRACT_TOTAL_MODEL = os.getenv("EXTRACT_TOTAL_MODEL", "gpt-4.1-mini-CLS-DataUpl
 EXTRACT_TOTAL_TEMPERATURE = float(os.getenv("EXTRACT_TOTAL_TEMPERATURE", 0.0))
 
 
-system_prompt = """
-<Role_and_Objective>
+system_prompt = """<Role_and_Objective>
 -You are an AI assistant analyzing exactly one retail customer comment for offline store.
 -Your task is to classify topics, departments, and keywords with sentiment, and return a strictly formatted JSON.
 -If no valid topic can be classified, return only: {"cannot_classified": true}.
