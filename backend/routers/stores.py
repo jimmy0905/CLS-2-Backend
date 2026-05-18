@@ -1,15 +1,23 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import and_
 from utils.database import get_db
 from models.Store import Store
 from utils.security import get_current_user
+from utils.conditionFilter import (
+    FilterRequest,
+    get_filter_params,
+    build_store_filter_conditions,
+)
 from pydantic import BaseModel
-from typing import Optional, List, Annotated    
+from typing import Optional, List, Annotated
 from datetime import datetime, date
 import pandas as pd
 import numpy as np
 import os
 import asyncio
+from io import StringIO
 
 router = APIRouter(
     prefix="/stores",
@@ -45,6 +53,8 @@ class StoreResponse(BaseModel):
     operations_manager: Optional[str] = None
     district_manager: Optional[str] = None
     sic: Optional[str] = None
+    # ALTER TABLE stores ADD COLUMN soc VARCHAR(100) NULL;
+    soc: Optional[str] = None
     tech_life_type: Optional[str] = None
     operation_manager_tl: Optional[str] = None
     region_manager_tl: Optional[str] = None
@@ -56,14 +66,48 @@ class StoreResponse(BaseModel):
     is_closed: bool
 
 
-@router.get("/")
-async def get_stores(db: Session = Depends(get_db)) -> List[StoreResponse]:
-    stores = (
-        db.query(Store)
-        .options(
-        )
-        .all()
+@router.get("/export")
+async def export_stores_csv(
+    filter_params: FilterRequest = Depends(get_filter_params),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    filter_dict = filter_params.model_dump()
+    conditions = build_store_filter_conditions(filter_dict)
+    stores = db.query(Store).filter(and_(*conditions)).order_by(Store.store_key).all()
+
+    headers = [
+        "store_key", "store_name_english", "store_name_local", "bu_key",
+        "area_manager", "store_format", "store_type", "operations_controller",
+        "regional_manager", "px", "csr", "dr", "mag_type", "cf_grouping",
+        "store_brand", "competitor", "region", "area", "province", "territory",
+        "toh", "district", "city", "operations_manager", "district_manager",
+        "sic", "soc", "tech_life_type", "operation_manager_tl", "region_manager_tl",
+        "relocation", "latitude", "longitude", "store_open_date", "store_close_date",
+        "is_closed",
+    ]
+
+    output = StringIO()
+    output.write(",".join(headers) + "\n")
+    for store in stores:
+        row = store.to_dict()
+        output.write(",".join(str(row.get(h, "") or "") for h in headers) + "\n")
+    output.seek(0)
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=stores.csv"},
     )
+
+
+@router.get("/")
+async def get_stores(
+    filter_params: FilterRequest = Depends(get_filter_params),
+    db: Session = Depends(get_db),
+) -> List[StoreResponse]:
+    filter_dict = filter_params.model_dump()
+    conditions = build_store_filter_conditions(filter_dict)
+    stores = db.query(Store).filter(and_(*conditions)).all()
     return [
         StoreResponse(
             store_key=store.store_key,
@@ -92,6 +136,7 @@ async def get_stores(db: Session = Depends(get_db)) -> List[StoreResponse]:
             operations_manager=store.operations_manager,
             district_manager=store.district_manager,
             sic=store.sic,
+            soc=store.soc,
             tech_life_type=store.tech_life_type,
             operation_manager_tl=store.operation_manager_tl,
             region_manager_tl=store.region_manager_tl,
@@ -144,6 +189,7 @@ async def get_store(store_key: int, db: Session = Depends(get_db)) -> StoreRespo
         operations_manager=store.operations_manager,
         district_manager=store.district_manager,
         sic=store.sic,
+        soc=store.soc,
         tech_life_type=store.tech_life_type,
         operation_manager_tl=store.operation_manager_tl,
         region_manager_tl=store.region_manager_tl,
@@ -183,6 +229,7 @@ class CreateStoreRequest(BaseModel):
     operations_manager: Optional[str] = None
     district_manager: Optional[str] = None
     sic: Optional[str] = None
+    soc: Optional[str] = None
     tech_life_type: Optional[str] = None
     operation_manager_tl: Optional[str] = None
     region_manager_tl: Optional[str] = None
@@ -232,6 +279,7 @@ async def create_store(
         operations_manager=create_store_request.operations_manager,
         district_manager=create_store_request.district_manager,
         sic=create_store_request.sic,
+        soc=create_store_request.soc,
         tech_life_type=create_store_request.tech_life_type,
         operation_manager_tl=create_store_request.operation_manager_tl,
         region_manager_tl=create_store_request.region_manager_tl,
@@ -272,6 +320,7 @@ async def create_store(
         operations_manager=store.operations_manager,
         district_manager=store.district_manager,
         sic=store.sic,
+        soc=store.soc,
         tech_life_type=store.tech_life_type,
         operation_manager_tl=store.operation_manager_tl,
         region_manager_tl=store.region_manager_tl,
@@ -347,6 +396,7 @@ async def upsert_stores_from_csv(
                     operations_manager=row.get("operations_manager"),
                     district_manager=row.get("district_manager"),
                     sic=row.get("sic"),
+                    soc=row.get("soc"),
                     tech_life_type=row.get("tech_life_type"),
                     operation_manager_tl=row.get("operation_manager_tl"),
                     region_manager_tl=row.get("region_manager_tl"),

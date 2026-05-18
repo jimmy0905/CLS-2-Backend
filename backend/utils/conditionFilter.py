@@ -47,6 +47,7 @@ class FilterRequest(BaseModel):
     operations_managers: List[str] = []
     district_managers: List[str] = []
     sic: List[str] = []
+    soc: List[str] = []
     tech_life_types: List[str] = []
     operation_manager_tls: List[str] = []
     region_manager_tls: List[str] = []
@@ -177,6 +178,10 @@ def get_filter_params(
         default=[],
         description="The sic to filter by",
     ),
+    soc: List[str] = Query(
+        default=[],
+        description="The soc to filter by",
+    ),
     tech_life_types: List[str] = Query(
         default=[],
         description="The tech life types to filter by",
@@ -298,6 +303,7 @@ def get_filter_params(
         operations_managers=operations_managers,
         district_managers=district_managers,
         sic=sic,
+        soc=soc,
         tech_life_types=tech_life_types,
         operation_manager_tls=operation_manager_tls,
         region_manager_tls=region_manager_tls,
@@ -456,6 +462,9 @@ def build_store_filter_conditions(filter_dict: FilterRequest):
 
     if filter_dict.get("sic"):
         conditions.append(Store.sic.in_(filter_dict["sic"]))
+
+    if filter_dict.get("soc"):
+        conditions.append(Store.soc.in_(filter_dict["soc"]))
 
     if filter_dict.get("tech_life_types"):
         conditions.append(Store.tech_life_type.in_(filter_dict["tech_life_types"]))
