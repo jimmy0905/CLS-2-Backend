@@ -7,19 +7,21 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 import os
-import requests
 import json
 import uuid
+import logging
 from dotenv import load_dotenv
 from authlib.integrations.starlette_client import OAuth
 from authlib.jose import jwt as authlib_jwt
 import httpx
 
+logger = logging.getLogger(__name__)
+
 
 load_dotenv()
 
 # JWT settings
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "default_secret_key")
+JWT_SECRET_KEY = os.environ["JWT_SECRET_KEY"]
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", 30))
 
@@ -38,7 +40,7 @@ def setup_proxy_environment():
         os.environ["HTTPS_PROXY"] = proxy_url
         os.environ["http_proxy"] = proxy_url
         os.environ["https_proxy"] = proxy_url
-        print(f"Proxy configured: {proxy_url}")
+        logger.info("Proxy configured")
 
 # Set up proxy environment variables
 setup_proxy_environment()
@@ -104,38 +106,37 @@ async def verify_azure_token(token: str) -> Dict[str, Any]:
         # Get Azure AD public keys for token verification
         tenant_id = os.getenv("AZURE_TENANT_ID")
         jwks_url = f"https://login.microsoftonline.com/{tenant_id}/discovery/v2.0/keys"
-        print(jwks_url)
-        # Fetch the JWKS
-        response = requests.get(
-            jwks_url,
-            proxies={
-                "http": os.getenv("ASW_PROXY_URL"),
-                "https": os.getenv("ASW_PROXY_URL"),
-            },
-        )
-        print(response.json())
+
+        # Fetch the JWKS using async httpx
+        async with httpx.AsyncClient() as client:
+            response = await client.get(jwks_url)
         response.raise_for_status()
         jwks = response.json()
-        print(jwks)
 
         # Verify and decode the token
         claims = authlib_jwt.decode(token, jwks)
 
+        # Validate temporal claims (exp, nbf, iat)
+        claims.validate()
+
         # Verify the token is for our application
         client_id = os.getenv("AZURE_CLIENT_ID")
         if claims.get("aud") != client_id:
-            raise HTTPException(status_code=401, detail="Token audience mismatch")
+            raise HTTPException(status_code=401, detail="Invalid token")
 
         # Verify the issuer
         expected_issuer = f"https://login.microsoftonline.com/{tenant_id}/v2.0"
         if claims.get("iss") != expected_issuer:
-            raise HTTPException(status_code=401, detail="Token issuer mismatch")
+            raise HTTPException(status_code=401, detail="Invalid token")
 
         return claims
 
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error("Token verification failed: %s", e)
         raise HTTPException(
-            status_code=401, detail=f"Token verification failed: {str(e)}"
+            status_code=401, detail="Token verification failed"
         )
 
 
@@ -160,18 +161,16 @@ async def create_or_update_user_from_azure(
     """
     Create or update a user in the database based on Azure AD data
     """
-    print(f"Azure user data received: {azure_user_data}")
-    
     email = azure_user_data.get("email") or azure_user_data.get("userPrincipalName", "")
     azure_id = azure_user_data.get("user_id") or azure_user_data.get("oid", "")
-    
+
     if not email or not azure_id:
         raise HTTPException(
-            status_code=400, 
-            detail=f"Missing required user data. Email: {bool(email)}, Azure ID: {bool(azure_id)}"
+            status_code=400,
+            detail="Missing required user data from identity provider"
         )
 
-    print(f"Looking for user with azure_id: {azure_id}")
+    logger.debug("Looking for user with azure_id: %s", azure_id)
     
     # Check if user already exists by oauth_provider and oauth_id
     user = (
@@ -181,19 +180,14 @@ async def create_or_update_user_from_azure(
     )
 
     if not user:
-        print(f"Creating new user with email: {email}, azure_id: {azure_id}")
-        # Create new user
+        logger.info("Creating new Azure user")
         user = User(
             oauth_provider="azure",
             oauth_id=azure_id,
-            # for oauth, we use email as username
             username=email,
         )
         db.add(user)
         db.commit()
         db.refresh(user)
-        print(f"Created user with ID: {user.id}")
-    else:
-        print(f"Found existing user with ID: {user.id}")
 
     return user

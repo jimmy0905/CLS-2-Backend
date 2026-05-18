@@ -47,9 +47,9 @@ app.add_middleware(
 # Add session middleware for OAuth state management
 app.add_middleware(
     SessionMiddleware,
-    secret_key=os.getenv(
-        "SESSION_SECRET_KEY", "fallback-session-secret-key-change-in-production"
-    ),
+    secret_key=os.environ["SESSION_SECRET_KEY"],
+    session_cookie="clsense_session",
+    same_site="lax",
 )
 
 add_pagination(app)
