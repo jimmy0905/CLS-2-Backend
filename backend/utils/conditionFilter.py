@@ -18,7 +18,7 @@ from typing import List
 from fastapi import HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
-from datetime import date
+from datetime import date, datetime, timedelta
 
 
 class FilterRequest(BaseModel):
@@ -340,15 +340,31 @@ def build_survey_filter_conditions(filter_dict: FilterRequest):
     """Build filter conditions based on the filter dictionary"""
     conditions = []
 
+    def parse_filter_date(value: str | date | datetime, field_name: str) -> date:
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        try:
+            return date.fromisoformat(value)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{field_name} must use YYYY-MM-DD format",
+            ) from exc
+
     # Add is_deleted check
     conditions.append(Survey.is_deleted == False)
 
     # Date range filter
     if filter_dict.get("from_date"):
-        conditions.append(Survey.reported_at >= filter_dict["from_date"])
+        from_date = parse_filter_date(filter_dict["from_date"], "from_date")
+        conditions.append(Survey.reported_at >= datetime.combine(from_date, datetime.min.time()))
 
     if filter_dict.get("to_date"):
-        conditions.append(Survey.reported_at <= filter_dict["to_date"])
+        to_date = parse_filter_date(filter_dict["to_date"], "to_date")
+        next_day = to_date + timedelta(days=1)
+        conditions.append(Survey.reported_at < datetime.combine(next_day, datetime.min.time()))
 
     # Sentiment filter
     if filter_dict.get("sentiments"):
