@@ -18,6 +18,7 @@ from typing import List
 from fastapi import HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
+from datetime import date
 
 
 class FilterRequest(BaseModel):
@@ -54,8 +55,8 @@ class FilterRequest(BaseModel):
     relocations: List[str] = []
     latitudes: List[float] = []
     longitudes: List[float] = []
-    store_open_dates: List[str] = []
-    store_close_dates: List[str] = []
+    store_open_dates: List[date] = []
+    store_close_dates: List[date] = []
     is_closed: Optional[bool] = None
     department_ids: List[int] = []
     department_names: List[str] = []
@@ -206,16 +207,16 @@ def get_filter_params(
         default=[],
         description="The longitudes to filter by",
     ),
-    store_open_dates: List[str] = Query(
+    store_open_dates: List[date] = Query(
         default=[],
         description="The store open dates to filter by",
     ),
-    store_close_dates: List[str] = Query(
+    store_close_dates: List[date] = Query(
         default=[],
         description="The store close dates to filter by",
     ),
-    is_closed: bool = Query(
-        default=False,
+    is_closed: Optional[bool] = Query(
+        default=None,
         description="The is closed to filter by",
     ),
     department_ids: List[int] = Query(
@@ -490,7 +491,7 @@ def build_store_filter_conditions(filter_dict: FilterRequest):
     if filter_dict.get("store_close_dates"):
         conditions.append(Store.store_close_date.in_(filter_dict["store_close_dates"]))
 
-    if filter_dict.get("is_closed"):
+    if filter_dict.get("is_closed") is not None:
         conditions.append(Store.is_closed == filter_dict["is_closed"])
 
     return conditions

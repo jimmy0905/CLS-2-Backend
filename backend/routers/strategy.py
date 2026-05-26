@@ -60,6 +60,7 @@ class StoreResponse(BaseModel):
     operations_manager: Optional[str] = None
     district_manager: Optional[str] = None
     sic: Optional[str] = None
+    soc: Optional[str] = None
     tech_life_type: Optional[str] = None
     operation_manager_tl: Optional[str] = None
     region_manager_tl: Optional[str] = None
@@ -159,6 +160,7 @@ async def get_top_k_performance_stores(
                     "operations_manager": store_obj.operations_manager,
                     "district_manager": store_obj.district_manager,
                     "sic": store_obj.sic,
+                    "soc": store_obj.soc,
                     "tech_life_type": store_obj.tech_life_type,
                     "operation_manager_tl": store_obj.operation_manager_tl,
                     "region_manager_tl": store_obj.region_manager_tl,
@@ -216,7 +218,7 @@ class TopKPerformanceColumnResponse(BaseModel):
 
 @router.get("/get_top_k_performance_columns")
 async def get_top_k_performance_columns(
-    column: str = Query(..., description="The column name to get the sentiment distribution for store column, columns are bu_key, area_manager, store_format, store_type, operations_controller, regional_manager, px, csr, dr, mag_type, cf_grouping, store_brand, competitor, region, area, province, territory, toh, district, city, operations_manager, district_manager, sic, tech_life_type, operation_manager_tl, region_manager_tl, relocation, latitude, longitude, store_open_date, store_close_date, is_closed, store_key, store_english_name, store_local_name"),
+    column: str = Query(..., description="The column name to get the sentiment distribution for store column, columns are bu_key, area_manager, store_format, store_type, operations_controller, regional_manager, px, csr, dr, mag_type, cf_grouping, store_brand, competitor, region, area, province, territory, toh, district, city, operations_manager, district_manager, sic, soc, tech_life_type, operation_manager_tl, region_manager_tl, relocation, latitude, longitude, store_open_date, store_close_date, is_closed, store_key, store_english_name, store_local_name"),
     db: Session = Depends(get_db),
     filter_params: FilterRequest = Depends(get_filter_params),
     k: int = Query(
@@ -249,6 +251,7 @@ async def get_top_k_performance_columns(
         "operations_manager": Store.operations_manager,
         "district_manager": Store.district_manager,
         "sic": Store.sic,
+        "soc": Store.soc,
         "tech_life_type": Store.tech_life_type,
         "operation_manager_tl": Store.operation_manager_tl,
         "region_manager_tl": Store.region_manager_tl,
@@ -263,7 +266,7 @@ async def get_top_k_performance_columns(
         "store_local_name": Store.store_name_local,
     }
     
-    column_col = column_name_mapper[column]
+    column_col = column_name_mapper.get(column)
     if column_col is None:
         raise HTTPException(status_code=404, detail="Column name not found")
 
@@ -322,6 +325,11 @@ async def get_strategy_for_column_by_value(
     request: StrategyByColumnValueRequest,
     db: Session = Depends(get_db),
 ) -> str:
+    if not request.column_values:
+        raise HTTPException(
+            status_code=400,
+            detail="column_values must contain at least one value",
+        )
 
     column_name_mapper = {
         "bu_key": Store.bu_key,
@@ -347,6 +355,7 @@ async def get_strategy_for_column_by_value(
         "operations_manager": Store.operations_manager,
         "district_manager": Store.district_manager,
         "sic": Store.sic,
+        "soc": Store.soc,
         "tech_life_type": Store.tech_life_type,
         "operation_manager_tl": Store.operation_manager_tl,
         "region_manager_tl": Store.region_manager_tl,
@@ -360,11 +369,94 @@ async def get_strategy_for_column_by_value(
         "store_english_name": Store.store_name_english,
         "store_local_name": Store.store_name_local,
     }
-    column_col = column_name_mapper[request.target_column]
+    column_to_filter_key_mapper = {
+        "bu_key": "bu_keys",
+        "area_manager": "area_managers",
+        "store_format": "store_formats",
+        "store_type": "store_types",
+        "operations_controller": "operations_controllers",
+        "regional_manager": "regional_managers",
+        "px": "px",
+        "csr": "csr",
+        "dr": "dr",
+        "mag_type": "mag_types",
+        "cf_grouping": "cf_groupings",
+        "store_brand": "store_brands",
+        "competitor": "competitors",
+        "region": "regions",
+        "area": "areas",
+        "province": "provinces",
+        "territory": "territories",
+        "toh": "tohs",
+        "district": "districts",
+        "city": "cities",
+        "operations_manager": "operations_managers",
+        "district_manager": "district_managers",
+        "sic": "sic",
+        "soc": "soc",
+        "tech_life_type": "tech_life_types",
+        "operation_manager_tl": "operation_manager_tls",
+        "region_manager_tl": "region_manager_tls",
+        "relocation": "relocations",
+        "latitude": "latitudes",
+        "longitude": "longitudes",
+        "store_open_date": "store_open_dates",
+        "store_close_date": "store_close_dates",
+        "is_closed": "is_closed",
+        "store_key": "store_keys",
+        "store_english_name": "store_english_names",
+        "store_local_name": "store_local_names",
+    }
+
+    column_col = column_name_mapper.get(request.target_column)
     if column_col is None:
         raise HTTPException(status_code=404, detail="Column name not found")
+    filter_key = column_to_filter_key_mapper.get(request.target_column)
+    if filter_key is None:
+        raise HTTPException(status_code=404, detail="Filter key not found for column")
+
+    filter_value: list[str] | list[int] | list[float] | list[date] | bool = request.column_values
+    if filter_key == "is_closed":
+        if len(request.column_values) != 1:
+            raise HTTPException(
+                status_code=400,
+                detail="is_closed requires exactly one boolean value",
+            )
+
+        normalized_value = request.column_values[0].strip().lower()
+        if normalized_value not in {"true", "false"}:
+            raise HTTPException(
+                status_code=400,
+                detail="is_closed must be 'true' or 'false'",
+            )
+        filter_value = normalized_value == "true"
+    elif filter_key == "store_keys":
+        try:
+            filter_value = [int(value) for value in request.column_values]
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="store_key values must be integers",
+            ) from exc
+    elif filter_key in {"latitudes", "longitudes"}:
+        try:
+            filter_value = [float(value) for value in request.column_values]
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{request.target_column} values must be numbers",
+            ) from exc
+    elif filter_key in {"store_open_dates", "store_close_dates"}:
+        try:
+            filter_value = [date.fromisoformat(value) for value in request.column_values]
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{request.target_column} values must use YYYY-MM-DD format",
+            ) from exc
+
     filter_dict = {
-        column_col: request.column_values,
+        filter_key: filter_value,
         "topic_sentiments": [TopicSentiment.POSITIVE],
     }
     filtered_query, _, _ = build_optimized_query(db, filter_dict)
@@ -623,6 +715,7 @@ async def get_strategy_v2(
             "operations_manager",
             "district_manager",
             "sic",
+            "soc",
             "tech_life_type",
             "operation_manager_tl",
             "region_manager_tl",

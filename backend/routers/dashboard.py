@@ -786,7 +786,7 @@ class StoreColumnSentimentDistributionResponse(BaseModel):
 async def get_store_column_sentiment_distribution(
     column: str = Query(
         ...,
-        description="The column name to get the sentiment distribution for store column, columns are bu_key, area_manager, store_format, store_type, operations_controller, regional_manager, px, csr, dr, mag_type, cf_grouping, store_brand, competitor, region, area, province, territory, toh, district, city, operations_manager, district_manager, sic, tech_life_type, operation_manager_tl, region_manager_tl, relocation, latitude, longitude, store_open_date, store_close_date, is_closed, store_key, store_english_name, store_local_name",
+        description="The column name to get the sentiment distribution for store column, columns are bu_key, area_manager, store_format, store_type, operations_controller, regional_manager, px, csr, dr, mag_type, cf_grouping, store_brand, competitor, region, area, province, territory, toh, district, city, operations_manager, district_manager, sic, soc, tech_life_type, operation_manager_tl, region_manager_tl, relocation, latitude, longitude, store_open_date, store_close_date, is_closed, store_key, store_english_name, store_local_name",
     ),
     filter_params: FilterRequest = Depends(get_filter_params),
     db: Session = Depends(get_db),
@@ -816,6 +816,7 @@ async def get_store_column_sentiment_distribution(
         "operations_manager": Store.operations_manager,
         "district_manager": Store.district_manager,
         "sic": Store.sic,
+        "soc": Store.soc,
         "tech_life_type": Store.tech_life_type,
         "operation_manager_tl": Store.operation_manager_tl,
         "region_manager_tl": Store.region_manager_tl,
@@ -854,14 +855,15 @@ async def get_store_column_sentiment_distribution(
         "operations_manager": "operations_managers",
         "district_manager": "district_managers",
         "sic": "sic",
+        "soc": "soc",
         "tech_life_type": "tech_life_types",
         "operation_manager_tl": "operation_manager_tls",
         "region_manager_tl": "region_manager_tls",
         "relocation": "relocations",
-        "latitude": "latitude",
-        "longitude": "longitude",
-        "store_open_date": "store_open_date",
-        "store_close_date": "store_close_date",
+        "latitude": "latitudes",
+        "longitude": "longitudes",
+        "store_open_date": "store_open_dates",
+        "store_close_date": "store_close_dates",
         "is_closed": "is_closed",
         "store_key": "store_keys",
         "store_english_name": "store_english_names",
@@ -935,8 +937,12 @@ async def get_store_column_sentiment_distribution(
         .all()
     )
 
-    # Get all values for the column (filter out None values)
-    all_values = [row[0] for row in db.query(column_name).distinct().all() if row[0] is not None]
+    # Stay within the active filter context when determining which values to return.
+    all_values = [
+        row.column_name
+        for row in total_count_results
+        if row.column_name is not None
+    ]
 
     # Combine results
     # Create dictionaries keyed by column value

@@ -33,6 +33,8 @@ class Store(Base):
     operations_manager=Column(String(100), nullable=True) # operations_manager
     district_manager=Column(String(100), nullable=True) # district_manager
     sic=Column(String(100), nullable=True) # sic
+    # TODO: Add soc to the database
+    # ALTER TABLE stores ADD COLUMN soc VARCHAR(100) NULL;
     soc=Column(String(100), nullable=True) # soc
     tech_life_type=Column(String(100), nullable=True) # tech_life_type
     operation_manager_tl=Column(String(100), nullable=True) # operation_manager_tl
