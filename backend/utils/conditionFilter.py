@@ -18,6 +18,7 @@ from typing import List
 from fastapi import HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
+from datetime import date, datetime, timedelta
 
 
 class FilterRequest(BaseModel):
@@ -47,14 +48,15 @@ class FilterRequest(BaseModel):
     operations_managers: List[str] = []
     district_managers: List[str] = []
     sic: List[str] = []
+    soc: List[str] = []
     tech_life_types: List[str] = []
     operation_manager_tls: List[str] = []
     region_manager_tls: List[str] = []
     relocations: List[str] = []
     latitudes: List[float] = []
     longitudes: List[float] = []
-    store_open_dates: List[str] = []
-    store_close_dates: List[str] = []
+    store_open_dates: List[date] = []
+    store_close_dates: List[date] = []
     is_closed: Optional[bool] = None
     department_ids: List[int] = []
     department_names: List[str] = []
@@ -177,6 +179,10 @@ def get_filter_params(
         default=[],
         description="The sic to filter by",
     ),
+    soc: List[str] = Query(
+        default=[],
+        description="The soc to filter by",
+    ),
     tech_life_types: List[str] = Query(
         default=[],
         description="The tech life types to filter by",
@@ -201,16 +207,16 @@ def get_filter_params(
         default=[],
         description="The longitudes to filter by",
     ),
-    store_open_dates: List[str] = Query(
+    store_open_dates: List[date] = Query(
         default=[],
         description="The store open dates to filter by",
     ),
-    store_close_dates: List[str] = Query(
+    store_close_dates: List[date] = Query(
         default=[],
         description="The store close dates to filter by",
     ),
-    is_closed: bool = Query(
-        default=False,
+    is_closed: Optional[bool] = Query(
+        default=None,
         description="The is closed to filter by",
     ),
     department_ids: List[int] = Query(
@@ -298,6 +304,7 @@ def get_filter_params(
         operations_managers=operations_managers,
         district_managers=district_managers,
         sic=sic,
+        soc=soc,
         tech_life_types=tech_life_types,
         operation_manager_tls=operation_manager_tls,
         region_manager_tls=region_manager_tls,
@@ -333,15 +340,31 @@ def build_survey_filter_conditions(filter_dict: FilterRequest):
     """Build filter conditions based on the filter dictionary"""
     conditions = []
 
+    def parse_filter_date(value: str | date | datetime, field_name: str) -> date:
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        try:
+            return date.fromisoformat(value)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{field_name} must use YYYY-MM-DD format",
+            ) from exc
+
     # Add is_deleted check
     conditions.append(Survey.is_deleted == False)
 
     # Date range filter
     if filter_dict.get("from_date"):
-        conditions.append(Survey.reported_at >= filter_dict["from_date"])
+        from_date = parse_filter_date(filter_dict["from_date"], "from_date")
+        conditions.append(Survey.reported_at >= datetime.combine(from_date, datetime.min.time()))
 
     if filter_dict.get("to_date"):
-        conditions.append(Survey.reported_at <= filter_dict["to_date"])
+        to_date = parse_filter_date(filter_dict["to_date"], "to_date")
+        next_day = to_date + timedelta(days=1)
+        conditions.append(Survey.reported_at < datetime.combine(next_day, datetime.min.time()))
 
     # Sentiment filter
     if filter_dict.get("sentiments"):
@@ -457,6 +480,9 @@ def build_store_filter_conditions(filter_dict: FilterRequest):
     if filter_dict.get("sic"):
         conditions.append(Store.sic.in_(filter_dict["sic"]))
 
+    if filter_dict.get("soc"):
+        conditions.append(Store.soc.in_(filter_dict["soc"]))
+
     if filter_dict.get("tech_life_types"):
         conditions.append(Store.tech_life_type.in_(filter_dict["tech_life_types"]))
 
@@ -481,7 +507,7 @@ def build_store_filter_conditions(filter_dict: FilterRequest):
     if filter_dict.get("store_close_dates"):
         conditions.append(Store.store_close_date.in_(filter_dict["store_close_dates"]))
 
-    if filter_dict.get("is_closed"):
+    if filter_dict.get("is_closed") is not None:
         conditions.append(Store.is_closed == filter_dict["is_closed"])
 
     return conditions

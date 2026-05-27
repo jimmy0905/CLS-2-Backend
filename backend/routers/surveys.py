@@ -77,6 +77,7 @@ class StoreResponse(BaseModel):
     operations_manager: Optional[str] = None
     district_manager: Optional[str] = None
     sic: Optional[str] = None
+    soc: Optional[str] = None
     tech_life_type: Optional[str] = None
     operation_manager_tl: Optional[str] = None
     region_manager_tl: Optional[str] = None
@@ -379,6 +380,7 @@ async def download_surveys(
             "operations_manager",
             "district_manager",
             "sic",
+            "soc",
             "tech_life_type",
             "operation_manager_tl",
             "region_manager_tl",
