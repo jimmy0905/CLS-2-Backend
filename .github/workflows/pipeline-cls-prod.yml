@@ -12,7 +12,7 @@ on:
 
 env:
   DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/clsense-backend-prod
-
+  IS_ECLS_ENABLED: false
 jobs:
   build-image:
     name: Build Docker image
