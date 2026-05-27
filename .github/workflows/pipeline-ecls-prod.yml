@@ -33,6 +33,7 @@ jobs:
         run: |
           docker build ./backend \
             --pull \
+            --build-arg IS_ECLS_ENABLED=${{ env.IS_ECLS_ENABLED }} \
             -t ${{ env.DOCKERHUB_IMAGE_NAME }}:latest
 
       - name: Push to DockerHub

@@ -1,6 +1,8 @@
 # Use Python 3.11 slim image as base
 FROM python:3.11-slim
 
+ARG IS_ECLS_ENABLED=false
+
 # Set working directory
 WORKDIR /app
 
@@ -8,6 +10,7 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
+ENV IS_ECLS_ENABLED=${IS_ECLS_ENABLED}
 
 # Install system dependencies
 RUN apt-get update \
