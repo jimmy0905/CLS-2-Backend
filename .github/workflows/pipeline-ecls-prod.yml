@@ -3,7 +3,7 @@ name: ECLS CLSense Backend Prod Pipeline
 on:
   push:
     branches:
-      - main-ecls
+      - main
     paths:
       - backend/**
       - requirements.txt
@@ -12,7 +12,7 @@ on:
 
 env:
   DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/clsense-ecls-backend-prod
-
+  IS_ECLS_ENABLED: true
 jobs:
   build-image:
     name: Build Docker image
