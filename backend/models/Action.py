@@ -1,7 +1,7 @@
 from utils.database import Base
 from sqlalchemy import Column, Integer, ForeignKey, Text, JSON, DateTime, CHAR
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
+from utils.utc import utc_now
 
 
 class Action(Base):
@@ -12,8 +12,8 @@ class Action(Base):
     summary = Column(Text)
     actions_items = Column(JSON)
     survey_data = Column(JSON)
-    created_at = Column(DateTime(timezone=True), default=func.now())
-    updated_at = Column(DateTime(timezone=True), default=func.now())
+    created_at = Column(DateTime(timezone=False), default=utc_now)
+    updated_at = Column(DateTime(timezone=False), default=utc_now, onupdate=utc_now)
 
     # Relationships
     user = relationship("User", back_populates="actions")

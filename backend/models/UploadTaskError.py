@@ -1,9 +1,8 @@
 from utils.database import Base
 from sqlalchemy import Column, ForeignKey, DateTime, CHAR, Text, Integer, event, JSON
 import uuid
-from datetime import timezone
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
+from utils.utc import utc_isoformat, utc_now
 
 
 class UploadTaskError(Base):
@@ -15,8 +14,8 @@ class UploadTaskError(Base):
     input_store_key = Column(Integer)
     input_comment = Column(Text)
     input_reported_at = Column(Text)
-    created_at = Column(DateTime(timezone=True), default=func.now())
-    updated_at = Column(DateTime(timezone=True), default=func.now())
+    created_at = Column(DateTime(timezone=False), default=utc_now)
+    updated_at = Column(DateTime(timezone=False), default=utc_now)
     raw_row_data = Column(JSON, nullable=True)
 
     # Relationships
@@ -30,8 +29,8 @@ class UploadTaskError(Base):
             "input_store_key": self.input_store_key,
             "input_comment": self.input_comment,
             "input_reported_at": self.input_reported_at,
-            "created_at": self.created_at.astimezone(timezone.utc).isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.astimezone(timezone.utc).isoformat() if self.updated_at else None,
+            "created_at": utc_isoformat(self.created_at),
+            "updated_at": utc_isoformat(self.updated_at),
             "raw_row_data": self.raw_row_data,
         }
 
@@ -44,5 +43,5 @@ def update_updated_at(mapper, connection, target):
     connection.execute(
         UploadTaskError.__table__.update()
         .where(UploadTaskError.id == target.id)
-        .values(updated_at=func.now())
+        .values(updated_at=utc_now())
     )

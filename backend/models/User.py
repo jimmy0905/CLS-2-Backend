@@ -1,11 +1,10 @@
 from utils.database import Base
 from sqlalchemy import CHAR, Column, DateTime, String, Boolean, UniqueConstraint
-from datetime import datetime, timezone
 import uuid
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
 from sqlalchemy import event
+from utils.utc import utc_isoformat, utc_now
 
 
 class User(Base):
@@ -20,9 +19,9 @@ class User(Base):
     role = Column(String(50), nullable=False, default="user")
     oauth_provider = Column(String(50), nullable=True)
     oauth_id = Column(String(255), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
+    created_at = Column(DateTime(timezone=False), default=utc_now, nullable=False)
     updated_at = Column(
-        DateTime(timezone=True), default=func.now(), onupdate=func.now(), nullable=False
+        DateTime(timezone=False), default=utc_now, onupdate=utc_now, nullable=False
     )
     is_deleted = Column(Boolean, default=False)
 
@@ -46,8 +45,8 @@ class User(Base):
             "username": self.username,
             "role": self.role,
             "oauth_provider": self.oauth_provider,
-            "created_at": self.created_at.astimezone(timezone.utc) if self.created_at else None,
-            "updated_at": self.updated_at.astimezone(timezone.utc) if self.updated_at else None,
+            "created_at": utc_isoformat(self.created_at),
+            "updated_at": utc_isoformat(self.updated_at),
             "is_deleted": self.is_deleted,
         }
 
@@ -57,5 +56,5 @@ def update_updated_at(mapper, connection, target):
     connection.execute(
         User.__table__.update()
         .where(User.id == target.id)
-        .values(updated_at=func.now())
+        .values(updated_at=utc_now())
     )

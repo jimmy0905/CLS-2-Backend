@@ -16,11 +16,11 @@ from sqlalchemy import (
     JSON,
 )
 import enum
-import datetime
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy import event
 from models.enum.Sentiment import Sentiment, TopicSentiment
+from utils.utc import utc_isoformat, utc_now
 
 
 class Survey(Base):
@@ -39,10 +39,10 @@ class Survey(Base):
     # Columns
     comment = Column(Text)
     sentiment = Column(Enum(Sentiment, name="sentiment_enum"))
-    reported_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
-    created_at = Column(DateTime(timezone=True), default=func.now(), nullable=False)
+    reported_at = Column(DateTime(timezone=False), default=utc_now, nullable=False)
+    created_at = Column(DateTime(timezone=False), default=utc_now, nullable=False)
     updated_at = Column(
-        DateTime(timezone=True), default=func.now(), onupdate=func.now(), nullable=False
+        DateTime(timezone=False), default=utc_now, onupdate=utc_now, nullable=False
     )
     is_deleted = Column(Boolean, default=False)
     topic_sentiment = Column(Enum(TopicSentiment, name="topic_sentiment_enum"))
@@ -161,21 +161,9 @@ class Survey(Base):
             "sentiment": self.sentiment,
             "topic_sentiment": self.topic_sentiment,
             "topic_sentiment_score": self.topic_sentiment_score,
-            "reported_at": (
-                self.reported_at.astimezone(datetime.timezone.utc).isoformat()
-                if self.reported_at
-                else None
-            ),
-            "created_at": (
-                self.created_at.astimezone(datetime.timezone.utc).isoformat()
-                if self.created_at
-                else None
-            ),
-            "updated_at": (
-                self.updated_at.astimezone(datetime.timezone.utc).isoformat()
-                if self.updated_at
-                else None
-            ),
+            "reported_at": utc_isoformat(self.reported_at),
+            "created_at": utc_isoformat(self.created_at),
+            "updated_at": utc_isoformat(self.updated_at),
             "is_deleted": self.is_deleted,
         }
 

@@ -73,7 +73,7 @@ async def startup_event():
 def _reset_processing_upload_tasks():
     from models.UploadTask import UploadTask
     from utils.database import SessionLocal
-    from datetime import datetime, timezone
+    from utils.utc import utc_now
 
     db = SessionLocal()
     try:
@@ -81,7 +81,7 @@ def _reset_processing_upload_tasks():
             db.query(UploadTask)
             .filter(UploadTask.status == "processing")
             .update(
-                {"status": "Stop: Restart", "updated_at": datetime.now(timezone.utc)},
+                {"status": "Stop: Restart", "updated_at": utc_now()},
                 synchronize_session="fetch",
             )
         )

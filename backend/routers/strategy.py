@@ -26,6 +26,7 @@ from openpyxl import Workbook
 import os
 import asyncio
 from fastapi import BackgroundTasks
+from utils.utc import utc_isoformat
 
 
 router = APIRouter(
@@ -671,7 +672,7 @@ async def get_strategy_v2(
         elif isinstance(value, list):
             return "; ".join(str(item) for item in value)
         elif isinstance(value, datetime):
-            return value.isoformat()
+            return utc_isoformat(value) or ""
         elif isinstance(value, date):
             return value.isoformat()
         else:

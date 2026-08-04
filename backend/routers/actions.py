@@ -12,7 +12,7 @@ from utils.llm.models import (
 )
 from utils.llm.generate_actions import generate_actions
 from utils.llm.generate_email import generate_email
-from datetime import datetime
+from utils.utc import utc_now
 from utils.smtp import send_email as send_email_utils
 from utils.security import get_current_user
 from typing import List
@@ -153,9 +153,9 @@ async def get_actions(
     if len(surveys) == 0:
         raise HTTPException(status_code=404, detail="No surveys found")
     # print the start time
-    print(f"Start time: {datetime.now()}")
+    print(f"Start time: {utc_now()}")
     actions, _ = await generate_actions(surveys)
-    print(f"request time end: {datetime.now()}")
+    print(f"request time end: {utc_now()}")
     action = ActionDatabaseModel(
         user_id=current_user.id,
         summary=actions.summary,
@@ -163,11 +163,11 @@ async def get_actions(
         survey_data=[survey.to_dict() for survey in surveys],
     )
     # print the end time
-    print(f"End time: {datetime.now()}")
+    print(f"End time: {utc_now()}")
     db.add(action)
     db.commit()
     db.refresh(action)
-    print(f"After commit time: {datetime.now()}")
+    print(f"After commit time: {utc_now()}")
     return GetActionsResponse(
         id=action.id,
         summary=actions.summary,

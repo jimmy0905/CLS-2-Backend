@@ -7,11 +7,11 @@ from sqlalchemy.orm import Session
 import pandas as pd
 from models.UploadTask import UploadTask
 import os
-from datetime import datetime
 from pydantic import BaseModel
 from fastapi.responses import FileResponse
 from utils.security import get_current_user
 from utils.logger import logger
+from utils.utc import utc_isoformat, utc_now
 import threading
 import asyncio
 
@@ -87,7 +87,7 @@ async def upload_tasks(
     
     def save_and_validate_file():
         # Rename the file with the current timestamp
-        file_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{file.filename}"
+        file_name = f"{utc_now().strftime('%Y%m%d%H%M%S')}_{file.filename}"
         file_path = os.path.join(PATH_TO_UPLOAD_FOLDER, file_name)
 
         # Write the file
@@ -138,7 +138,7 @@ async def upload_tasks(
     background_process_upload_task(file_path, upload_task.id)
     logger.info(f"Background thread started for upload_task_id {upload_task.id}")
 
-    return upload_task
+    return build_upload_task_response(upload_task)
 
 
 
@@ -149,9 +149,23 @@ class UploadTaskResponse(BaseModel):
     status: str
     total_rows: int
     processed_rows: int
-    created_at: datetime
-    updated_at: datetime
+    created_at: str
+    updated_at: str
     error_count: int
+
+
+def build_upload_task_response(upload_task: UploadTask) -> UploadTaskResponse:
+    return UploadTaskResponse(
+        id=upload_task.id,
+        file_name=upload_task.file_name,
+        file_path=upload_task.file_path,
+        status=upload_task.status,
+        total_rows=upload_task.total_rows,
+        processed_rows=upload_task.processed_rows,
+        created_at=utc_isoformat(upload_task.created_at) or "",
+        updated_at=utc_isoformat(upload_task.updated_at) or "",
+        error_count=len(upload_task.errors),
+    )
 
 
 @router.get("/upload_tasks/{upload_task_id}")
@@ -161,36 +175,13 @@ async def get_upload_task(
     upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
     if not upload_task:
         raise HTTPException(status_code=404, detail="Upload task not found")
-    return UploadTaskResponse(
-        id=upload_task.id,
-        file_name=upload_task.file_name,
-        file_path=upload_task.file_path,
-        status=upload_task.status,
-        total_rows=upload_task.total_rows,
-        processed_rows=upload_task.processed_rows,
-        created_at=upload_task.created_at,
-        updated_at=upload_task.updated_at,
-        error_count=len(upload_task.errors),
-    )
+    return build_upload_task_response(upload_task)
 
 
 @router.get("")
 async def get_upload_tasks(db: Session = Depends(get_db)) -> list[UploadTaskResponse]:
     upload_tasks = db.query(UploadTask).order_by(UploadTask.created_at.desc()).all()
-    return [
-        UploadTaskResponse(
-            id=upload_task.id,
-            file_name=upload_task.file_name,
-            file_path=upload_task.file_path,
-            status=upload_task.status,
-            total_rows=upload_task.total_rows,
-            processed_rows=upload_task.processed_rows,
-            created_at=upload_task.created_at,
-            updated_at=upload_task.updated_at,
-            error_count=len(upload_task.errors),
-        )
-        for upload_task in upload_tasks
-    ]
+    return [build_upload_task_response(upload_task) for upload_task in upload_tasks]
 
 
 @router.get("/download/example")

@@ -4,7 +4,6 @@ from utils.database import get_db
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
-from datetime import datetime
 from fastapi import HTTPException
 from utils.security import get_current_user
 
@@ -15,8 +14,8 @@ class UserResponse(BaseModel):
     id: str
     username: str
     role: str
-    created_at: datetime
-    updated_at: datetime
+    created_at: str
+    updated_at: str
     is_deleted: bool
 
 
@@ -25,7 +24,7 @@ async def get_users(
     db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ) -> List[UserResponse]:
     users = db.query(User).all()
-    return users
+    return [UserResponse.model_validate(user.to_dict()) for user in users]
 
 
 class UpdateUserRequest(BaseModel):
