@@ -33,6 +33,39 @@ def parse_bool_env(env_name: str, default: bool = False) -> bool:
     return default
 
 
+def parse_strict_bool_env(env_name: str, default: bool = False) -> bool:
+    raw_value = os.getenv(env_name)
+    if raw_value is None:
+        return default
+
+    normalized_value = raw_value.strip().lower()
+    if not normalized_value:
+        return default
+
+    if normalized_value in {"1", "true", "yes", "on"}:
+        return True
+    if normalized_value in {"0", "false", "no", "off"}:
+        return False
+
+    raise ValueError(
+        f"{env_name} must be one of: 1, true, yes, on, 0, false, no, off"
+    )
+
+
+DATABASE_AUTO_MIGRATE = parse_strict_bool_env("DATABASE_AUTO_MIGRATE", default=True)
+DATABASE_AUTO_GENERATE_MIGRATIONS = parse_strict_bool_env(
+    "DATABASE_AUTO_GENERATE_MIGRATIONS", default=True
+)
+DATABASE_BOOTSTRAP_SCHEMA = parse_strict_bool_env(
+    "DATABASE_BOOTSTRAP_SCHEMA", default=False
+)
+BOOTSTRAP_DEFAULT_ADMIN = parse_strict_bool_env(
+    "BOOTSTRAP_DEFAULT_ADMIN", default=False
+)
+BOOTSTRAP_DEFAULT_ADMIN_USERNAME = os.getenv("BOOTSTRAP_DEFAULT_ADMIN_USERNAME", "admin")
+BOOTSTRAP_DEFAULT_ADMIN_PASSWORD = os.getenv("BOOTSTRAP_DEFAULT_ADMIN_PASSWORD")
+
+
 def is_survey_export_column_enabled(column_name: str) -> bool:
     env_name = f"SURVEY_EXPORT_COLUMN_{column_name.upper()}"
     return parse_bool_env(env_name, default=False)

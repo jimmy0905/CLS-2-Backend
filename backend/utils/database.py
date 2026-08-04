@@ -31,40 +31,87 @@ def get_db():
         db.close()
 
 
-def init_db():
+def ensure_default_user() -> None:
+    from config import (
+        BOOTSTRAP_DEFAULT_ADMIN,
+        BOOTSTRAP_DEFAULT_ADMIN_PASSWORD,
+        BOOTSTRAP_DEFAULT_ADMIN_USERNAME,
+    )
+    from models.User import User
+
+    if not BOOTSTRAP_DEFAULT_ADMIN:
+        logger.info("Default admin bootstrap is disabled")
+        return
+
+    if not BOOTSTRAP_DEFAULT_ADMIN_PASSWORD or not BOOTSTRAP_DEFAULT_ADMIN_PASSWORD.strip():
+        raise ValueError(
+            "BOOTSTRAP_DEFAULT_ADMIN_PASSWORD is required when "
+            "BOOTSTRAP_DEFAULT_ADMIN is enabled"
+        )
+
+    db = SessionLocal()
+    try:
+        existing_user = (
+            db.query(User)
+            .filter(User.username == BOOTSTRAP_DEFAULT_ADMIN_USERNAME)
+            .first()
+        )
+        if existing_user:
+            logger.info("Default user already exists")
+            return
+
+        user = User(
+            username=BOOTSTRAP_DEFAULT_ADMIN_USERNAME,
+            role="admin",
+        )
+        user.set_password(BOOTSTRAP_DEFAULT_ADMIN_PASSWORD)
+        db.add(user)
+        db.commit()
+        logger.info("Default user created")
+    except Exception as error:
+        db.rollback()
+        logger.error(f"Failed to ensure default user: {error}")
+        raise
+    finally:
+        db.close()
+
+
+def users_table_exists() -> bool:
+    db = SessionLocal()
+    try:
+        return bool(
+            db.execute(
+                text(
+                    """
+                    SELECT EXISTS (
+                        SELECT 1 
+                        FROM information_schema.tables 
+                        WHERE table_name = 'users'
+                    )
+                    """
+                )
+            ).scalar()
+        )
+    finally:
+        db.close()
+
+
+def init_db() -> None:
     # Timezone is automatically set for all connections via the event listener
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables created")
-    db = next(get_db())
-    # Create a default user
-    from models.User import User
-
-    user = User(
-        username="admin",
-        role="admin",
-    )
-    user.set_password("password")
-    db.add(user)
-    db.commit()
-    logger.info("Default user created")
+    ensure_default_user()
 
 
-def check_tables_exist():
-    db = next(get_db())
-    # Check if the users table exists using information_schema
-    result = db.execute(
-        text(
-            """
-            SELECT EXISTS (
-                SELECT 1 
-                FROM information_schema.tables 
-                WHERE table_name = 'users'
+def check_tables_exist() -> None:
+    from config import DATABASE_BOOTSTRAP_SCHEMA
+
+    if not users_table_exists():
+        if not DATABASE_BOOTSTRAP_SCHEMA:
+            raise RuntimeError(
+                "Database tables are missing. Run Alembic migrations or set "
+                "DATABASE_BOOTSTRAP_SCHEMA=true for local schema bootstrap."
             )
-            """
-        )
-    ).scalar()
-
-    if not result:
         init_db()
     else:
         logger.info("Database tables already exist")
