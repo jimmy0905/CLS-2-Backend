@@ -14,8 +14,8 @@ class UploadTaskError(Base):
     input_store_key = Column(Integer)
     input_comment = Column(Text)
     input_reported_at = Column(Text)
-    created_at = Column(DateTime(timezone=False), default=utc_now)
-    updated_at = Column(DateTime(timezone=False), default=utc_now)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    updated_at = Column(DateTime(timezone=True), default=utc_now)
     raw_row_data = Column(JSON, nullable=True)
 
     # Relationships

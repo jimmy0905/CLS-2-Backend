@@ -13,8 +13,8 @@ class EmailRecord(Base):
     email_body = Column(Text)
     to = Column(JSON)
     cc = Column(JSON)
-    created_at = Column(DateTime(timezone=False), default=utc_now)
-    updated_at = Column(DateTime(timezone=False), default=utc_now, onupdate=utc_now)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     # Relationships
     user = relationship("User", back_populates="email_records")

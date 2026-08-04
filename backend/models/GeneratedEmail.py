@@ -12,8 +12,8 @@ class GeneratedEmail(Base):
     input_data = Column(JSON)
     subject_line = Column(Text)
     email_body = Column(Text)
-    created_at = Column(DateTime(timezone=False), default=utc_now)
-    updated_at = Column(DateTime(timezone=False), default=utc_now, onupdate=utc_now)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     # Relationships
     user = relationship("User", back_populates="generated_emails")

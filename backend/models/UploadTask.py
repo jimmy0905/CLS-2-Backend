@@ -14,8 +14,8 @@ class UploadTask(Base):
     status = Column(String)
     total_rows = Column(Integer)
     processed_rows = Column(Integer)
-    created_at = Column(DateTime(timezone=False), default=utc_now)
-    updated_at = Column(DateTime(timezone=False), default=utc_now, onupdate=utc_now)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     # Relationships
     errors = relationship("UploadTaskError", back_populates="upload_task")

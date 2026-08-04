@@ -39,10 +39,10 @@ class Survey(Base):
     # Columns
     comment = Column(Text)
     sentiment = Column(Enum(Sentiment, name="sentiment_enum"))
-    reported_at = Column(DateTime(timezone=False), default=utc_now, nullable=False)
-    created_at = Column(DateTime(timezone=False), default=utc_now, nullable=False)
+    reported_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = Column(
-        DateTime(timezone=False), default=utc_now, onupdate=utc_now, nullable=False
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
     )
     is_deleted = Column(Boolean, default=False)
     topic_sentiment = Column(Enum(TopicSentiment, name="topic_sentiment_enum"))

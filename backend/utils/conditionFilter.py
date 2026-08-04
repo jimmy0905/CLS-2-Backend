@@ -344,7 +344,7 @@ def build_survey_filter_conditions(filter_dict: FilterRequest):
         if isinstance(value, datetime):
             parsed_datetime = value
         elif isinstance(value, date):
-            return datetime.combine(value, time.min)
+            return datetime.combine(value, time.min, tzinfo=timezone.utc)
         else:
             if "T" not in value and " " not in value:
                 raise HTTPException(
@@ -365,8 +365,8 @@ def build_survey_filter_conditions(filter_dict: FilterRequest):
                     detail=f"{field_name} must use UTC ISO timestamp format",
                 )
         if parsed_datetime.tzinfo is None:
-            return parsed_datetime
-        return parsed_datetime.astimezone(timezone.utc).replace(tzinfo=None)
+            return parsed_datetime.replace(tzinfo=timezone.utc)
+        return parsed_datetime.astimezone(timezone.utc)
 
     # Add is_deleted check
     conditions.append(Survey.is_deleted == False)

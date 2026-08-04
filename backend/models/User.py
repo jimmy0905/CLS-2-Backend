@@ -19,9 +19,9 @@ class User(Base):
     role = Column(String(50), nullable=False, default="user")
     oauth_provider = Column(String(50), nullable=True)
     oauth_id = Column(String(255), nullable=True)
-    created_at = Column(DateTime(timezone=False), default=utc_now, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = Column(
-        DateTime(timezone=False), default=utc_now, onupdate=utc_now, nullable=False
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
     )
     is_deleted = Column(Boolean, default=False)
 

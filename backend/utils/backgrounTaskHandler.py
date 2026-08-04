@@ -100,7 +100,7 @@ def parse_flexible_date(
     date_input: Union[str, datetime, pd.Timestamp], row_number: int = None
 ) -> Optional[datetime]:
     """
-    Parse date formats into a UTC datetime without a timezone offset.
+    Parse date formats into a timezone-aware UTC datetime.
 
     Only supports these specific formats:
     - 'YYYY-MM-DD HH:MM:SS' (e.g., '2025-09-01 10:04:57') - interpreted as UTC
@@ -111,7 +111,7 @@ def parse_flexible_date(
         row_number: Optional row number for logging context
 
     Returns:
-        Naive UTC datetime object or None if parsing fails
+        Timezone-aware UTC datetime object or None if parsing fails
     """
     if not date_input or pd.isna(date_input):
         return None
@@ -134,7 +134,7 @@ def parse_flexible_date(
         # Handle ISO format with Z (UTC timezone)
         if date_str.endswith("Z"):
             try:
-                return datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S.%fZ")
+                return as_utc(datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S.%fZ"))
             except ValueError:
                 logger.debug(
                     f"{row_context}Failed to parse date '{date_str}' using ISO format with Z"
@@ -142,7 +142,7 @@ def parse_flexible_date(
 
         # Handle simple datetime format (assume UTC)
         try:
-            return datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+            return as_utc(datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S"))
         except ValueError:
             logger.debug(
                 f"{row_context}Failed to parse date '{date_str}' using simple format"

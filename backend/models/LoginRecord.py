@@ -7,4 +7,4 @@ class LoginRecord(Base):
     __tablename__ = "login_records"
     id = Column[int](Integer, primary_key=True)  
     user_id = Column[str](CHAR(36), ForeignKey("users.id"))
-    login_time = Column[datetime](DateTime(timezone=False), default=utc_now, nullable=False)
+    login_time = Column[datetime](DateTime(timezone=True), default=utc_now, nullable=False)
