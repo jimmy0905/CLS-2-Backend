@@ -28,6 +28,7 @@ from utils.llm.normalize_keywords import normalize_keywords
 from utils.security import get_current_user
 from fastapi_pagination import Page, paginate
 from fastapi.responses import StreamingResponse
+from utils.utc import as_utc, utc_isoformat, utc_now
 import logging
 from openpyxl import Workbook
 from io import BytesIO
@@ -129,9 +130,9 @@ class SurveyResponse(BaseModel):
     sentiment: str
     topic_sentiment: str
     topic_sentiment_score: float
-    reported_at: datetime
-    created_at: datetime
-    updated_at: datetime
+    reported_at: str
+    created_at: str
+    updated_at: str
 
 
 @router.get("")
@@ -208,7 +209,7 @@ class CreateSurveyRequest(BaseModel):
     sentiment: Literal["positive", "negative", "neutral"] = "neutral"
     topics: List[CreateSurveyTopicRequest]
     keywords: List[CreateSurveyKeywordRequest]
-    reported_at: datetime = Field(default_factory=datetime.now)
+    reported_at: datetime = Field(default_factory=utc_now)
 
 
 @router.post("/")
@@ -263,7 +264,7 @@ async def create_survey(
             store_key=survey_request.store_key,
             comment=survey_request.comment,
             sentiment=survey_request.sentiment,
-            reported_at=survey_request.reported_at,
+            reported_at=as_utc(survey_request.reported_at),
             channel_id=channel.id if channel else None,
             delivery_service_id=delivery_service.id if delivery_service else None,
         )
@@ -328,7 +329,7 @@ async def download_surveys(
         elif isinstance(value, list):
             return "; ".join(format_excel_value(item) for item in value)
         elif isinstance(value, datetime):
-            return value.isoformat()
+            return utc_isoformat(value) or ""
         elif hasattr(value, 'value'):  # Handle enum types
             # Extract the enum value and capitalize: "POSITIVE" -> "Positive"
             enum_value = value.value
@@ -599,7 +600,7 @@ async def update_survey(
                 else:
                     survey_keyword.sentiment = keyword.sentiment
         if survey_request.reported_at:
-            survey.reported_at = survey_request.reported_at
+            survey.reported_at = as_utc(survey_request.reported_at)
         db.commit()
         db.refresh(survey)
         return SurveyResponse.model_validate(survey.to_dict())

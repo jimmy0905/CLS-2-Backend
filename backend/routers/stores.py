@@ -18,6 +18,7 @@ import numpy as np
 import os
 import asyncio
 from io import StringIO
+from utils.utc import utc_now
 
 router = APIRouter(
     prefix="/stores",
@@ -357,7 +358,7 @@ async def upsert_stores_from_csv(
         tmp_file_path = None
         try:
             # Create a tmp file name with the current timestamp
-            tmp_file_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{file.filename}"
+            tmp_file_name = f"{utc_now().strftime('%Y%m%d%H%M%S')}_{file.filename}"
             tmp_file_path = os.path.join("/tmp", tmp_file_name)
             # Write the file to the tmp file
             with open(tmp_file_path, "wb") as f:

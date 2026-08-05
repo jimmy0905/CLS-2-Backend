@@ -1,9 +1,8 @@
 from utils.database import Base
 from sqlalchemy import Column, Integer, String, DateTime, CHAR
 import uuid
-from datetime import timezone
 from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
+from utils.utc import utc_isoformat, utc_now
 
 
 class UploadTask(Base):
@@ -15,8 +14,8 @@ class UploadTask(Base):
     status = Column(String)
     total_rows = Column(Integer)
     processed_rows = Column(Integer)
-    created_at = Column(DateTime(timezone=True), default=func.now())
-    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     # Relationships
     errors = relationship("UploadTaskError", back_populates="upload_task")
@@ -29,7 +28,7 @@ class UploadTask(Base):
             "status": self.status,
             "total_rows": self.total_rows,
             "processed_rows": self.processed_rows,
-            "created_at": self.created_at.astimezone(timezone.utc).isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.astimezone(timezone.utc).isoformat() if self.updated_at else None,
+            "created_at": utc_isoformat(self.created_at),
+            "updated_at": utc_isoformat(self.updated_at),
             "errors": [error.to_dict() for error in self.errors],
         }

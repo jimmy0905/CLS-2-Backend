@@ -21,7 +21,8 @@ from utils.conditionFilter import (
 )
 from typing import List, Optional
 from utils.security import get_current_user
-from datetime import timezone, date
+from datetime import date
+from utils.utc import utc_isoformat
 
 router = APIRouter(
     prefix="/dashboard",
@@ -738,7 +739,7 @@ async def get_last_updated_date(
     last_updated_date = db.query(func.max(Survey.updated_at)).first()
     if last_updated_date[0] is None:
         return ""
-    return last_updated_date[0].astimezone(timezone.utc).isoformat()
+    return utc_isoformat(last_updated_date[0]) or ""
 
 
 class DataCoverageResponse(BaseModel):
@@ -763,12 +764,8 @@ async def get_data_coverage(
     if last_data_reported_date[0] is None or first_data_reported_date[0] is None:
         raise HTTPException(status_code=404, detail="No data reported")
     return DataCoverageResponse(
-        last_data_reported_date=last_data_reported_date[0]
-        .astimezone(timezone.utc)
-        .isoformat(),
-        first_data_reported_date=first_data_reported_date[0]
-        .astimezone(timezone.utc)
-        .isoformat(),
+        last_data_reported_date=utc_isoformat(last_data_reported_date[0]) or "",
+        first_data_reported_date=utc_isoformat(first_data_reported_date[0]) or "",
     )
 
 

@@ -18,7 +18,7 @@ from typing import List
 from fastapi import HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timezone
 
 
 class FilterRequest(BaseModel):
@@ -253,11 +253,11 @@ def get_filter_params(
     ),
     from_date: str = Query(
         default="",
-        description="The start date to filter by, in the format YYYY-MM-DD",
+        description="The inclusive start timestamp to filter by, in UTC ISO format",
     ),
     to_date: str = Query(
         default="",
-        description="The end date to filter by, in the format YYYY-MM-DD",
+        description="The exclusive end timestamp to filter by, in UTC ISO format",
     ),
     sentiments: List[str] = Query(
         default=[],
@@ -340,31 +340,45 @@ def build_survey_filter_conditions(filter_dict: FilterRequest):
     """Build filter conditions based on the filter dictionary"""
     conditions = []
 
-    def parse_filter_date(value: str | date | datetime, field_name: str) -> date:
+    def parse_filter_datetime(value: str | date | datetime, field_name: str) -> datetime:
         if isinstance(value, datetime):
-            return value.date()
-        if isinstance(value, date):
-            return value
-        try:
-            return date.fromisoformat(value)
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=400,
-                detail=f"{field_name} must use YYYY-MM-DD format",
-            ) from exc
+            parsed_datetime = value
+        elif isinstance(value, date):
+            return datetime.combine(value, time.min, tzinfo=timezone.utc)
+        else:
+            if "T" not in value and " " not in value:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{field_name} must use UTC ISO timestamp format",
+                )
+            normalized_value = value.replace("Z", "+00:00")
+            try:
+                parsed_datetime = datetime.fromisoformat(normalized_value)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{field_name} must use UTC ISO timestamp format",
+                ) from exc
+            if parsed_datetime.tzinfo is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{field_name} must use UTC ISO timestamp format",
+                )
+        if parsed_datetime.tzinfo is None:
+            return parsed_datetime.replace(tzinfo=timezone.utc)
+        return parsed_datetime.astimezone(timezone.utc)
 
     # Add is_deleted check
     conditions.append(Survey.is_deleted == False)
 
     # Date range filter
     if filter_dict.get("from_date"):
-        from_date = parse_filter_date(filter_dict["from_date"], "from_date")
-        conditions.append(Survey.reported_at >= datetime.combine(from_date, datetime.min.time()))
+        from_date = parse_filter_datetime(filter_dict["from_date"], "from_date")
+        conditions.append(Survey.reported_at >= from_date)
 
     if filter_dict.get("to_date"):
-        to_date = parse_filter_date(filter_dict["to_date"], "to_date")
-        next_day = to_date + timedelta(days=1)
-        conditions.append(Survey.reported_at < datetime.combine(next_day, datetime.min.time()))
+        to_date = parse_filter_datetime(filter_dict["to_date"], "to_date")
+        conditions.append(Survey.reported_at < to_date)
 
     # Sentiment filter
     if filter_dict.get("sentiments"):

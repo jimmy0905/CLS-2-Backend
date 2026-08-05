@@ -12,10 +12,11 @@ from models.SurveyKeywords import SurveyKeywords
 from models.SurveyDepartments import SurveyDepartments
 from models.Channel import Channel
 from models.DeliveryService import DeliveryService
-from datetime import datetime, timezone
+from datetime import datetime
 from utils.llm.extract_total import extract_total, _extract_total_retry_sync
 from utils.llm.normalize_keywords import normalize_keywords, _normalize_keywords_sync
 from utils.logger import logger
+from utils.utc import as_utc, utc_now
 import dateutil.parser
 from typing import Union, Optional, List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -99,7 +100,7 @@ def parse_flexible_date(
     date_input: Union[str, datetime, pd.Timestamp], row_number: int = None
 ) -> Optional[datetime]:
     """
-    Parse date formats into a timezone-aware datetime object.
+    Parse date formats into a timezone-aware UTC datetime.
 
     Only supports these specific formats:
     - 'YYYY-MM-DD HH:MM:SS' (e.g., '2025-09-01 10:04:57') - interpreted as UTC
@@ -110,7 +111,7 @@ def parse_flexible_date(
         row_number: Optional row number for logging context
 
     Returns:
-        Timezone-aware datetime object (UTC) or None if parsing fails
+        Timezone-aware UTC datetime object or None if parsing fails
     """
     if not date_input or pd.isna(date_input):
         return None
@@ -120,18 +121,12 @@ def parse_flexible_date(
     try:
         # If it's already a datetime object
         if isinstance(date_input, datetime):
-            # If it's naive, assume UTC
-            if date_input.tzinfo is None:
-                return date_input.replace(tzinfo=timezone.utc)
-            return date_input
+            return as_utc(date_input)
 
         # If it's a pandas Timestamp, convert to datetime
         if isinstance(date_input, pd.Timestamp):
             dt = date_input.to_pydatetime()
-            # If it's naive, assume UTC
-            if dt.tzinfo is None:
-                return dt.replace(tzinfo=timezone.utc)
-            return dt
+            return as_utc(dt)
 
         # Convert to string for parsing
         date_str = str(date_input).strip()
@@ -139,9 +134,7 @@ def parse_flexible_date(
         # Handle ISO format with Z (UTC timezone)
         if date_str.endswith("Z"):
             try:
-                # Parse the ISO format and set UTC timezone
-                parsed_date = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S.%fZ")
-                return parsed_date.replace(tzinfo=timezone.utc)
+                return as_utc(datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S.%fZ"))
             except ValueError:
                 logger.debug(
                     f"{row_context}Failed to parse date '{date_str}' using ISO format with Z"
@@ -149,8 +142,7 @@ def parse_flexible_date(
 
         # Handle simple datetime format (assume UTC)
         try:
-            parsed_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
-            return parsed_date.replace(tzinfo=timezone.utc)
+            return as_utc(datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S"))
         except ValueError:
             logger.debug(
                 f"{row_context}Failed to parse date '{date_str}' using simple format"
@@ -882,7 +874,7 @@ async def process_upload_task(file_path, db, upload_task_id):
         upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
         if upload_task:
             upload_task.status = "completed"
-            upload_task.updated_at = datetime.now(timezone.utc)
+            upload_task.updated_at = utc_now()
             db.commit()
 
         # Calculate and log performance metrics

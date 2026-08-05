@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
-from utils.database import check_tables_exist
+from utils.database import check_tables_exist, ensure_default_user, users_table_exists
+from utils.database_migrations import run_database_migrations
 from uvicorn.config import LOGGING_CONFIG
 import uvicorn
 from routers import (
@@ -56,14 +57,23 @@ add_pagination(app)
 
 @app.on_event("startup")
 async def startup_event():
-    check_tables_exist()
+    users_table_existed = users_table_exists()
+    migrations_ran = run_database_migrations()
+    if migrations_ran:
+        if users_table_exists():
+            if not users_table_existed:
+                ensure_default_user()
+        else:
+            check_tables_exist()
+    else:
+        check_tables_exist()
     _reset_processing_upload_tasks()
 
 
 def _reset_processing_upload_tasks():
     from models.UploadTask import UploadTask
     from utils.database import SessionLocal
-    from datetime import datetime, timezone
+    from utils.utc import utc_now
 
     db = SessionLocal()
     try:
@@ -71,7 +81,7 @@ def _reset_processing_upload_tasks():
             db.query(UploadTask)
             .filter(UploadTask.status == "processing")
             .update(
-                {"status": "Stop: Restart", "updated_at": datetime.now(timezone.utc)},
+                {"status": "Stop: Restart", "updated_at": utc_now()},
                 synchronize_session="fetch",
             )
         )
