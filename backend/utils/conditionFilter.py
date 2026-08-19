@@ -72,6 +72,8 @@ class FilterRequest(BaseModel):
     topic_sentiments: List[str] = []
     min_topic_sentiment_score: Optional[float] = None
     max_topic_sentiment_score: Optional[float] = None
+    min_csl: Optional[float] = None
+    max_csl: Optional[float] = None
 
 
 def get_filter_params(
@@ -275,6 +277,14 @@ def get_filter_params(
         default=None,
         description="Maximum topic sentiment score to filter by",
     ),
+    min_csl: Optional[float] = Query(
+        default=None,
+        description="Minimum CSL score to filter by",
+    ),
+    max_csl: Optional[float] = Query(
+        default=None,
+        description="Maximum CSL score to filter by",
+    ),
 ) -> FilterRequest:
 
     return FilterRequest(
@@ -332,6 +342,8 @@ def get_filter_params(
         ],
         min_topic_sentiment_score=min_topic_sentiment_score,
         max_topic_sentiment_score=max_topic_sentiment_score,
+        min_csl=min_csl,
+        max_csl=max_csl,
     )
 
 
@@ -394,6 +406,13 @@ def build_survey_filter_conditions(filter_dict: FilterRequest):
 
     if filter_dict.get("max_topic_sentiment_score") is not None:
         conditions.append(Survey.topic_sentiment_score <= filter_dict["max_topic_sentiment_score"])
+
+    # CSL score range filters
+    if filter_dict.get("min_csl") is not None:
+        conditions.append(Survey.csl >= filter_dict["min_csl"])
+
+    if filter_dict.get("max_csl") is not None:
+        conditions.append(Survey.csl <= filter_dict["max_csl"])
 
     # id filter
     if filter_dict.get("ids"):

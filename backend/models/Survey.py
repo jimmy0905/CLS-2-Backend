@@ -52,6 +52,7 @@ class Survey(Base):
         Float, default=0.0
     )  # Insert this column in the database, sql commands for PostgreSQL:
     # ALTER TABLE surveys ADD COLUMN IF NOT EXISTS topic_sentiment_score FLOAT DEFAULT 0.0;
+    csl = Column(Float, nullable=True, default=None)
     # Relationships
     store = relationship("Store", back_populates="surveys")
     survey_topics = relationship("SurveyTopics", back_populates="survey")
@@ -79,6 +80,7 @@ class Survey(Base):
     __table_args__ = (
         Index("idx_survey_reported_at", reported_at),
         Index("idx_survey_sentiment", sentiment),
+        Index("idx_survey_csl", csl),
     )
 
     def to_dict(self):
@@ -161,6 +163,7 @@ class Survey(Base):
             "sentiment": self.sentiment,
             "topic_sentiment": self.topic_sentiment,
             "topic_sentiment_score": self.topic_sentiment_score,
+            "csl": self.csl,
             "reported_at": utc_isoformat(self.reported_at),
             "created_at": utc_isoformat(self.created_at),
             "updated_at": utc_isoformat(self.updated_at),
@@ -250,6 +253,7 @@ class Survey(Base):
                 self.topic_sentiment
             ),  # use topic_sentiment instead of sentiment
             "sentiment_score": self.topic_sentiment_score,
+            "csl": self.csl,
             "reported_at": self.reported_at,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
