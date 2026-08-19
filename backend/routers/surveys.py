@@ -130,7 +130,7 @@ class SurveyResponse(BaseModel):
     sentiment: str
     topic_sentiment: str
     topic_sentiment_score: float
-    csl: Optional[float] = None
+    cls: Optional[float] = None
     reported_at: str
     created_at: str
     updated_at: str
@@ -211,7 +211,7 @@ class CreateSurveyRequest(BaseModel):
     topics: List[CreateSurveyTopicRequest]
     keywords: List[CreateSurveyKeywordRequest]
     reported_at: datetime = Field(default_factory=utc_now)
-    csl: Optional[float] = None
+    cls: Optional[float] = None
 
 
 @router.post("/")
@@ -267,7 +267,7 @@ async def create_survey(
             comment=survey_request.comment,
             sentiment=survey_request.sentiment,
             reported_at=as_utc(survey_request.reported_at),
-            csl=survey_request.csl,
+            cls=survey_request.cls,
             channel_id=channel.id if channel else None,
             delivery_service_id=delivery_service.id if delivery_service else None,
         )
@@ -406,7 +406,7 @@ async def download_surveys(
             "delivery_service",
             "sentiment", # topic_sentiment
             "sentiment_score", # topic_sentiment_score
-            "csl",
+            "cls",
             "reported_at",
             "created_at",
             "updated_at",
@@ -516,7 +516,7 @@ class UpdateSurveyRequest(BaseModel):
     topics: Optional[List[UpdateSurveyTopicRequest]] = None
     keywords: Optional[List[UpdateSurveyKeywordRequest]] = None
     reported_at: Optional[datetime] = None
-    csl: Optional[float] = None
+    cls: Optional[float] = None
 
 
 @router.put("/{survey_id}")
@@ -606,8 +606,8 @@ async def update_survey(
                     survey_keyword.sentiment = keyword.sentiment
         if survey_request.reported_at:
             survey.reported_at = as_utc(survey_request.reported_at)
-        if survey_request.csl is not None:
-            survey.csl = survey_request.csl
+        if survey_request.cls is not None:
+            survey.cls = survey_request.cls
         db.commit()
         db.refresh(survey)
         return SurveyResponse.model_validate(survey.to_dict())

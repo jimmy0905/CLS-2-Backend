@@ -159,9 +159,9 @@ def parse_flexible_date(
         return None
 
 
-def parse_optional_csl(row: Any, row_number: int = None) -> Optional[float]:
-    """Read the nullable CSL score from either source spelling."""
-    for column_name in ("CSL", "CLS", "csl", "cls"):
+def parse_optional_cls(row: Any, row_number: int = None) -> Optional[float]:
+    """Read the nullable CLS score, accepting the legacy CSL source spelling."""
+    for column_name in ("CLS", "CSL", "cls", "csl"):
         if column_name not in row:
             continue
 
@@ -173,7 +173,7 @@ def parse_optional_csl(row: Any, row_number: int = None) -> Optional[float]:
             return float(value)
         except (TypeError, ValueError):
             row_context = f"Row {row_number}: " if row_number is not None else ""
-            logger.warning(f"{row_context}Invalid CSL score '{value}', storing null")
+            logger.warning(f"{row_context}Invalid CLS score '{value}', storing null")
             return None
 
     return None
@@ -209,7 +209,7 @@ async def process_single_row(
         store_key = row["store_key"] if pd.notna(row["store_key"]) else None
         comment = row["answer"] if pd.notna(row["answer"]) else None
         reported_at = row["survey_order_date"] if pd.notna(row["survey_order_date"]) else None
-        csl = parse_optional_csl(row, index + 1)
+        cls = parse_optional_cls(row, index + 1)
         is_deleted_value = row["is_delete"] if "is_delete" in row and pd.notna(row["is_delete"]) else None
         logger.info(f"Row {index + 1}: Is deleted value: {is_deleted_value}")
         # Handle survey_id - can be int, float, or string (hash)
@@ -246,7 +246,7 @@ async def process_single_row(
             if existing_survey:
                 # Update existing survey with new data and mark as deleted
                 existing_survey.is_deleted = True
-                existing_survey.csl = csl
+                existing_survey.cls = cls
                 db.commit()
 
             # Update processed rows count for successful deleted-row handling
@@ -582,7 +582,7 @@ async def process_single_row(
                 existing_survey.store_key = store_key
                 existing_survey.comment = comment
                 existing_survey.reported_at = reported_at
-                existing_survey.csl = csl
+                existing_survey.cls = cls
                 existing_survey.channel_id = channel_id
                 existing_survey.delivery_service_id = delivery_service_id
                 existing_survey.raw_row_data = json_row_data
@@ -651,7 +651,7 @@ async def process_single_row(
             existing_survey.store_key = store_key
             existing_survey.comment = comment
             existing_survey.reported_at = reported_at
-            existing_survey.csl = csl
+            existing_survey.cls = cls
             existing_survey.sentiment = total_sentiment
             existing_survey.channel_id = channel_id
             existing_survey.delivery_service_id = delivery_service_id
@@ -676,7 +676,7 @@ async def process_single_row(
                 store_key=store_key,
                 comment=comment,
                 reported_at=reported_at,
-                csl=csl,
+                cls=cls,
                 sentiment=total_sentiment,
                 channel_id=channel_id,
                 delivery_service_id=delivery_service_id,
