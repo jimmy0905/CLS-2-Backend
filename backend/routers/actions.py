@@ -53,6 +53,8 @@ class ActionFilterRequest(BaseModel):
     topic_sentiments: List[str] = []
     min_topic_sentiment_score: Optional[float] = None
     max_topic_sentiment_score: Optional[float] = None
+    min_cls: Optional[float] = None
+    max_cls: Optional[float] = None
 
 
 class GetActionsResponse(BaseModel):

@@ -208,3 +208,4 @@ __marimo__/
 
 .DS_Store
 /backend/upload_tasks/*.csv
+/notebooks/docs/*

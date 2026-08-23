@@ -4,11 +4,13 @@ import sys
 import unittest
 
 from fastapi import HTTPException
+import pandas as pd
 from sqlalchemy.sql import operators
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from utils.conditionFilter import build_survey_filter_conditions
+from utils.backgrounTaskHandler import parse_optional_cls
 
 
 class SurveyFilterDateRangeTests(unittest.TestCase):
@@ -60,6 +62,31 @@ class SurveyFilterDateRangeTests(unittest.TestCase):
             build_survey_filter_conditions({"from_date": "2026-08-04T00:00:00"})
 
         self.assertEqual(error_context.exception.status_code, 400)
+
+
+class SurveyClsTests(unittest.TestCase):
+    def test_cls_range_filters_are_inclusive(self) -> None:
+        conditions = build_survey_filter_conditions(
+            {"min_cls": 10.0, "max_cls": 90.0}
+        )
+
+        self.assertIs(conditions[1].operator, operators.ge)
+        self.assertEqual(conditions[1].right.value, 10.0)
+        self.assertIs(conditions[2].operator, operators.le)
+        self.assertEqual(conditions[2].right.value, 90.0)
+
+    def test_cls_filters_are_omitted_when_bounds_are_null(self) -> None:
+        conditions = build_survey_filter_conditions({})
+
+        self.assertEqual(len(conditions), 1)
+
+    def test_parses_cls_and_legacy_csl_source_headers(self) -> None:
+        self.assertEqual(parse_optional_cls(pd.Series({"CLS": "100.0"})), 100.0)
+        self.assertEqual(parse_optional_cls(pd.Series({"CSL": 75})), 75.0)
+
+    def test_missing_or_blank_cls_is_null(self) -> None:
+        self.assertIsNone(parse_optional_cls(pd.Series({"CLS": None})))
+        self.assertIsNone(parse_optional_cls(pd.Series({"answer": "comment"})))
 
 
 if __name__ == "__main__":
