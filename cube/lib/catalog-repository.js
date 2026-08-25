@@ -157,10 +157,14 @@ const CORE_MEASURES = {
     'topic_sentiment_score_sum',
     'topic_sentiment_score_average',
     'median_topic_sentiment_score',
+    'topic_sentiment_positive_count',
+    'topic_sentiment_negative_count',
+    'topic_sentiment_neutral_count',
+    'topic_sentiment_mixed_count',
   ]),
-  survey_topics: new Set(['assignment_count', 'distinct_survey_count']),
-  survey_departments: new Set(['assignment_count', 'distinct_survey_count']),
-  survey_keywords: new Set(['assignment_count', 'distinct_survey_count']),
+  survey_topics: new Set(['assignment_count', 'distinct_survey_count', 'topic_assignment_positive_count', 'topic_assignment_negative_count', 'topic_assignment_neutral_count']),
+  survey_departments: new Set(['assignment_count', 'distinct_survey_count', 'department_assignment_positive_count', 'department_assignment_negative_count', 'department_assignment_neutral_count']),
+  survey_keywords: new Set(['assignment_count', 'distinct_survey_count', 'keyword_assignment_positive_count', 'keyword_assignment_negative_count', 'keyword_assignment_neutral_count']),
 };
 
 function coreFieldDescriptor(semanticView, slug) {

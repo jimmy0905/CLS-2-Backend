@@ -35,6 +35,24 @@ cubes:
         sql: PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY {CUBE}.topic_sentiment_score)
         type: number
 
+      # Standard response-level dashboard sentiment measures. The response
+      # sentiment source is topic_sentiment; surveys.sentiment is legacy.
+      - name: topic_sentiment_positive_count
+        sql: SUM(CASE WHEN {CUBE}.topic_sentiment = 'POSITIVE' THEN 1 ELSE 0 END)
+        type: number
+
+      - name: topic_sentiment_negative_count
+        sql: SUM(CASE WHEN {CUBE}.topic_sentiment = 'NEGATIVE' THEN 1 ELSE 0 END)
+        type: number
+
+      - name: topic_sentiment_neutral_count
+        sql: SUM(CASE WHEN {CUBE}.topic_sentiment = 'NEUTRAL' THEN 1 ELSE 0 END)
+        type: number
+
+      - name: topic_sentiment_mixed_count
+        sql: SUM(CASE WHEN {CUBE}.topic_sentiment = 'MIXED' THEN 1 ELSE 0 END)
+        type: number
+
       # __LOCAL_MEASURES__
 
     dimensions:

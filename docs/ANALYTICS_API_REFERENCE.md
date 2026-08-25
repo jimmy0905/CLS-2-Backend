@@ -2,6 +2,9 @@
 
 This document describes the governed Cube analytics API. It covers the analytics routes only; existing `/dashboard/*`, survey, upload, and authentication routes are unchanged.
 
+For an endpoint-by-endpoint replacement guide and ready-to-send bodies for the
+current dashboard cards, see [Dashboard analytics migration](DASHBOARD_ANALYTICS_MIGRATION.md).
+
 ## Base URL, access, and common behaviour
 
 The paths below are FastAPI paths. In the `wtchk_cls` deployment, the external API is normally served under:
@@ -291,9 +294,18 @@ Streams the completed CSV/XLSX artifact to its owner or an authorized admin. It 
 
 ## Administrator endpoints
 
-All paths in this section require an authenticated admin and are also feature-gated. Definitions are governed lifecycle records: editing a published definition moves it back to draft; publishing a definition makes it eligible for the next catalog activation; `POST /admin/analytics/catalog/publish` revalidates all published definitions and activates a new immutable catalog version. Archive is used instead of destructive deletion.
+All paths in this section require an authenticated admin and are feature-gated.
+The first rollout deliberately exposes **chart management only**. Standard fields
+and metrics are built in; candidate, field, metric, and catalog-version
+administration are not public endpoints. This keeps the operational surface
+small while retaining governed chart definitions and audit history.
 
-### Candidate discovery and fields
+### Removed candidate, field, and metric administration
+
+These endpoints are retained only as private implementation handlers and are
+not mounted in the public API. They return `404` to callers. The historical
+details below are retained for migration context only; use chart definitions
+over the built-in catalog instead.
 
 | Endpoint | Detailed behaviour |
 | --- | --- |
@@ -333,9 +345,8 @@ A chart body contains `slug`, `title`, optional `description`, `chart_type`, `se
 | `GET /admin/analytics/charts/{chart_id}` | Returns one chart or `404`. |
 | `POST /admin/analytics/charts` | Creates a draft chart definition. It has no visualization rendering side effect; the frontend consumes the chart contract. |
 | `PUT /admin/analytics/charts/{chart_id}` | Updates the definition and returns it to draft. |
-| `POST /admin/analytics/charts/{chart_id}/validate` | Validates chart shape, members, filters, time range/granularity, and active catalog compatibility; returns validation results without activating it. |
-| `POST /admin/analytics/charts/{chart_id}/publish` | Publishes a valid chart definition, making it eligible for catalog activation and chart-specific pre-aggregation planning. |
-| `POST /admin/analytics/charts/{chart_id}/archive` | Archives the chart so it is no longer included in future published catalogs. |
+| `POST /admin/analytics/charts/{chart_id}/publish` | Validates, publishes, and immediately activates a new catalog version. The response includes `model_version`; viewers can then obtain the chart through `GET /analytics/charts/published`. |
+| `DELETE /admin/analytics/charts/{chart_id}` | Soft-deletes the chart, records an audit event, and immediately activates a catalog version without it. It is no longer visible to viewers. |
 
 ### Catalog versions
 
@@ -349,7 +360,11 @@ A chart body contains `slug`, `title`, optional `description`, `chart_type`, `se
 
 ### `GET /internal/analytics/catalog`
 
-This route supplies the active local catalog to the per-BU Cube compiler. It is intentionally not controlled by `ANALYTICS_ENABLED`, allowing the seven-day shadow phase to compile while user-facing analytics remains disabled. It must be reachable only on the private analytics network.
+This is not a human administration API. It supplies active chart/catalog metadata
+to the per-BU Cube compiler. It is intentionally not controlled by
+`ANALYTICS_ENABLED`, allowing the seven-day shadow phase to compile while
+user-facing analytics remains disabled. It must be reachable only on the
+private analytics network.
 
 Required headers are:
 
@@ -361,7 +376,9 @@ X-Analytics-Signature: <HMAC-SHA256 of "<timestamp>:<profile>">
 
 The profile must match the deployment profile, the timestamp must be fresh, and the signature must use that BU’s metadata secret. The response contains the catalog version, field/metric definitions, and approved local rollups required for Cube compilation. Invalid signature/timestamp receives `401`; a wrong profile receives `403`. This response is explicitly `Cache-Control: no-store, private`.
 
-## Lifecycle example
+## Historical lifecycle example
+
+The dynamic field/metric flow below is not enabled in the chart-only rollout.
 
 1. An upload discovers a candidate; an admin examines it using `GET /admin/analytics/candidates`.
 2. The admin promotes and configures it using `POST /admin/analytics/fields/{field_id}/promote`.

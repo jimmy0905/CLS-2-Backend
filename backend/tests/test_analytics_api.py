@@ -81,6 +81,30 @@ def _catalog() -> SemanticCatalog:
     )
 
 
+def test_core_dashboard_sentiment_metrics_are_queryable_without_publication() -> None:
+    catalog = analytics._catalog_from_records([], [])
+    metrics = {metric.slug: metric for metric in catalog.metrics}
+
+    for sentiment in ("positive", "negative", "neutral", "mixed"):
+        metric = metrics[f"topic_sentiment_{sentiment}_count"]
+        assert metric.aggregation is Aggregation.FILTERED_COUNT
+        assert metric.source_field == "topic_sentiment"
+        assert metric.parameters == {
+            "filter": {"operator": "equals", "value": sentiment.upper()}
+        }
+
+    for prefix, view in (
+        ("topic", "survey_topics"),
+        ("department", "survey_departments"),
+        ("keyword", "survey_keywords"),
+    ):
+        for sentiment in ("positive", "negative", "neutral"):
+            metric = metrics[f"{prefix}_assignment_{sentiment}_count"]
+            assert metric.semantic_view == view
+            assert metric.aggregation is Aggregation.FILTERED_COUNT
+            assert metric.source_field == "sentiment"
+
+
 def _client(db: FakeDb, role: str = "user") -> TestClient:
     app = FastAPI()
     app.include_router(analytics.router)
@@ -95,7 +119,7 @@ def test_openapi_describes_every_analytics_endpoint() -> None:
     schema = _client(FakeDb()).get("/openapi.json").json()
     for route in analytics.router.routes:
         for method in route.methods or ():
-            if method not in {"GET", "POST", "PUT"}:
+            if method not in {"GET", "POST", "PUT", "DELETE"}:
                 continue
             operation = schema["paths"][route.path][method.lower()]
             assert operation["summary"]
@@ -103,28 +127,26 @@ def test_openapi_describes_every_analytics_endpoint() -> None:
 
     models = schema["components"]["schemas"]
     assert models["QuerySpec"]["required"] == ["semantic_view"]
-    assert models["FieldInput"]["required"] == [
-        "slug",
-        "label",
-        "data_type",
-        "source_key",
-    ]
     for name in (
         "FilterSpec",
         "OrderSpec",
         "QuerySpec",
         "DrilldownSpec",
-        "FieldInput",
-        "CandidatePromotionInput",
-        "MetricInput",
         "ChartDefinitionInput",
         "ChartInput",
         "ChartDataInput",
         "FilterOptionsInput",
-        "CatalogPublicationInput",
         "ExportInput",
     ):
         assert models[name]["examples"]
+
+    assert "/admin/analytics/charts" in schema["paths"]
+    assert "/admin/analytics/charts/{chart_id}" in schema["paths"]
+    assert "delete" in schema["paths"]["/admin/analytics/charts/{chart_id}"]
+    assert "/admin/analytics/charts/{chart_id}/validate" not in schema["paths"]
+    assert "/admin/analytics/fields" not in schema["paths"]
+    assert "/admin/analytics/metrics" not in schema["paths"]
+    assert "/admin/analytics/catalog/publish" not in schema["paths"]
 
 
 def test_field_availability_reports_non_null_data_for_visible_fields(monkeypatch) -> None:
@@ -459,9 +481,10 @@ def test_admin_routes_require_an_administrator(monkeypatch) -> None:
     app.dependency_overrides[get_db] = lambda: db
     app.dependency_overrides[get_current_user] = lambda: viewer
 
-    response = TestClient(app).get("/admin/analytics/candidates")
+    client = TestClient(app)
 
-    assert response.status_code == 403
+    assert client.get("/admin/analytics/charts").status_code == 403
+    assert client.get("/admin/analytics/candidates").status_code == 404
 
 
 def test_chart_rollups_are_stable_structured_and_mark_non_additive() -> None:

@@ -164,9 +164,10 @@ _ENDPOINT_DESCRIPTIONS = {
     "be validated and republished.",
     "admin_chart_validate": "Validate chart member visibility, filters, time settings, and "
     "type-specific shape requirements without activating it.",
-    "admin_chart_publish": "Publish a valid chart, making it eligible for the next catalog "
-    "activation and chart-specific rollup planning.",
-    "admin_chart_archive": "Archive a chart so it is omitted from future catalog versions.",
+    "admin_chart_publish": "Validate and publish a chart, then immediately activate "
+    "the next catalog version so it is visible to chart consumers.",
+    "admin_chart_archive": "Soft-delete a chart and immediately activate the next "
+    "catalog version so it is no longer visible. Audit history is retained.",
     "admin_versions": "List immutable catalog-version history without embedding each "
     "potentially large snapshot.",
     "admin_version_get": "Return one catalog version, including its immutable snapshot and "
@@ -310,6 +311,7 @@ def _core_metric(
     aggregation: Aggregation,
     source_field: str | None = None,
     semantic_view: str = "survey_responses",
+    parameters: dict[str, Any] | None = None,
 ) -> CatalogMetric:
     return CatalogMetric(
         slug=slug,
@@ -317,6 +319,7 @@ def _core_metric(
         semantic_view=semantic_view,
         aggregation=aggregation,
         source_field=source_field,
+        parameters=parameters or {},
     )
 
 
@@ -338,8 +341,24 @@ _CORE_METRICS: tuple[CatalogMetric, ...] = (
         Aggregation.MEDIAN,
         "topic_sentiment_score",
     ),
+    # These are standard dashboard measures, not BU-specific local definitions.
+    # Keep them core so existing sentiment-breakdown cards work immediately on a
+    # new profile without an administrator first publishing four duplicate
+    # filtered-count definitions.
+    *(
+        _core_metric(
+            f"topic_sentiment_{sentiment.lower()}_count",
+            Aggregation.FILTERED_COUNT,
+            "topic_sentiment",
+            parameters={
+                "filter": {"operator": "equals", "value": sentiment}
+            },
+        )
+        for sentiment in ("POSITIVE", "NEGATIVE", "NEUTRAL", "MIXED")
+    ),
 )
 for _view in ("survey_topics", "survey_departments", "survey_keywords"):
+    _prefix = _view.removeprefix("survey_").removesuffix("s")
     _CORE_METRICS += (
         _core_metric("assignment_count", Aggregation.COUNT, semantic_view=_view),
         _core_metric(
@@ -347,6 +366,18 @@ for _view in ("survey_topics", "survey_departments", "survey_keywords"):
             Aggregation.DISTINCT_COUNT,
             "survey_id",
             semantic_view=_view,
+        ),
+        *(
+            _core_metric(
+                f"{_prefix}_assignment_{sentiment.lower()}_count",
+                Aggregation.FILTERED_COUNT,
+                "sentiment",
+                semantic_view=_view,
+                parameters={
+                    "filter": {"operator": "equals", "value": sentiment}
+                },
+            )
+            for sentiment in ("POSITIVE", "NEGATIVE", "NEUTRAL")
         ),
     )
 
@@ -1818,6 +1849,18 @@ admin_router = APIRouter(
         Depends(require_admin),
     ],
 )
+# The first rollout exposes only chart authoring. Field/metric/catalog lifecycle
+# handlers remain private implementation support for existing catalog records;
+# they are deliberately not included in the public application router.
+admin_chart_router = APIRouter(
+    prefix="/admin/analytics",
+    tags=["admin analytics"],
+    dependencies=[
+        Depends(_analytics_enabled),
+        Depends(_analytics_no_store),
+        Depends(require_admin),
+    ],
+)
 internal_router = APIRouter(
     prefix="/internal/analytics",
     tags=["internal analytics"],
@@ -2491,7 +2534,7 @@ async def archive_metric(
     return metric.to_dict()
 
 
-@admin_router.get(
+@admin_chart_router.get(
     "/charts", summary="List chart definitions", description=_ENDPOINT_DESCRIPTIONS["admin_charts_list"]
 )
 async def list_charts(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
@@ -2503,7 +2546,7 @@ async def list_charts(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     ]
 
 
-@admin_router.get(
+@admin_chart_router.get(
     "/charts/{chart_id}", summary="Get chart definition", description=_ENDPOINT_DESCRIPTIONS["admin_chart_get"]
 )
 async def get_chart(chart_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
@@ -2517,7 +2560,7 @@ def _assign_chart(chart: AnalyticsChart, payload: ChartInput) -> None:
         setattr(chart, key, value)
 
 
-@admin_router.post(
+@admin_chart_router.post(
     "/charts", status_code=201, summary="Create chart definition", description=_ENDPOINT_DESCRIPTIONS["admin_chart_create"]
 )
 async def create_chart(
@@ -2536,7 +2579,7 @@ async def create_chart(
     return chart.to_dict()
 
 
-@admin_router.put(
+@admin_chart_router.put(
     "/charts/{chart_id}", summary="Update chart definition", description=_ENDPOINT_DESCRIPTIONS["admin_chart_update"]
 )
 async def update_chart(
@@ -2587,7 +2630,7 @@ async def validate_chart_endpoint(
     return {"valid": True, "errors": []}
 
 
-@admin_router.post(
+@admin_chart_router.post(
     "/charts/{chart_id}/publish", summary="Publish chart definition", description=_ENDPOINT_DESCRIPTIONS["admin_chart_publish"]
 )
 async def publish_chart(
@@ -2608,15 +2651,22 @@ async def publish_chart(
     chart.validated_at = utc_now()
     chart.published_at = utc_now()
     _audit(db, current_user, "chart.published", "chart", chart.id)
-    db.commit()
+    # Charts are the only administrator-managed semantic objects in the
+    # simplified rollout. Activation is therefore part of publication rather
+    # than a second, easy-to-miss administrative action.
+    version = await publish_catalog_version(
+        CatalogPublicationInput(description=f"Publish chart {chart.slug}"),
+        db,
+        current_user,
+    )
     db.refresh(chart)
-    return chart.to_dict()
+    return {**chart.to_dict(), "model_version": version["catalog_version"]}
 
 
-@admin_router.post(
-    "/charts/{chart_id}/archive", summary="Archive chart definition", description=_ENDPOINT_DESCRIPTIONS["admin_chart_archive"]
+@admin_chart_router.delete(
+    "/charts/{chart_id}", summary="Delete chart definition", description=_ENDPOINT_DESCRIPTIONS["admin_chart_archive"]
 )
-async def archive_chart(
+async def delete_chart(
     chart_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
@@ -2625,9 +2675,13 @@ async def archive_chart(
     chart.status = "archived"
     chart.archived_at = utc_now()
     _audit(db, current_user, "chart.archived", "chart", chart.id)
-    db.commit()
+    version = await publish_catalog_version(
+        CatalogPublicationInput(description=f"Delete chart {chart.slug}"),
+        db,
+        current_user,
+    )
     db.refresh(chart)
-    return chart.to_dict()
+    return {**chart.to_dict(), "model_version": version["catalog_version"]}
 
 
 @admin_router.get(
@@ -3026,5 +3080,5 @@ async def download_analytics_export(
 
 router = APIRouter()
 router.include_router(viewer_router)
-router.include_router(admin_router)
+router.include_router(admin_chart_router)
 router.include_router(internal_router)

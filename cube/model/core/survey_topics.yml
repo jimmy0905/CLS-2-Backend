@@ -12,6 +12,18 @@ cubes:
         sql: distinct_survey_id
         type: count_distinct
 
+      - name: topic_assignment_positive_count
+        sql: SUM(CASE WHEN {CUBE}.assignment_sentiment = 'POSITIVE' THEN 1 ELSE 0 END)
+        type: number
+
+      - name: topic_assignment_negative_count
+        sql: SUM(CASE WHEN {CUBE}.assignment_sentiment = 'NEGATIVE' THEN 1 ELSE 0 END)
+        type: number
+
+      - name: topic_assignment_neutral_count
+        sql: SUM(CASE WHEN {CUBE}.assignment_sentiment = 'NEUTRAL' THEN 1 ELSE 0 END)
+        type: number
+
       # __LOCAL_MEASURES__
 
     dimensions:
