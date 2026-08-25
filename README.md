@@ -31,15 +31,17 @@ For example, `wtchk_cls` listens on host port 8000 and `wtchk_ecls` listens on
 ### Configuration boundaries
 
 Copy [`.env.example`](.env.example) to `.env` and fill in the shared credentials
-and integration settings. The external `connex_network` must already contain the
-`postgres` service.
+and integration settings. For every profile you deploy, create
+`deploy/profile/<profile>.env` and copy only its matching block from
+[`deploy/profile.env.example`](deploy/profile.env.example). The external
+`connex_network` must already contain the `postgres` service.
 The legacy misspelled `env.exmaple` remains as a compatibility template; use
 `.env.example` for new deployments.
 
-Compose uses `.env` only to interpolate an explicit environment allowlist. It
-does not inject the whole file into every container, so one profile's Azure OAuth
-credentials or analysis-feedback endpoint are never present in another profile's
-container.
+Compose uses the specified `--env-file` values only to interpolate an explicit
+environment allowlist. It does not inject either file wholesale into containers,
+so one profile's Azure OAuth credentials or analysis-feedback endpoint are never
+present in another profile's container.
 
 The following non-secret values are service-local configuration in
 [`docker-compose.yml`](docker-compose.yml), rather than values loaded from
@@ -52,14 +54,15 @@ The following non-secret values are service-local configuration in
 | `IS_ECLS_ENABLED` | Selects CLS or ECLS processing behaviour. |
 | `DEPLOYMENT_PROFILE`, `LOG_SERVICE_NAME` | Keeps logs and diagnostics attributable to one deployment. |
 | `FRONTEND_URL`, `AZURE_REDIRECT_URI` | Compose derives these per-profile paths from shared `PUBLIC_BASE_URL`. |
-| Azure AD OAuth credentials | Each service receives its own tenant, client ID, and client secret from its namespaced variables in the untracked root `.env`. |
-| `ANALYZE_FEEDBACK_API_URL` | Each service receives its own analysis-feedback endpoint from a namespaced root-`.env` variable. |
+| Azure AD OAuth credentials | Each service receives its own tenant, client ID, and client secret from its namespaced ignored profile environment file. |
+| `ANALYZE_FEEDBACK_API_URL` | Each service receives its own analysis-feedback endpoint from its namespaced ignored profile environment file. |
 | `ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL`, `SURVEY_EXPORT_COLUMN_*` | Each profile has its own Compose values, initially `false`; edit that profile's service block to enable a feature. |
 
 Azure AD OAuth credentials and analysis-feedback endpoints are profile-specific
-settings stored only in the untracked root `.env`, which is ignored by Git.
-Copy the needed profile block from [`deploy/profile.env.example`](deploy/profile.env.example)
-into `.env`. For example, `wtchk_cls` consumes only
+settings stored only in `deploy/profile/<profile>.env`, which is ignored by
+Git. Copy the needed profile block from
+[`deploy/profile.env.example`](deploy/profile.env.example) into that file.
+For example, `wtchk_cls` consumes only
 `WTCHK_CLS_AZURE_TENANT_ID`, `WTCHK_CLS_AZURE_CLIENT_ID`,
 `WTCHK_CLS_AZURE_CLIENT_SECRET`, and
 `WTCHK_CLS_ANALYZE_FEEDBACK_API_URL`. Generic Azure OAuth and
@@ -70,16 +73,33 @@ Analysis-feedback channel inclusion and every survey-export column flag are
 version-controlled, profile-specific settings in `docker-compose.yml`. They
 are no longer read from `.env`; modify only the target profile's service block.
 
-Start one profile:
+### Start a profile
+
+You must provide the profile name, its profile-specific environment file, and
+the shared `.env` file. For example, to start `wtchk_cls`:
 
 ```bash
-docker compose --profile wtchk_cls up -d --build
+docker compose \
+  --profile wtchk_cls \
+  --env-file ./deploy/profile/wtchk_cls.env \
+  --env-file ./.env \
+  up -d --build
 ```
 
-To start several isolated BUs, name each profile explicitly:
+Keep shared values only in `.env` and do not repeat a variable in both files;
+when a variable is present in both, the later `--env-file` takes precedence.
+
+To start several isolated BUs, name every profile and supply each corresponding
+profile environment file:
 
 ```bash
-docker compose --profile wtchk_cls --profile wtchk_ecls up -d --build
+docker compose \
+  --profile wtchk_cls \
+  --profile wtchk_ecls \
+  --env-file ./deploy/profile/wtchk_cls.env \
+  --env-file ./deploy/profile/wtchk_ecls.env \
+  --env-file ./.env \
+  up -d --build
 ```
 
 The shared `PUBLIC_BASE_URL` defaults to `http://localhost:3000` for local use. Set it
