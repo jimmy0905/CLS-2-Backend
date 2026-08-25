@@ -1274,13 +1274,25 @@ def _snapshot_charts(version: AnalyticsModelVersion | None, role: str) -> list[d
     charts = snapshot.get("charts", [])
     if not isinstance(charts, list):
         return []
-    return [
-        chart
-        for chart in charts
-        if isinstance(chart, dict)
-        and chart.get("status") == "published"
-        and (role == "admin" or chart.get("visibility") == "viewer")
-    ]
+    result: list[dict[str, Any]] = []
+    for chart in charts:
+        if (
+            not isinstance(chart, dict)
+            or chart.get("status") != "published"
+            or (role != "admin" and chart.get("visibility") != "viewer")
+        ):
+            continue
+        # Snapshots are immutable. The database linkage is assigned after the
+        # snapshot is built, so exposing its old value confuses API consumers.
+        # Report the active catalog version instead.
+        item = {
+            key: value
+            for key, value in chart.items()
+            if key != "published_model_version_id"
+        }
+        item["model_version"] = version.catalog_version
+        result.append(item)
+    return result
 
 
 def _chart_query(
@@ -2639,6 +2651,11 @@ async def publish_chart(
     current_user: User = Depends(require_admin),
 ) -> dict[str, Any]:
     chart = _record_or_404(db, AnalyticsChart, chart_id, "Chart")
+    if chart.status == "archived":
+        raise HTTPException(
+            status_code=409,
+            detail="Archived charts cannot be published; create a replacement chart",
+        )
     try:
         _validate_chart_for_admin(db, chart)
     except (AnalyticsValidationError, ValueError) as error:
@@ -2650,15 +2667,34 @@ async def publish_chart(
     chart.validation_errors = []
     chart.validated_at = utc_now()
     chart.published_at = utc_now()
+    # Older deployments allowed an archived chart to be published without
+    # clearing this timestamp. A published chart must be eligible for the
+    # active snapshot, so repair that inconsistent legacy state on publish.
+    chart.archived_at = None
     _audit(db, current_user, "chart.published", "chart", chart.id)
+    # SessionLocal intentionally does not rely on implicit autoflush. The
+    # catalog builder queries the database, so persist this lifecycle change
+    # before it selects published charts for the immutable snapshot.
+    db.flush()
     # Charts are the only administrator-managed semantic objects in the
     # simplified rollout. Activation is therefore part of publication rather
     # than a second, easy-to-miss administrative action.
-    version = await publish_catalog_version(
-        CatalogPublicationInput(description=f"Publish chart {chart.slug}"),
-        db,
-        current_user,
-    )
+    try:
+        version = await publish_catalog_version(
+            CatalogPublicationInput(description=f"Publish chart {chart.slug}"),
+            db,
+            current_user,
+        )
+    except HTTPException:
+        # Catalog activation can still be blocked by another, older chart.
+        # Do not leave this chart marked published when it was never added to
+        # an active catalog snapshot.
+        chart.status = "draft"
+        chart.published_at = None
+        chart.published_model_version_id = None
+        _audit(db, current_user, "chart.publish_failed", "chart", chart.id)
+        db.commit()
+        raise
     db.refresh(chart)
     return {**chart.to_dict(), "model_version": version["catalog_version"]}
 
@@ -2675,6 +2711,8 @@ async def delete_chart(
     chart.status = "archived"
     chart.archived_at = utc_now()
     _audit(db, current_user, "chart.archived", "chart", chart.id)
+    # Exclude the chart from the catalog snapshot being activated below.
+    db.flush()
     version = await publish_catalog_version(
         CatalogPublicationInput(description=f"Delete chart {chart.slug}"),
         db,

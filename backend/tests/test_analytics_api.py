@@ -105,6 +105,26 @@ def test_core_dashboard_sentiment_metrics_are_queryable_without_publication() ->
             assert metric.source_field == "sentiment"
 
 
+def test_published_chart_response_uses_active_snapshot_version() -> None:
+    version = SimpleNamespace(
+        catalog_version=7,
+        catalog_snapshot={
+            "charts": [
+                {
+                    "id": 2,
+                    "status": "published",
+                    "visibility": "viewer",
+                    "published_model_version_id": 3,
+                }
+            ]
+        },
+    )
+
+    assert analytics._snapshot_charts(version, "viewer") == [
+        {"id": 2, "status": "published", "visibility": "viewer", "model_version": 7}
+    ]
+
+
 def _client(db: FakeDb, role: str = "user") -> TestClient:
     app = FastAPI()
     app.include_router(analytics.router)
