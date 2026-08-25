@@ -92,6 +92,36 @@ def test_cube_client_distinguishes_rejected_and_unavailable_queries() -> None:
     with pytest.raises(CubeQueryError, match="Unknown member"):
         asyncio.run(rejected.execute({}, profile_id="profile", role="viewer"))
 
+    database_unavailable = CubeClient(
+        "http://cube-api:4000",
+        "secret",
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                400,
+                json={"error": "Unable to connect to the database: SSL is disabled"},
+            )
+        ),
+    )
+    with pytest.raises(CubeUnavailableError):
+        asyncio.run(
+            database_unavailable.execute({}, profile_id="profile", role="viewer")
+        )
+
+    unavailable_envelope = CubeClient(
+        "http://cube-api:4000",
+        "secret",
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                json={"error": "Unable to connect to the database"},
+            )
+        ),
+    )
+    with pytest.raises(CubeUnavailableError):
+        asyncio.run(
+            unavailable_envelope.execute({}, profile_id="profile", role="viewer")
+        )
+
     unavailable = CubeClient(
         "http://cube-api:4000",
         "secret",

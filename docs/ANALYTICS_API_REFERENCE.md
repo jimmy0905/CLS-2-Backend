@@ -63,6 +63,23 @@ Confidence-interval metrics add entries to `confidence` with estimate, lower/upp
 
 Common errors are `401` for a missing, invalid, deleted, or wrong-profile token; `403` for an insufficient role; `404` when analytics is disabled or a resource is not visible; `422` for invalid governed input or a rejected semantic query; and `503` when Cube or the analytics database dependency is unavailable. Cube/PostgreSQL implementation details are deliberately not exposed in error messages.
 
+### Request field requirements and examples
+
+Swagger/ReDoc marks required JSON fields from the OpenAPI schema. The following guide makes the contract explicit before you call an endpoint.
+
+| Request model | Required fields | Optional fields / rules | Example |
+| --- | --- | --- | --- |
+| Aggregate query | `semantic_view`; at least one of `dimensions`, `metrics`, or `time_dimension` | `dimensions`, `metrics`, `filters`, time controls, `order`, `limit`. `time_range`/`time_granularity` require `time_dimension`. | `{ "semantic_view": "survey_responses", "dimensions": ["store_format"], "metrics": ["response_count"] }` |
+| Filter | `member`, `operator` | `value` is required for scalar comparisons; `values` is required for `in`, `not_in`, and `between`; neither is used for `set`/`not_set`. | `{ "member": "sentiment", "operator": "equals", "value": "NEGATIVE" }` |
+| Drilldown | None: defaults select common response fields | `semantic_view` is fixed to `survey_responses`; choose `fields` (1–50), `filters` (0–20), `cursor`, and `limit` (1–250). | `{ "fields": ["survey_id", "respondent_id", "store_key", "comment", "sentiment", "cls"], "limit": 100 }` |
+| Create field | `slug`, `label`, `data_type`, `source_key` | `semantic_view` defaults to `survey_responses`; `source_kind` is fixed to `raw_json`; `description` and `visibility` are optional. | `{ "slug": "overall_score", "label": "Overall score", "data_type": "number", "source_key": "Overall Score" }` |
+| Promote candidate | `data_type` | `visibility`, `label`, `description`. | `{ "data_type": "number", "visibility": "viewer", "label": "Overall score" }` |
+| Create metric | `slug`, `label`, `operation` | `semantic_view` defaults to `survey_responses`; use at most one of `field_id`/`source_member`, and at most one of `weight_field_id`/`weight_member`. A source is required when the operation needs one; CI operations require `confidence_level` (0.8–0.999). | `{ "slug": "negative_response_rate", "label": "Negative response rate", "source_member": "sentiment", "operation": "filtered_rate", "definition": { "filter": { "operator": "equals", "value": "NEGATIVE" } } }` |
+| Create chart | `slug`, `title`, `chart_type`, `semantic_view`, `definition` | `description`, `visibility`; definition members depend on chart type. | `{ "slug": "responses_by_store_format", "title": "Responses by store format", "chart_type": "bar", "semantic_view": "survey_responses", "definition": { "dimensions": ["store_format"], "metrics": ["response_count"] } }` |
+| Chart data override | None | `filters`, `time_range`, `time_granularity`, `order`, `limit` only; it cannot replace the chart’s governed dimensions or metrics. | `{ "time_range": ["2026-01-01", "2026-03-31"], "time_granularity": "month" }` |
+| Export | `export_format`; exactly one of `query` or `drilldown` | `export_format` is `csv` or `xlsx`; its selected object follows the relevant query model above. | `{ "export_format": "csv", "drilldown": { "fields": ["survey_id", "comment"] } }` |
+| Catalog publication | None | `description` is optional release/audit text. | `{ "description": "Quarterly metric release" }` |
+
 ## Viewer endpoints
 
 ### `GET /analytics/catalog`
@@ -71,6 +88,56 @@ Returns the active immutable catalog the current role is allowed to use. It incl
 
 Use this endpoint before building an exploration UI. A client should only send slugs returned here to the query endpoints.
 
+### `GET /analytics/catalog/availability`
+
+Returns which visible fields actually contain data for one semantic view. It is the intended way for a frontend to hide fields that are entirely null instead of guessing from the catalog definition.
+
+Query parameter:
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `semantic_view` | Optional; defaults to `survey_responses` | One of `survey_responses`, `survey_topics`, `survey_departments`, or `survey_keywords`. |
+
+Example:
+
+```text
+GET /analytics/catalog/availability?semantic_view=survey_responses
+```
+
+Illustrative response shape—the counts are calculated from the target BU when called:
+
+```json
+{
+  "model_version": 4,
+  "semantic_view": "survey_responses",
+  "total_rows": 28143,
+  "fields": [
+    {
+      "slug": "store_name_english",
+      "label": "Store Name English",
+      "data_type": "string",
+      "non_null_count": 28143,
+      "null_count": 0,
+      "availability_rate": 1.0,
+      "available": true
+    },
+    {
+      "slug": "delivery_service_name",
+      "label": "Delivery Service Name",
+      "data_type": "string",
+      "non_null_count": 0,
+      "null_count": 28143,
+      "availability_rate": 0.0,
+      "available": false
+    }
+  ],
+  "generated_at": "2026-08-26T08:00:00+00:00",
+  "cached": false
+}
+```
+
+The result contains only fields visible to the caller—viewer requests do not disclose admin-only fields. The first request for a role/view/model-version may scan the reporting view; identical requests are cached for up to 15 minutes. `available: true` means at least one reporting row has a non-null value, not that every row is complete.
+
 ### `POST /analytics/query`
 
 Runs one governed aggregate query against a single semantic view. The request body is the shared query shape:
@@ -78,11 +145,11 @@ Runs one governed aggregate query against a single semantic view. The request bo
 ```json
 {
   "semantic_view": "survey_responses",
-  "dimensions": ["region"],
-  "metrics": ["response_count", "average_cls"],
-  "filters": [{"member": "channel_name", "operator": "equals", "value": "App"}],
+  "dimensions": ["store_name_english", "store_format"],
+  "metrics": ["response_count", "cls_average"],
+  "filters": [{"member": "sentiment", "operator": "equals", "value": "NEGATIVE"}],
   "time_dimension": "reported_at",
-  "time_range": ["2026-01-01", "2026-03-31"],
+  "time_range": ["2024-08-01", "2024-08-31"],
   "time_granularity": "month",
   "order": [{"member": "response_count", "direction": "desc"}],
   "limit": 1000
@@ -101,8 +168,8 @@ Runs a published chart by numeric ID. The chart’s dimensions and metrics are f
 
 ```json
 {
-  "filters": [{"member": "region", "operator": "in", "values": ["North", "South"]}],
-  "time_range": ["2026-01-01", "2026-06-30"],
+  "filters": [{"member": "store_format", "operator": "in", "values": ["Mall", "Commercial"]}],
+  "time_range": ["2024-08-01", "2024-08-31"],
   "time_granularity": "month",
   "order": [{"member": "response_count", "direction": "desc"}],
   "limit": 100
@@ -117,8 +184,8 @@ Returns cursor-paginated response-level rows from `survey_responses` only. It is
 
 ```json
 {
-  "fields": ["survey_id", "reported_at", "store_name", "sentiment", "comment"],
-  "filters": [{"member": "region", "operator": "equals", "value": "North"}],
+  "fields": ["survey_id", "respondent_id", "store_key", "reported_at", "comment", "sentiment", "topic_sentiment_score", "cls"],
+  "filters": [{"member": "sentiment", "operator": "equals", "value": "NEGATIVE"}],
   "cursor": 0,
   "limit": 100
 }

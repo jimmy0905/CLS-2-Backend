@@ -295,7 +295,20 @@ FilterOperator = Literal[
 
 
 class FilterSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        json_schema_extra={
+            "examples": [
+                {"member": "sentiment", "operator": "equals", "value": "NEGATIVE"},
+                {
+                    "member": "reported_at",
+                    "operator": "between",
+                    "values": ["2026-01-01", "2026-03-31"],
+                },
+            ]
+        },
+    )
 
     member: str
     operator: FilterOperator
@@ -309,7 +322,11 @@ class FilterSpec(BaseModel):
 
 
 class OrderSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        json_schema_extra={"examples": [{"member": "response_count", "direction": "desc"}]},
+    )
 
     member: str
     direction: Literal["asc", "desc"] = "asc"
@@ -321,7 +338,31 @@ class OrderSpec(BaseModel):
 
 
 class QuerySpec(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        json_schema_extra={
+            "examples": [
+                {
+                    "semantic_view": "survey_responses",
+                    "dimensions": ["store_name_english", "store_format"],
+                    "metrics": ["response_count", "cls_average"],
+                    "filters": [
+                        {
+                            "member": "sentiment",
+                            "operator": "equals",
+                            "value": "NEGATIVE",
+                        }
+                    ],
+                    "time_dimension": "reported_at",
+                    "time_range": ["2024-08-01", "2024-08-31"],
+                    "time_granularity": "month",
+                    "order": [{"member": "response_count", "direction": "desc"}],
+                    "limit": 1000,
+                }
+            ]
+        },
+    )
 
     semantic_view: str
     dimensions: tuple[str, ...] = Field(default=(), max_length=MAX_DIMENSIONS)

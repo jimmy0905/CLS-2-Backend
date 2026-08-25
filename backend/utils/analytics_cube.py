@@ -23,6 +23,30 @@ class CubeUnavailableError(CubeClientError):
     """Cube could not service a request because it is unavailable."""
 
 
+def _cube_error(error: object) -> CubeClientError:
+    """Classify Cube's error envelope without exposing it to API callers.
+
+    Cube can report an upstream PostgreSQL outage as either a 4xx response or
+    an HTTP-200 payload containing ``error``.  These are service failures, not
+    invalid semantic requests, and must map to the analytics 503 contract.
+    """
+
+    detail = str(error or "Cube rejected the analytics query")
+    normalized = detail.lower()
+    unavailable_markers = (
+        "unable to connect to the database",
+        "connection refused",
+        "connection terminated",
+        "server does not support ssl",
+        "database is unavailable",
+        "database connection",
+        "connect timeout",
+    )
+    if any(marker in normalized for marker in unavailable_markers):
+        return CubeUnavailableError("Cube analytics database is unavailable")
+    return CubeQueryError(detail)
+
+
 def create_cube_token(
     api_secret: str,
     profile_id: str,
@@ -107,7 +131,7 @@ class CubeClient:
                 detail = response.json().get("error") or response.text
             except ValueError:
                 detail = response.text
-            raise CubeQueryError(str(detail or "Cube rejected the analytics query"))
+            raise _cube_error(detail)
         if response.status_code >= 500:
             raise CubeUnavailableError("Cube analytics service failed the request")
         try:
@@ -116,6 +140,8 @@ class CubeClient:
             raise CubeUnavailableError("Cube returned an invalid response") from error
         if not isinstance(result, dict):
             raise CubeUnavailableError("Cube returned an invalid response")
+        if result.get("error"):
+            raise _cube_error(result["error"])
         return result
 
     async def execute(

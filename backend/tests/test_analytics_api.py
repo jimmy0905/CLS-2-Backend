@@ -101,6 +101,88 @@ def test_openapi_describes_every_analytics_endpoint() -> None:
             assert operation["summary"]
             assert operation["description"]
 
+    models = schema["components"]["schemas"]
+    assert models["QuerySpec"]["required"] == ["semantic_view"]
+    assert models["FieldInput"]["required"] == [
+        "slug",
+        "label",
+        "data_type",
+        "source_key",
+    ]
+    for name in (
+        "FilterSpec",
+        "OrderSpec",
+        "QuerySpec",
+        "DrilldownSpec",
+        "FieldInput",
+        "CandidatePromotionInput",
+        "MetricInput",
+        "ChartDefinitionInput",
+        "ChartInput",
+        "ChartDataInput",
+        "CatalogPublicationInput",
+        "ExportInput",
+    ):
+        assert models[name]["examples"]
+
+
+def test_field_availability_reports_non_null_data_for_visible_fields(monkeypatch) -> None:
+    class AvailabilityDb:
+        statement = None
+        parameters = None
+
+        def execute(self, statement, parameters):
+            self.statement = statement
+            self.parameters = parameters
+            return SimpleNamespace(
+                mappings=lambda: SimpleNamespace(
+                    one=lambda: {"total_rows": 3, "non_null_0": 2}
+                )
+            )
+
+    db = AvailabilityDb()
+    catalog = SemanticCatalog(
+        fields=[
+            CatalogField(
+                slug="store_name",
+                label="Store",
+                semantic_view="survey_responses",
+                data_type=FieldType.STRING,
+            ),
+            CatalogField(
+                slug="admin_note",
+                label="Admin note",
+                semantic_view="survey_responses",
+                data_type=FieldType.STRING,
+                visibility="admin",
+            ),
+        ]
+    )
+    monkeypatch.setattr(analytics, "_raw_field_sources", lambda db, role: {})
+    analytics._FIELD_AVAILABILITY_CACHE.clear()
+
+    result = analytics._field_availability(
+        db,
+        catalog,
+        role="viewer",
+        semantic_view="survey_responses",
+        catalog_version=999,
+    )
+
+    assert str(db.statement).endswith("FROM analytics_survey_facts")
+    assert result["total_rows"] == 3
+    assert result["fields"] == [
+        {
+            "slug": "store_name",
+            "label": "Store",
+            "data_type": "string",
+            "non_null_count": 2,
+            "null_count": 1,
+            "availability_rate": pytest.approx(2 / 3),
+            "available": True,
+        }
+    ]
+
 
 def test_feature_gate_is_evaluated_dynamically(monkeypatch) -> None:
     db = FakeDb()

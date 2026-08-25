@@ -77,7 +77,9 @@ CUBESTORE_IMAGE_DIGEST=sha256:038d4491cd77799a440655053f8f67ea16d3d2ecceffe812d3
 CUBESTORE_PLATFORM=linux/amd64
 
 ANALYTICS_DATABASE_PORT=5432
-ANALYTICS_DATABASE_SSL=true
+# Local Docker PostgreSQL does not enable SSL. Set true only for an SSL-enabled
+# external PostgreSQL server.
+ANALYTICS_DATABASE_SSL=false
 
 WTCHK_CLS_ANALYTICS_ENABLED=false
 WTCHK_CLS_ANALYTICS_DB_USER=<read-only-postgres-user>

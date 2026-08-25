@@ -96,6 +96,9 @@ _ENDPOINT_DESCRIPTIONS = {
     "viewer_catalog": "Return the active immutable catalog visible to the current role. "
     "Only published viewer-visible fields, metrics, and chart types are returned; "
     "draft definitions, source keys, and raw payload fields are never exposed.",
+    "viewer_availability": "Report field-level non-null counts and availability rates "
+    "for one semantic view. Results include only fields visible to the current role "
+    "and are cached for up to 15 minutes to avoid repeated reporting scans.",
     "viewer_query": "Run one governed aggregate query against exactly one semantic view. "
     "The API validates published member slugs, typed filters, limits, time settings, "
     "and role visibility before forwarding it to private Cube.",
@@ -179,6 +182,21 @@ _MAX_CUBE_CATALOG_BYTES = 2 * 1024 * 1024
 _DRILLDOWN_SEMAPHORE = threading.BoundedSemaphore(
     config.ANALYTICS_DRILLDOWN_CONCURRENCY
 )
+_FIELD_AVAILABILITY_CACHE_TTL = timedelta(minutes=15)
+_FIELD_AVAILABILITY_CACHE: dict[tuple[object, ...], tuple[datetime, dict[str, Any]]] = {}
+_FIELD_AVAILABILITY_CACHE_LOCK = threading.Lock()
+_AVAILABILITY_VIEW_NAMES = {
+    "survey_responses": "analytics_survey_facts",
+    "survey_topics": "analytics_survey_topics",
+    "survey_departments": "analytics_survey_departments",
+    "survey_keywords": "analytics_survey_keywords",
+}
+_ASSIGNMENT_AVAILABILITY_ALIASES = {
+    "response_id": "id",
+    "sentiment": "assignment_sentiment",
+    "response_sentiment": "sentiment",
+    "department": "department_name",
+}
 
 
 def _core_field(
@@ -332,6 +350,23 @@ class _StrictInput(BaseModel):
 
 
 class FieldInput(_StrictInput):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "slug": "overall_score",
+                    "label": "Overall score",
+                    "description": "Imported survey score from the monthly upload",
+                    "data_type": "number",
+                    "source_key": "Overall Score",
+                    "semantic_view": "survey_responses",
+                    "visibility": "viewer",
+                }
+            ]
+        },
+    )
+
     slug: str
     label: str = Field(min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=1_000)
@@ -364,6 +399,20 @@ class FieldInput(_StrictInput):
 
 
 class CandidatePromotionInput(_StrictInput):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "data_type": "number",
+                    "visibility": "viewer",
+                    "label": "Overall score",
+                    "description": "Normalized imported score",
+                }
+            ]
+        },
+    )
+
     data_type: FieldType
     visibility: Visibility = Visibility.VIEWER
     label: str | None = Field(default=None, min_length=1, max_length=120)
@@ -371,6 +420,33 @@ class CandidatePromotionInput(_StrictInput):
 
 
 class MetricInput(_StrictInput):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "slug": "negative_response_rate",
+                    "label": "Negative response rate",
+                    "semantic_view": "survey_responses",
+                    "source_member": "sentiment",
+                    "operation": "filtered_rate",
+                    "definition": {
+                        "filter": {"operator": "equals", "value": "NEGATIVE"}
+                    },
+                    "visibility": "viewer",
+                },
+                {
+                    "slug": "overall_score_weighted_average",
+                    "label": "Weighted overall score",
+                    "field_id": 42,
+                    "weight_member": "cls",
+                    "operation": "weighted_average",
+                    "visibility": "admin",
+                },
+            ]
+        },
+    )
+
     slug: str
     label: str = Field(min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=1_000)
@@ -429,6 +505,30 @@ class MetricInput(_StrictInput):
 
 
 class ChartDefinitionInput(_StrictInput):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "dimensions": ["store_format"],
+                    "metrics": ["response_count"],
+                    "filters": [
+                        {
+                            "member": "sentiment",
+                            "operator": "equals",
+                            "value": "NEGATIVE",
+                        }
+                    ],
+                    "time_dimension": "reported_at",
+                    "time_range": ["2024-08-01", "2024-08-31"],
+                    "time_granularity": "month",
+                    "order": [{"member": "response_count", "direction": "desc"}],
+                    "limit": 100,
+                }
+            ]
+        },
+    )
+
     dimensions: tuple[str, ...] = Field(default=(), max_length=4)
     metrics: tuple[str, ...] = Field(default=(), max_length=5)
     filters: tuple[FilterSpec, ...] = Field(default=(), max_length=20)
@@ -462,6 +562,26 @@ class ChartDefinitionInput(_StrictInput):
 
 
 class ChartInput(_StrictInput):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "slug": "responses_by_store_format",
+                    "title": "Responses by store format",
+                    "chart_type": "bar",
+                    "semantic_view": "survey_responses",
+                    "definition": {
+                        "dimensions": ["store_format"],
+                        "metrics": ["response_count"],
+                        "order": [{"member": "response_count", "direction": "desc"}],
+                    },
+                    "visibility": "viewer",
+                }
+            ]
+        },
+    )
+
     slug: str
     title: str = Field(min_length=1, max_length=160)
     description: str | None = Field(default=None, max_length=1_000)
@@ -495,6 +615,26 @@ class ChartInput(_StrictInput):
 
 
 class ChartDataInput(_StrictInput):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "filters": [
+                        {
+                            "member": "store_format",
+                            "operator": "in",
+                            "values": ["Mall", "Commercial"],
+                        }
+                    ],
+                    "time_range": ["2026-01-01", "2026-03-31"],
+                    "time_granularity": "month",
+                    "limit": 100,
+                }
+            ]
+        },
+    )
+
     filters: tuple[FilterSpec, ...] | None = Field(default=None, max_length=20)
     time_range: tuple[str, str] | None = None
     time_granularity: Literal[
@@ -505,10 +645,35 @@ class ChartDataInput(_StrictInput):
 
 
 class CatalogPublicationInput(_StrictInput):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={"examples": [{"description": "Quarterly metric release"}]},
+    )
+
     description: str | None = Field(default=None, max_length=1_000)
 
 
 class ExportInput(_StrictInput):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "export_format": "xlsx",
+                    "query": {
+                        "semantic_view": "survey_responses",
+                        "dimensions": ["store_format"],
+                        "metrics": ["response_count"],
+                    },
+                },
+                {
+                    "export_format": "csv",
+                    "drilldown": {"fields": ["survey_id", "comment"], "limit": 100},
+                },
+            ]
+        },
+    )
+
     export_format: Literal["csv", "xlsx"]
     query: QuerySpec | None = None
     drilldown: DrilldownSpec | None = None
@@ -644,6 +809,115 @@ def _raw_field_sources(
             FieldType(field.get("dataType")),
         )
     return result
+
+
+def _availability_expression(
+    field: CatalogField,
+    raw_fields: dict[str, tuple[str, FieldType]],
+    *,
+    parameter_name: str,
+    parameters: dict[str, Any],
+) -> str:
+    """Return a trusted SQL expression that is non-null when a field has data."""
+
+    raw_source = raw_fields.get(field.slug)
+    if raw_source is not None:
+        parameters[parameter_name] = raw_source[0]
+        return f"analytics_raw_value(raw_row_data, :{parameter_name})"
+
+    if not any(
+        item.semantic_view == field.semantic_view and item.slug == field.slug
+        for item in _CORE_FIELDS
+    ):
+        raise AnalyticsValidationError(
+            f"Field {field.slug} has no governed availability source"
+        )
+    column = field.slug
+    if field.semantic_view != "survey_responses":
+        column = _ASSIGNMENT_AVAILABILITY_ALIASES.get(column, column)
+    return f'"{validate_identifier(column)}"'
+
+
+def _field_availability(
+    db: Session,
+    catalog: SemanticCatalog,
+    *,
+    role: str,
+    semantic_view: str,
+    catalog_version: int,
+) -> dict[str, Any]:
+    """Return cached, role-scoped non-null statistics for governed fields.
+
+    Availability is deliberately a separate endpoint rather than part of the
+    catalog response: calculating it is a reporting-table scan, not metadata
+    lookup. A 15-minute cache matches the analytics freshness objective.
+    """
+
+    if semantic_view not in _AVAILABILITY_VIEW_NAMES:
+        raise AnalyticsValidationError("Unknown semantic view")
+    fields = sorted(
+        (
+            field
+            for field in catalog.fields
+            if field.semantic_view == semantic_view
+            and (role == "admin" or field.visibility is Visibility.VIEWER)
+        ),
+        key=lambda field: field.slug,
+    )
+    cache_key = (
+        config.DEPLOYMENT_PROFILE,
+        role,
+        semantic_view,
+        catalog_version,
+        tuple((field.slug, field.data_type.value) for field in fields),
+    )
+    now = utc_now()
+    with _FIELD_AVAILABILITY_CACHE_LOCK:
+        cached = _FIELD_AVAILABILITY_CACHE.get(cache_key)
+    if cached is not None and now - cached[0] < _FIELD_AVAILABILITY_CACHE_TTL:
+        return {**cached[1], "cached": True}
+
+    raw_fields = _raw_field_sources(db, role)
+    parameters: dict[str, Any] = {}
+    select_items = ["COUNT(*) AS total_rows"]
+    for index, field in enumerate(fields):
+        expression = _availability_expression(
+            field,
+            raw_fields,
+            parameter_name=f"availability_source_{index}",
+            parameters=parameters,
+        )
+        select_items.append(f"COUNT({expression}) AS non_null_{index}")
+    view_name = _AVAILABILITY_VIEW_NAMES[semantic_view]
+    statement = sql_text(f"SELECT {', '.join(select_items)} FROM {view_name}")
+    row = db.execute(statement, parameters).mappings().one()
+    total_rows = int(row.get("total_rows") or 0)
+    response = {
+        "model_version": catalog_version,
+        "semantic_view": semantic_view,
+        "total_rows": total_rows,
+        "fields": [
+            {
+                "slug": field.slug,
+                "label": field.label,
+                "data_type": field.data_type.value,
+                "non_null_count": int(row.get(f"non_null_{index}") or 0),
+                "null_count": total_rows - int(row.get(f"non_null_{index}") or 0),
+                "availability_rate": (
+                    round(int(row.get(f"non_null_{index}") or 0) / total_rows, 6)
+                    if total_rows
+                    else 0.0
+                ),
+                "available": bool(row.get(f"non_null_{index}") or 0),
+            }
+            for index, field in enumerate(fields)
+        ],
+        "generated_at": now.isoformat(),
+        "cached": False,
+    }
+    with _FIELD_AVAILABILITY_CACHE_LOCK:
+        _FIELD_AVAILABILITY_CACHE[cache_key] = (now, response)
+    return response
 
 
 def _audit(
@@ -1488,6 +1762,44 @@ async def get_catalog(
         raise HTTPException(status_code=503, detail="Analytics catalog is invalid") from error
     version = _active_model_version(db)
     return _catalog_response(catalog, version.catalog_version if version else 0)
+
+
+@viewer_router.get(
+    "/catalog/availability",
+    summary="Get field data availability",
+    description=_ENDPOINT_DESCRIPTIONS["viewer_availability"],
+)
+async def get_catalog_availability(
+    semantic_view: Literal[
+        "survey_responses",
+        "survey_topics",
+        "survey_departments",
+        "survey_keywords",
+    ] = "survey_responses",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    role = _role(current_user)
+    try:
+        catalog = _catalog(db, role)
+        version = _active_model_version(db)
+        return _field_availability(
+            db,
+            catalog,
+            role=role,
+            semantic_view=semantic_view,
+            catalog_version=version.catalog_version if version else 0,
+        )
+    except (AnalyticsValidationError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except SQLAlchemyError as error:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "analytics_availability_unavailable",
+                "message": "Field availability is temporarily unavailable",
+            },
+        ) from error
 
 
 @viewer_router.post(

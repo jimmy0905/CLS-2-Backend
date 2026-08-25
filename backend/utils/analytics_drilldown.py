@@ -36,7 +36,35 @@ DEFAULT_DRILLDOWN_FIELDS = (
 
 
 class DrilldownSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        json_schema_extra={
+            "examples": [
+                {
+                    "fields": [
+                        "survey_id",
+                        "respondent_id",
+                        "reported_at",
+                        "store_key",
+                        "sentiment",
+                        "topic_sentiment_score",
+                        "cls",
+                        "comment",
+                    ],
+                    "filters": [
+                        {
+                            "member": "sentiment",
+                            "operator": "equals",
+                            "value": "NEGATIVE",
+                        }
+                    ],
+                    "cursor": 0,
+                    "limit": 100,
+                }
+            ]
+        },
+    )
 
     semantic_view: Literal["survey_responses"] = "survey_responses"
     fields: tuple[str, ...] = Field(default=DEFAULT_DRILLDOWN_FIELDS, max_length=50)
