@@ -99,6 +99,9 @@ _ENDPOINT_DESCRIPTIONS = {
     "viewer_availability": "Report field-level non-null counts and availability rates "
     "for one semantic view. Results include only fields visible to the current role "
     "and are cached for up to 15 minutes to avoid repeated reporting scans.",
+    "viewer_filter_options": "Return distinct non-null values for one published "
+    "dimension, with matching-row counts. Optional governed filters and string search "
+    "narrow the list for a frontend filter control; use cursor to page beyond 1,000 values.",
     "viewer_query": "Run one governed aggregate query against exactly one semantic view. "
     "The API validates published member slugs, typed filters, limits, time settings, "
     "and role visibility before forwarding it to private Cube.",
@@ -195,6 +198,12 @@ _ASSIGNMENT_AVAILABILITY_ALIASES = {
     "response_id": "id",
     "sentiment": "assignment_sentiment",
     "department": "department_name",
+}
+_FILTER_OPTION_COUNT_METRICS = {
+    "survey_responses": "response_count",
+    "survey_topics": "assignment_count",
+    "survey_departments": "assignment_count",
+    "survey_keywords": "assignment_count",
 }
 
 
@@ -655,6 +664,60 @@ class ChartDataInput(_StrictInput):
     ] | None = None
     order: tuple[OrderSpec, ...] | None = Field(default=None, max_length=8)
     limit: int | None = Field(default=None, ge=1, le=5_000)
+
+
+class FilterOptionsInput(_StrictInput):
+    """Request distinct, usable values for one governed filter dimension."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "semantic_view": "survey_responses",
+                    "member": "store_format",
+                    "filters": [
+                        {
+                            "member": "topic_sentiment",
+                            "operator": "equals",
+                            "value": "NEGATIVE",
+                        }
+                    ],
+                    "search": "Mall",
+                    "limit": 100,
+                    "cursor": 0,
+                }
+            ]
+        },
+    )
+
+    semantic_view: Literal[
+        "survey_responses",
+        "survey_topics",
+        "survey_departments",
+        "survey_keywords",
+    ]
+    member: str
+    # Reserve room for the endpoint's non-null filter and optional search.
+    filters: tuple[FilterSpec, ...] = Field(default=(), max_length=18)
+    search: str | None = Field(default=None, max_length=100)
+    limit: int = Field(default=100, ge=1, le=1_000)
+    cursor: int | None = Field(default=None, ge=0, le=1_000_000)
+
+    @field_validator("member")
+    @classmethod
+    def _member(cls, value: str) -> str:
+        return validate_identifier(value)
+
+    @field_validator("search")
+    @classmethod
+    def _search(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value or "\x00" in value:
+            raise ValueError("search must not be blank or contain NUL")
+        return value
 
 
 class CatalogPublicationInput(_StrictInput):
@@ -1813,6 +1876,83 @@ async def get_catalog_availability(
                 "message": "Field availability is temporarily unavailable",
             },
         ) from error
+
+
+@viewer_router.post(
+    "/filter-options",
+    summary="List available filter values",
+    description=_ENDPOINT_DESCRIPTIONS["viewer_filter_options"],
+)
+async def get_filter_options(
+    payload: FilterOptionsInput,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Build a role-scoped filter dropdown from the governed semantic catalog."""
+
+    role = _role(current_user)
+    try:
+        catalog = _catalog(db, role)
+        field = catalog.field(payload.member, payload.semantic_view)
+        count_metric = _FILTER_OPTION_COUNT_METRICS[payload.semantic_view]
+        filters: tuple[FilterSpec, ...] = (
+            *payload.filters,
+            FilterSpec(member=payload.member, operator="set"),
+        )
+        if payload.search is not None:
+            if field.data_type is not FieldType.STRING:
+                raise AnalyticsValidationError("search is available only for string fields")
+            filters = (
+                *filters,
+                FilterSpec(
+                    member=payload.member,
+                    operator="contains",
+                    value=payload.search,
+                ),
+            )
+        query = QuerySpec(
+            semantic_view=payload.semantic_view,
+            dimensions=(payload.member,),
+            metrics=(count_metric,),
+            filters=filters,
+            order=(
+                OrderSpec(member=count_metric, direction="desc"),
+                OrderSpec(member=payload.member, direction="asc"),
+            ),
+            limit=payload.limit,
+        )
+        cube_query = compile_cube_query(query, catalog, role)
+        cube_query["offset"] = payload.cursor or 0
+    except (AnalyticsValidationError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    result = await _execute_query(
+        query, db, current_user, cube_query_override=cube_query
+    )
+    values = [
+        {
+            "value": row.get(payload.member),
+            "count": row.get(count_metric, 0),
+        }
+        for row in result["rows"]
+        if row.get(payload.member) is not None
+    ]
+    cursor = payload.cursor or 0
+    has_more = len(values) == payload.limit
+    return {
+        "query_id": result["query_id"],
+        "model_version": result["model_version"],
+        "semantic_view": payload.semantic_view,
+        "member": payload.member,
+        "label": field.label,
+        "data_type": field.data_type.value,
+        "values": values,
+        "cursor": cursor,
+        "next_cursor": cursor + len(values) if has_more else None,
+        "has_more": has_more,
+        "warnings": result["warnings"],
+        "freshness_time": result["freshness_time"],
+    }
 
 
 @viewer_router.post(

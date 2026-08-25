@@ -120,6 +120,7 @@ def test_openapi_describes_every_analytics_endpoint() -> None:
         "ChartDefinitionInput",
         "ChartInput",
         "ChartDataInput",
+        "FilterOptionsInput",
         "CatalogPublicationInput",
         "ExportInput",
     ):
@@ -182,6 +183,94 @@ def test_field_availability_reports_non_null_data_for_visible_fields(monkeypatch
             "available": True,
         }
     ]
+
+
+def test_filter_options_return_non_null_governed_values(monkeypatch) -> None:
+    db = FakeDb()
+    catalog = SemanticCatalog(
+        fields=[
+            CatalogField(
+                slug="store_format",
+                label="Store format",
+                semantic_view="survey_responses",
+                data_type=FieldType.STRING,
+            ),
+            CatalogField(
+                slug="topic_sentiment",
+                label="Topic sentiment",
+                semantic_view="survey_responses",
+                data_type=FieldType.STRING,
+            ),
+        ],
+        metrics=[
+            CatalogMetric(
+                slug="response_count",
+                label="Response count",
+                semantic_view="survey_responses",
+                aggregation=Aggregation.COUNT,
+            )
+        ],
+    )
+    cube = FakeCube(
+        {
+            "data": [
+                {
+                    "survey_responses.store_format": "Mall",
+                    "survey_responses.response_count": "12",
+                }
+            ]
+        }
+    )
+    monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
+    monkeypatch.setattr(config, "DEPLOYMENT_PROFILE", "wtchk_cls")
+    monkeypatch.setattr(analytics, "_catalog", lambda db, role: catalog)
+    monkeypatch.setattr(analytics, "_active_model_version", lambda db: None)
+    monkeypatch.setattr(analytics, "_cube_client", lambda: cube)
+
+    response = _client(db).post(
+        "/analytics/filter-options",
+        json={
+            "semantic_view": "survey_responses",
+            "member": "store_format",
+            "filters": [
+                {
+                    "member": "topic_sentiment",
+                    "operator": "equals",
+                    "value": "NEGATIVE",
+                }
+            ],
+            "search": "Mall",
+            "limit": 1,
+            "cursor": 1000,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["values"] == [{"value": "Mall", "count": 12}]
+    assert response.json()["cursor"] == 1000
+    assert response.json()["next_cursor"] == 1001
+    assert response.json()["has_more"] is True
+    assert cube.calls[0][0]["filters"] == [
+        {
+            "member": "survey_responses.topic_sentiment",
+            "operator": "equals",
+            "values": ["NEGATIVE"],
+        },
+        {
+            "member": "survey_responses.store_format",
+            "operator": "set",
+        },
+        {
+            "member": "survey_responses.store_format",
+            "operator": "contains",
+            "values": ["Mall"],
+        },
+    ]
+    assert cube.calls[0][0]["order"] == {
+        "survey_responses.response_count": "desc",
+        "survey_responses.store_format": "asc",
+    }
+    assert cube.calls[0][0]["offset"] == 1000
 
 
 def test_feature_gate_is_evaluated_dynamically(monkeypatch) -> None:

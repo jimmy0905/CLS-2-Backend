@@ -94,6 +94,7 @@ Swagger/ReDoc marks required JSON fields from the OpenAPI schema. The following 
 | Create metric | `slug`, `label`, `operation` | `semantic_view` defaults to `survey_responses`; use at most one of `field_id`/`source_member`, and at most one of `weight_field_id`/`weight_member`. A source is required when the operation needs one; CI operations require `confidence_level` (0.8–0.999). | `{ "slug": "negative_response_rate", "label": "Negative response rate", "source_member": "topic_sentiment", "operation": "filtered_rate", "definition": { "filter": { "operator": "equals", "value": "NEGATIVE" } } }` |
 | Create chart | `slug`, `title`, `chart_type`, `semantic_view`, `definition` | `description`, `visibility`; definition members depend on chart type. | `{ "slug": "responses_by_store_format", "title": "Responses by store format", "chart_type": "bar", "semantic_view": "survey_responses", "definition": { "dimensions": ["store_format"], "metrics": ["response_count"] } }` |
 | Chart data override | None | `filters`, `time_range`, `time_granularity`, `order`, `limit` only; it cannot replace the chart’s governed dimensions or metrics. | `{ "time_range": ["2026-01-01", "2026-03-31"], "time_granularity": "month" }` |
+| Filter options | `semantic_view`, `member` | `filters` (up to 18), string-only `search`, `limit` (1–1,000), and offset `cursor` (0–1,000,000). The endpoint automatically excludes null values. | `{ "semantic_view": "survey_responses", "member": "store_format", "search": "Mall", "cursor": 0 }` |
 | Export | `export_format`; exactly one of `query` or `drilldown` | `export_format` is `csv` or `xlsx`; its selected object follows the relevant query model above. | `{ "export_format": "csv", "drilldown": { "fields": ["survey_id", "comment"] } }` |
 | Catalog publication | None | `description` is optional release/audit text. | `{ "description": "Quarterly metric release" }` |
 
@@ -154,6 +155,47 @@ Illustrative response shape—the counts are calculated from the target BU when 
 ```
 
 The result contains only fields visible to the caller—viewer requests do not disclose admin-only fields. The first request for a role/view/model-version may scan the reporting view; identical requests are cached for up to 15 minutes. `available: true` means at least one reporting row has a non-null value, not that every row is complete.
+
+### `POST /analytics/filter-options`
+
+Returns values that can populate one frontend filter control. The target `member` must be a published, role-visible dimension in the specified semantic view. The response excludes null values, orders options by matching-row count, and never exposes raw/unpromoted payload keys.
+
+```json
+{
+  "semantic_view": "survey_responses",
+  "member": "store_format",
+  "filters": [
+    {"member": "topic_sentiment", "operator": "equals", "value": "NEGATIVE"}
+  ],
+  "search": "Mall",
+  "limit": 100,
+  "cursor": 0
+}
+```
+
+`semantic_view` and `member` are required. `filters` is optional and can express dependent choices (for example, list stores only after choosing a store format). `search` is optional and accepted only for string fields. Use `GET /analytics/catalog/availability` first if the UI should hide dimensions containing no data at all.
+
+For more than 1,000 values, use `next_cursor` from the response as the next request’s `cursor`. Values are ordered by matching-row count descending, then the value ascending for stable paging. `has_more` is true when the page was full; one final request can return an empty page when the total is an exact multiple of `limit`.
+
+```json
+{
+  "query_id": "…",
+  "model_version": 4,
+  "semantic_view": "survey_responses",
+  "member": "store_format",
+  "label": "Store Format",
+  "data_type": "string",
+  "cursor": 0,
+  "next_cursor": 100,
+  "has_more": true,
+  "values": [
+    {"value": "Mall", "count": 245},
+    {"value": "Commercial", "count": 81}
+  ],
+  "warnings": [],
+  "freshness_time": "2026-08-26T08:00:00Z"
+}
+```
 
 ### `POST /analytics/query`
 
