@@ -2,6 +2,8 @@ from models.UploadTask import UploadTask
 from models.Survey import Survey
 import pandas as pd
 import json
+import math
+import numbers
 from models.Store import Store
 from models.UploadTaskError import UploadTaskError
 from models.Department import Department
@@ -26,9 +28,19 @@ import time
 from functools import partial
 from sqlalchemy.orm import sessionmaker
 from utils.database import engine
-from config import MAX_WORKER_THREADS
+from config import (
+    ANALYTICS_CUBE_API_SECRET,
+    ANALYTICS_CUBE_API_URL,
+    ANALYTICS_QUERY_TIMEOUT_SECONDS,
+    DEPLOYMENT_PROFILE,
+    MAX_WORKER_THREADS,
+)
+from utils.analytics_catalog import register_upload_candidates
+from utils.analytics import validate_identifier
+from utils.analytics_cube import CubeClient
 from utils.llm.models import TotalResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import tuple_
 from sqlalchemy.exc import IntegrityError
 import os
 
@@ -178,6 +190,205 @@ def parse_optional_cls(row: Any, row_number: int = None) -> Optional[float]:
 
     return None
 
+
+def build_raw_row_data(index: int, row: Any) -> Dict[str, Any]:
+    """Build a JSON-safe object while preserving the legacy ``row`` envelope."""
+    source = row.to_dict() if hasattr(row, "to_dict") else dict(row)
+    normalized: Dict[str, Any] = {}
+    for key, value in source.items():
+        try:
+            is_missing = bool(pd.isna(value))
+        except (TypeError, ValueError):
+            is_missing = False
+        if is_missing:
+            normalized[str(key)] = None
+        elif isinstance(value, numbers.Real) and not isinstance(value, bool):
+            numeric = float(value)
+            if math.isinf(numeric):
+                normalized[str(key)] = "Infinity" if numeric > 0 else "-Infinity"
+            else:
+                normalized[str(key)] = value
+        else:
+            normalized[str(key)] = value
+
+    # A round trip converts pandas/numpy/date values without turning the whole
+    # payload into a string, so SQLAlchemy persists a JSON object for new rows.
+    return json.loads(
+        json.dumps(
+            {"index": int(index), "row": normalized},
+            default=str,
+            allow_nan=False,
+        )
+    )
+
+
+def affected_reporting_months(dataframe: Any) -> List[str]:
+    """Return reporting months touched by an upload for partition refresh."""
+    if "survey_order_date" not in dataframe.columns:
+        return []
+    timestamps = pd.to_datetime(
+        dataframe["survey_order_date"], format="mixed", utc=True, errors="coerce"
+    )
+    return sorted(set(timestamps.dropna().dt.strftime("%Y-%m").tolist()))
+
+
+def _upload_identifier(value: Any) -> Optional[str]:
+    try:
+        if bool(pd.isna(value)):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, numbers.Real) and not isinstance(value, bool):
+        numeric = float(value)
+        if not math.isfinite(numeric):
+            return None
+        return str(int(numeric))
+    return str(value)
+
+
+def existing_reporting_months(db: Session, dataframe: Any) -> List[str]:
+    """Resolve pre-upsert months so moves/deletions refresh old partitions too."""
+    if not {"survey_id", "respondent_id"}.issubset(dataframe.columns):
+        return []
+    keys = {
+        (survey_id, respondent_id)
+        for survey_id, respondent_id in (
+            (_upload_identifier(row["survey_id"]), _upload_identifier(row["respondent_id"]))
+            for _, row in dataframe[["survey_id", "respondent_id"]].iterrows()
+        )
+        if survey_id is not None and respondent_id is not None
+    }
+    timestamps: List[datetime] = []
+    ordered_keys = sorted(keys)
+    for offset in range(0, len(ordered_keys), 500):
+        batch = ordered_keys[offset : offset + 500]
+        rows = (
+            db.query(Survey.reported_at)
+            .filter(tuple_(Survey.survey_id, Survey.respondent_id).in_(batch))
+            .all()
+        )
+        timestamps.extend(
+            row[0] if isinstance(row, tuple) else row.reported_at
+            for row in rows
+            if (row[0] if isinstance(row, tuple) else row.reported_at) is not None
+        )
+    return sorted({timestamp.strftime("%Y-%m") for timestamp in timestamps})
+
+
+def affected_month_refresh_range(months: List[str]) -> Optional[tuple[str, str]]:
+    """Convert affected YYYY-MM values to a half-open whole-month range."""
+    if not months:
+        return None
+    parsed = sorted(datetime.strptime(month, "%Y-%m") for month in set(months))
+    first = parsed[0].replace(day=1)
+    last = parsed[-1].replace(day=1)
+    if last.month == 12:
+        next_month = last.replace(year=last.year + 1, month=1)
+    else:
+        next_month = last.replace(month=last.month + 1)
+    return first.strftime("%Y-%m-%d"), next_month.strftime("%Y-%m-%d")
+
+
+def affected_month_refresh_ranges(months: List[str]) -> List[tuple[str, str]]:
+    """Return one half-open refresh range per contiguous month run."""
+    if not months:
+        return []
+    parsed = sorted({datetime.strptime(month, "%Y-%m").replace(day=1) for month in months})
+    groups: List[List[datetime]] = [[parsed[0]]]
+    for current in parsed[1:]:
+        previous = groups[-1][-1]
+        previous_index = previous.year * 12 + previous.month
+        current_index = current.year * 12 + current.month
+        if current_index == previous_index + 1:
+            groups[-1].append(current)
+        else:
+            groups.append([current])
+    result: List[tuple[str, str]] = []
+    for group in groups:
+        start = group[0]
+        last = group[-1]
+        end = (
+            last.replace(year=last.year + 1, month=1)
+            if last.month == 12
+            else last.replace(month=last.month + 1)
+        )
+        result.append((start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")))
+    return result
+
+
+def catalog_rollup_names(snapshot: Dict[str, Any] | None) -> List[str]:
+    cube_catalog = (snapshot or {}).get("cubeCatalog", snapshot or {})
+    rollups = cube_catalog.get("rollups", []) if isinstance(cube_catalog, dict) else []
+    result: List[str] = []
+    for rollup in rollups if isinstance(rollups, list) else []:
+        if not isinstance(rollup, dict):
+            continue
+        semantic_view = validate_identifier(str(rollup.get("semanticView", "")))
+        name = validate_identifier(str(rollup.get("name", "")))
+        if semantic_view not in {
+            "survey_responses",
+            "survey_topics",
+            "survey_departments",
+            "survey_keywords",
+        }:
+            raise ValueError("Unknown analytics rollup semantic view")
+        result.append(f"{semantic_view}.{name}")
+    return result
+
+
+async def refresh_upload_pre_aggregations(
+    db: Session, upload_task_id: str, months: List[str]
+) -> None:
+    """Queue targeted Cube partition refresh without affecting upload success."""
+    date_ranges = affected_month_refresh_ranges(months)
+    if not ANALYTICS_CUBE_API_SECRET or not date_ranges:
+        return
+    upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
+    try:
+        from models.AnalyticsModelVersion import AnalyticsModelVersion
+
+        active_version = (
+            db.query(AnalyticsModelVersion)
+            .filter(AnalyticsModelVersion.is_active.is_(True))
+            .first()
+        )
+        pre_aggregations = [
+            "survey_responses.daily_core",
+            "survey_responses.monthly_core",
+            "survey_topics.daily_assignments",
+            "survey_departments.daily_assignments",
+            "survey_keywords.daily_assignments",
+        ]
+        if active_version:
+            pre_aggregations.extend(
+                catalog_rollup_names(active_version.catalog_snapshot)
+            )
+        client = CubeClient(
+            ANALYTICS_CUBE_API_URL,
+            ANALYTICS_CUBE_API_SECRET,
+            ANALYTICS_QUERY_TIMEOUT_SECONDS,
+        )
+        for date_range in date_ranges:
+            await client.refresh_pre_aggregations(
+                profile_id=DEPLOYMENT_PROFILE,
+                date_range=date_range,
+                pre_aggregations=tuple(dict.fromkeys(pre_aggregations)),
+                request_id=upload_task_id,
+            )
+        if upload_task:
+            upload_task.analytics_refresh_status = "requested"
+            db.commit()
+    except Exception:
+        db.rollback()
+        upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
+        if upload_task:
+            upload_task.analytics_refresh_status = "failed"
+            db.commit()
+        logger.exception(
+            "Targeted analytics refresh failed",
+            extra={"event": "analytics.refresh.failed", "upload_task_id": upload_task_id},
+        )
+
 async def process_single_row(
     row_data: Dict[str, Any],
     upload_task_id: int,
@@ -196,11 +407,10 @@ async def process_single_row(
 
         # Serialize row data
         try:
-            row_dict = row.to_dict()
-            json_row_data = json.dumps({"index": index, "row": row_dict}, default=str)
+            json_row_data = build_raw_row_data(index, row)
         except Exception as e:
             logger.warning(f"Row {index + 1}: Failed to serialize row data: {e}")
-            json_row_data = json.dumps({"index": index, "error": str(e)})
+            json_row_data = {"index": int(index), "error": str(e)}
 
         have_to_retry = False
         result = {"index": index, "success": False, "error": None}
@@ -822,12 +1032,40 @@ async def process_upload_task(file_path, db, upload_task_id):
                 engine="python",  # Use Python engine for more flexible parsing
                 quotechar='"',
                 escapechar='\\',
-                na_values=['']
+                na_values=[''],
+                # Preserve explicit textual NaN/Infinity values so promoted
+                # numeric weights can report them as governed DQ failures;
+                # empty cells remain true nulls through na_values above.
+                keep_default_na=False,
             )
             logger.info(f"Successfully parsed CSV file with {len(df)} rows for processing")
         except Exception as e:
             logger.error(f"Failed to read CSV file {file_path}: {e}")
             raise Exception(f"Failed to read CSV file: {e}")
+
+        affected_months = sorted(
+            set(affected_reporting_months(df))
+            | set(existing_reporting_months(db, df))
+        )
+        upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
+        if upload_task:
+            upload_task.analytics_affected_months = affected_months
+            upload_task.analytics_refresh_status = (
+                "pending"
+                if ANALYTICS_CUBE_API_SECRET and affected_months
+                else "not_required"
+            )
+        try:
+            with db.begin_nested():
+                register_upload_candidates(db, df)
+            db.commit()
+        except Exception:
+            db.rollback()
+            # Analytics metadata must never make the core survey upload fail.
+            logger.exception(
+                "Failed to register analytics field candidates",
+                extra={"event": "analytics.candidates.failed", "upload_task_id": upload_task_id},
+            )
 
         # Prepare row data for processing
         row_data_list = []
@@ -901,6 +1139,8 @@ async def process_upload_task(file_path, db, upload_task_id):
             upload_task.status = "completed"
             upload_task.updated_at = utc_now()
             db.commit()
+
+        await refresh_upload_pre_aggregations(db, upload_task_id, affected_months)
 
         # Calculate and log performance metrics
         end_time = time.time()

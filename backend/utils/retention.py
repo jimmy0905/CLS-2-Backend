@@ -5,6 +5,8 @@ from pathlib import Path
 from sqlalchemy import select
 
 from config import (
+    ANALYTICS_EXPORT_DIR,
+    ANALYTICS_GOVERNANCE_RETENTION_DAYS,
     DATA_RETENTION_DAYS,
     RETENTION_CHECK_INTERVAL_SECONDS,
     SERVER_LOG_FILE,
@@ -13,9 +15,13 @@ from models.Action import Action
 from models.EmailRecord import EmailRecord
 from models.GeneratedEmail import GeneratedEmail
 from models.LoginRecord import LoginRecord
+from models.AnalyticsAuditLog import AnalyticsAuditLog
+from models.AnalyticsExportJob import AnalyticsExportJob
+from models.AnalyticsQueryLog import AnalyticsQueryLog
 from models.UploadTask import UploadTask
 from models.UploadTaskError import UploadTaskError
 from utils.database import SessionLocal
+from utils.analytics_exports import remove_export_file
 from utils.logger import logger
 from utils.utc import utc_now
 
@@ -84,10 +90,68 @@ def purge_rotated_log_files(cutoff: datetime) -> int:
     return deleted_count
 
 
+def purge_analytics_records(now: datetime) -> dict[str, int]:
+    """Expire files promptly while retaining governance records for 365 days."""
+    governance_cutoff = now - timedelta(days=ANALYTICS_GOVERNANCE_RETENTION_DAYS)
+    db = SessionLocal()
+    try:
+        expired_files = 0
+        expired_jobs = (
+            db.query(AnalyticsExportJob)
+            .filter(
+                AnalyticsExportJob.expires_at < now,
+                AnalyticsExportJob.storage_path.isnot(None),
+            )
+            .all()
+        )
+        for job in expired_jobs:
+            if remove_export_file(ANALYTICS_EXPORT_DIR, job.storage_path):
+                expired_files += 1
+            job.storage_path = None
+            if job.status == "completed":
+                job.status = "expired"
+
+        deleted_export_jobs = (
+            db.query(AnalyticsExportJob)
+            .filter(AnalyticsExportJob.created_at < governance_cutoff)
+            .delete(synchronize_session=False)
+        )
+        referenced_query_ids = select(AnalyticsExportJob.query_log_id).where(
+            AnalyticsExportJob.query_log_id.isnot(None)
+        )
+        deleted_query_logs = (
+            db.query(AnalyticsQueryLog)
+            .filter(
+                AnalyticsQueryLog.created_at < governance_cutoff,
+                AnalyticsQueryLog.id.not_in(referenced_query_ids),
+            )
+            .delete(synchronize_session=False)
+        )
+        deleted_audit_logs = (
+            db.query(AnalyticsAuditLog)
+            .filter(AnalyticsAuditLog.created_at < governance_cutoff)
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        return {
+            "analytics_export_files": expired_files,
+            "analytics_export_jobs": deleted_export_jobs,
+            "analytics_query_logs": deleted_query_logs,
+            "analytics_audit_logs": deleted_audit_logs,
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 def run_retention() -> dict[str, int]:
-    cutoff = retention_cutoff()
+    now = utc_now()
+    cutoff = retention_cutoff(now=now)
     deleted = purge_operational_records(cutoff)
     deleted["rotated_log_files"] = purge_rotated_log_files(cutoff)
+    deleted.update(purge_analytics_records(now))
     logger.info(
         "Operational data retention completed",
         extra={

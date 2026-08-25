@@ -24,6 +24,7 @@ from config import (
 )
 from routers import (
     actions,
+    analytics,
     auth,
     channels,
     dashboard,
@@ -56,6 +57,10 @@ def _client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
+def _is_analytics_path(path: str) -> bool:
+    return path.startswith(("/analytics", "/admin/analytics", "/internal/analytics"))
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     configure_logging()
@@ -78,6 +83,7 @@ async def lifespan(_: FastAPI):
     else:
         check_tables_exist()
     _reset_processing_upload_tasks()
+    _reset_analytics_export_jobs()
 
     try:
         await asyncio.to_thread(run_retention)
@@ -143,6 +149,8 @@ async def log_request(request: Request, call_next) -> Response:
         raise
     else:
         response.headers["X-Request-ID"] = request_id
+        if _is_analytics_path(request.url.path):
+            response.headers["Cache-Control"] = "no-store, private"
         logger.info(
             "Request completed",
             extra={
@@ -194,6 +202,49 @@ def _reset_processing_upload_tasks() -> None:
         db.close()
 
 
+def _reset_analytics_export_jobs() -> None:
+    """Fail in-process export work that cannot survive a service restart."""
+    from models.AnalyticsExportJob import AnalyticsExportJob
+    from models.AnalyticsQueryLog import AnalyticsQueryLog
+    from utils.database import SessionLocal
+    from utils.utc import utc_now
+
+    db = SessionLocal()
+    try:
+        jobs = (
+            db.query(AnalyticsExportJob)
+            .filter(AnalyticsExportJob.status.in_(("queued", "processing")))
+            .all()
+        )
+        now = utc_now()
+        query_ids = [job.query_log_id for job in jobs if job.query_log_id]
+        for job in jobs:
+            job.status = "failed"
+            job.error_message = "Analytics export interrupted by service restart"
+            job.completed_at = now
+        if query_ids:
+            for query_log in (
+                db.query(AnalyticsQueryLog)
+                .filter(AnalyticsQueryLog.id.in_(query_ids))
+                .all()
+            ):
+                query_log.status = "failed"
+                query_log.error_message = "Analytics export interrupted by service restart"
+                query_log.completed_at = now
+        db.commit()
+        if jobs:
+            logger.info(
+                "Reset interrupted analytics exports",
+                extra={"event": "analytics.exports.reset_after_restart", "count": len(jobs)},
+            )
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to reset interrupted analytics exports")
+        raise
+    finally:
+        db.close()
+
+
 @app.get("/health")
 async def health_check(db: Session = Depends(get_db)):
     try:
@@ -206,6 +257,7 @@ async def health_check(db: Session = Depends(get_db)):
 
 add_pagination(app)
 app.include_router(auth.router)
+app.include_router(analytics.router)
 app.include_router(surveys.router)
 app.include_router(dashboard.router)
 app.include_router(actions.router)

@@ -3,9 +3,9 @@ from models.User import User
 from utils.database import get_db
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Literal, Optional
 from fastapi import HTTPException
-from utils.security import get_current_user
+from utils.security import get_current_user, require_admin
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -21,7 +21,7 @@ class UserResponse(BaseModel):
 
 @router.get("/")
 async def get_users(
-    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db), current_user: User = Depends(require_admin)
 ) -> List[UserResponse]:
     users = db.query(User).all()
     return [UserResponse.model_validate(user.to_dict()) for user in users]
@@ -29,7 +29,7 @@ async def get_users(
 
 class UpdateUserRequest(BaseModel):
     username: Optional[str] = None
-    role: Optional[str] = None
+    role: Optional[Literal["user", "admin"]] = None
     is_deleted: Optional[bool] = None
 
 
@@ -38,11 +38,23 @@ async def update_user(
     user_id: str,
     update_user_request: UpdateUserRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    removing_admin = user.role == "admin" and (
+        update_user_request.role == "user"
+        or update_user_request.is_deleted is True
+    )
+    if removing_admin:
+        active_admins = (
+            db.query(User)
+            .filter(User.role == "admin", User.is_deleted.is_not(True))
+            .count()
+        )
+        if active_admins <= 1:
+            raise HTTPException(status_code=409, detail="Cannot remove the last administrator")
     if update_user_request.username:
         user.username = update_user_request.username
     if update_user_request.role:
@@ -65,6 +77,8 @@ async def update_user_password(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.role != "admin" and current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Users may change only their own password")
     user = (
         db.query(User)
         .filter(User.id == user_id)
@@ -83,7 +97,7 @@ async def update_user_password(
 async def delete_user(
     user_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
     user = (
         db.query(User)
@@ -93,6 +107,14 @@ async def delete_user(
     )
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if user.role == "admin":
+        active_admins = (
+            db.query(User)
+            .filter(User.role == "admin", User.is_deleted.is_not(True))
+            .count()
+        )
+        if active_admins <= 1:
+            raise HTTPException(status_code=409, detail="Cannot delete the last administrator")
     user.is_deleted = True
     db.commit()
     db.refresh(user)

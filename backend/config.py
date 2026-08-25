@@ -96,6 +96,47 @@ RETENTION_CHECK_INTERVAL_SECONDS = parse_positive_int_env(
 # Multi-threading configuration for survey processing.
 MAX_WORKER_THREADS = parse_positive_int_env("MAX_WORKER_THREADS", default=4)
 
+# Governed analytics is additive and remains disabled for every profile until
+# that profile has completed the shadow-comparison rollout.
+ANALYTICS_ENABLED = parse_strict_bool_env("ANALYTICS_ENABLED", default=False)
+ANALYTICS_CUBE_API_URL = os.getenv(
+    "ANALYTICS_CUBE_API_URL", "http://cube-api:4000"
+).rstrip("/")
+ANALYTICS_CUBE_API_SECRET = os.getenv("ANALYTICS_CUBE_API_SECRET", "")
+ANALYTICS_INTERNAL_METADATA_SECRET = os.getenv(
+    "ANALYTICS_INTERNAL_METADATA_SECRET", ""
+)
+ANALYTICS_QUERY_TIMEOUT_SECONDS = parse_positive_int_env(
+    "ANALYTICS_QUERY_TIMEOUT_SECONDS", default=30
+)
+ANALYTICS_DRILLDOWN_STATEMENT_TIMEOUT_MS = parse_positive_int_env(
+    "ANALYTICS_DRILLDOWN_STATEMENT_TIMEOUT_MS", default=10_000
+)
+ANALYTICS_DRILLDOWN_CONCURRENCY = parse_positive_int_env(
+    "ANALYTICS_DRILLDOWN_CONCURRENCY", default=8
+)
+ANALYTICS_EXPORT_MAX_ROWS = parse_positive_int_env(
+    "ANALYTICS_EXPORT_MAX_ROWS", default=250_000
+)
+ANALYTICS_EXPORT_WORKER_CONCURRENCY = parse_positive_int_env(
+    "ANALYTICS_EXPORT_WORKER_CONCURRENCY", default=2
+)
+ANALYTICS_EXPORT_MAX_OUTSTANDING_PER_USER = parse_positive_int_env(
+    "ANALYTICS_EXPORT_MAX_OUTSTANDING_PER_USER", default=2
+)
+ANALYTICS_EXPORT_MAX_OUTSTANDING_PROFILE = parse_positive_int_env(
+    "ANALYTICS_EXPORT_MAX_OUTSTANDING_PROFILE", default=20
+)
+ANALYTICS_EXPORT_EXPIRY_HOURS = parse_positive_int_env(
+    "ANALYTICS_EXPORT_EXPIRY_HOURS", default=24
+)
+ANALYTICS_GOVERNANCE_RETENTION_DAYS = parse_positive_int_env(
+    "ANALYTICS_GOVERNANCE_RETENTION_DAYS", default=365
+)
+ANALYTICS_EXPORT_DIR = Path(
+    os.getenv("ANALYTICS_EXPORT_DIR", str(BACKEND_DIR / "analytics_exports"))
+).resolve()
+
 DATABASE_AUTO_MIGRATE = parse_strict_bool_env("DATABASE_AUTO_MIGRATE", default=True)
 DATABASE_AUTO_GENERATE_MIGRATIONS = parse_strict_bool_env(
     "DATABASE_AUTO_GENERATE_MIGRATIONS", default=False

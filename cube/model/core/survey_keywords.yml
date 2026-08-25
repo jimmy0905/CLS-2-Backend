@@ -1,0 +1,261 @@
+cubes:
+  - name: survey_keywords
+    title: Survey keyword assignments
+    description: One row per survey-to-keyword assignment; never joined to another assignment cube.
+    sql_table: analytics_survey_keywords
+
+    measures:
+      - name: assignment_count
+        type: count
+
+      - name: distinct_survey_count
+        sql: distinct_survey_id
+        type: count_distinct
+
+      # __LOCAL_MEASURES__
+
+    dimensions:
+      - name: assignment_id
+        sql: assignment_id
+        type: number
+        primary_key: true
+
+      - name: survey_id
+        sql: survey_id
+        type: string
+
+      - name: response_id
+        sql: id
+        type: number
+
+      - name: respondent_id
+        sql: respondent_id
+        type: string
+
+      - name: keyword_id
+        sql: keyword_id
+        type: number
+
+      - name: keyword
+        sql: keyword
+        type: string
+
+      - name: sentiment
+        sql: assignment_sentiment
+        type: string
+
+      - name: response_sentiment
+        sql: sentiment
+        type: string
+
+      - name: reported_at
+        sql: reported_at
+        type: time
+
+      - name: created_at
+        sql: created_at
+        type: time
+
+      - name: updated_at
+        sql: updated_at
+        type: time
+
+      - name: comment
+        sql: comment
+        type: string
+
+      - name: topic_sentiment
+        sql: topic_sentiment
+        type: string
+
+      - name: topic_sentiment_score
+        sql: topic_sentiment_score
+        type: number
+
+      - name: cls
+        sql: cls
+        type: number
+
+      - name: store_key
+        sql: store_key
+        type: number
+
+      - name: store_name
+        sql: store_name
+        type: string
+
+      - name: store_name_english
+        sql: store_name_english
+        type: string
+
+      - name: store_name_local
+        sql: store_name_local
+        type: string
+
+      - name: bu_key
+        sql: bu_key
+        type: string
+
+      - name: area_manager
+        sql: area_manager
+        type: string
+
+      - name: store_format
+        sql: store_format
+        type: string
+
+      - name: store_type
+        sql: store_type
+        type: string
+
+      - name: operations_controller
+        sql: operations_controller
+        type: string
+
+      - name: regional_manager
+        sql: regional_manager
+        type: string
+
+      - name: px
+        sql: px
+        type: string
+
+      - name: csr
+        sql: csr
+        type: string
+
+      - name: dr
+        sql: dr
+        type: string
+
+      - name: mag_type
+        sql: mag_type
+        type: string
+
+      - name: cf_grouping
+        sql: cf_grouping
+        type: string
+
+      - name: store_brand
+        sql: store_brand
+        type: string
+
+      - name: competitor
+        sql: competitor
+        type: string
+
+      - name: region
+        sql: region
+        type: string
+
+      - name: area
+        sql: area
+        type: string
+
+      - name: province
+        sql: province
+        type: string
+
+      - name: territory
+        sql: territory
+        type: string
+
+      - name: toh
+        sql: toh
+        type: string
+
+      - name: district
+        sql: district
+        type: string
+
+      - name: city
+        sql: city
+        type: string
+
+      - name: operations_manager
+        sql: operations_manager
+        type: string
+
+      - name: district_manager
+        sql: district_manager
+        type: string
+
+      - name: sic
+        sql: sic
+        type: string
+
+      - name: soc
+        sql: soc
+        type: string
+
+      - name: tech_life_type
+        sql: tech_life_type
+        type: string
+
+      - name: operation_manager_tl
+        sql: operation_manager_tl
+        type: string
+
+      - name: region_manager_tl
+        sql: region_manager_tl
+        type: string
+
+      - name: relocation
+        sql: relocation
+        type: string
+
+      - name: latitude
+        sql: latitude
+        type: number
+
+      - name: longitude
+        sql: longitude
+        type: number
+
+      - name: store_open_date
+        sql: store_open_date
+        type: time
+
+      - name: store_close_date
+        sql: store_close_date
+        type: time
+
+      - name: is_closed
+        sql: is_closed
+        type: boolean
+
+      - name: channel_name
+        sql: channel_name
+        type: string
+
+      - name: channel_id
+        sql: channel_id
+        type: number
+
+      - name: delivery_service_name
+        sql: delivery_service_name
+        type: string
+
+      - name: delivery_service_id
+        sql: delivery_service_id
+        type: number
+
+      # __LOCAL_DIMENSIONS__
+
+    pre_aggregations:
+      - name: daily_assignments
+        measures:
+          - assignment_count
+          - distinct_survey_count
+        dimensions:
+          - keyword_id
+          - sentiment
+          - store_key
+        time_dimension: reported_at
+        granularity: day
+        partition_granularity: month
+        scheduled_refresh: true
+        refresh_key:
+          every: 15 minute
+
+      # __LOCAL_PREAGGREGATIONS__

@@ -15,6 +15,14 @@ from models.UploadTaskError import UploadTaskError
 from models.Channel import Channel
 from models.DeliveryService import DeliveryService
 from models.LoginRecord import LoginRecord
+from models.AnalyticsField import AnalyticsField
+from models.AnalyticsMetric import AnalyticsMetric
+from models.AnalyticsModelVersion import AnalyticsModelVersion
+from models.AnalyticsChart import AnalyticsChart
+from models.AnalyticsQueryLog import AnalyticsQueryLog
+from models.AnalyticsExportJob import AnalyticsExportJob
+from models.AnalyticsAuditLog import AnalyticsAuditLog
+from models.AnalyticsFieldValue import AnalyticsFieldValue
 __all__ = [
     "User",
     "Survey",
@@ -33,4 +41,12 @@ __all__ = [
     "Channel",
     "DeliveryService",
     "LoginRecord",
+    "AnalyticsField",
+    "AnalyticsMetric",
+    "AnalyticsModelVersion",
+    "AnalyticsChart",
+    "AnalyticsQueryLog",
+    "AnalyticsExportJob",
+    "AnalyticsAuditLog",
+    "AnalyticsFieldValue",
 ]

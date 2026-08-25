@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from models.User import User
@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from authlib.integrations.starlette_client import OAuth
 from authlib.jose import jwt as authlib_jwt
 import httpx
+from config import DEPLOYMENT_PROFILE
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,14 @@ oauth.register(
 )
 
 
+def _jwt_audience(profile: str) -> str:
+    return f"clsense-api:{profile}"
+
+
+def _jwt_issuer(profile: str) -> str:
+    return f"clsense-auth:{profile}"
+
+
 async def get_current_user(
     token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
 ) -> User:
@@ -70,17 +79,37 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(
+            token,
+            JWT_SECRET_KEY,
+            algorithms=[JWT_ALGORITHM],
+            audience=_jwt_audience(DEPLOYMENT_PROFILE),
+            issuer=_jwt_issuer(DEPLOYMENT_PROFILE),
+        )
         user_id = payload.get("sub")
-        if user_id is None:
+        if user_id is None or payload.get("profile") != DEPLOYMENT_PROFILE:
             raise credentials_exception
     except JWTError:
         raise credentials_exception
 
-    user = db.query(User).filter(User.id == user_id).first()
+    user = (
+        db.query(User)
+        .filter(User.id == user_id, User.is_deleted.is_not(True))
+        .first()
+    )
     if user is None:
         raise credentials_exception
     return user
+
+
+async def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Require the existing administrator role for governed catalog changes."""
+    if bool(getattr(current_user, "is_deleted", False)) or current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrator access is required",
+        )
+    return current_user
 
 
 def create_access_token(
@@ -93,7 +122,14 @@ def create_access_token(
     expire = datetime.utcnow() + (
         expires_delta or timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
     )
-    to_encode.update({"exp": expire})
+    to_encode.update(
+        {
+            "exp": expire,
+            "profile": DEPLOYMENT_PROFILE,
+            "aud": _jwt_audience(DEPLOYMENT_PROFILE),
+            "iss": _jwt_issuer(DEPLOYMENT_PROFILE),
+        }
+    )
     encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
     return encoded_jwt
 

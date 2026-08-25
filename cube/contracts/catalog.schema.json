@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clsense.internal/schemas/analytics-catalog-v1.json",
+  "title": "CLSense Cube local catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["profile", "catalogVersion", "fields", "metrics"],
+  "properties": {
+    "profile": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+_(cls|ecls)$"
+    },
+    "catalogVersion": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slug", "label", "semanticView", "dataType", "sourceKind", "visibility"],
+        "properties": {
+          "slug": {"$ref": "#/$defs/identifier"},
+          "label": {"type": "string", "minLength": 1, "maxLength": 120},
+          "semanticView": {"$ref": "#/$defs/semanticView"},
+          "dataType": {"enum": ["string", "number", "boolean", "date", "time"]},
+          "sourceKind": {"enum": ["core", "raw_json"]},
+          "sourceKey": {"type": ["string", "null"], "maxLength": 128},
+          "visibility": {"enum": ["viewer", "admin"]}
+        }
+      }
+    },
+    "metrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slug", "label", "semanticView", "operation", "visibility"],
+        "properties": {
+          "slug": {"$ref": "#/$defs/identifier"},
+          "label": {"type": "string", "minLength": 1, "maxLength": 120},
+          "semanticView": {"$ref": "#/$defs/semanticView"},
+          "operation": {
+            "enum": [
+              "count", "distinct_count", "filtered_count", "filtered_rate",
+              "weighted_filtered_rate", "sum", "average", "weighted_sum",
+              "weighted_average", "min", "max", "variance_sample",
+              "variance_population", "weighted_variance_sample",
+              "weighted_variance_population", "stddev_sample", "stddev_population",
+              "weighted_stddev_sample", "weighted_stddev_population", "median",
+              "percentile", "mean_confidence_interval",
+              "weighted_mean_confidence_interval", "proportion_confidence_interval",
+              "weighted_proportion_confidence_interval"
+            ]
+          },
+          "sourceField": {"type": ["string", "null"]},
+          "weightField": {"type": ["string", "null"]},
+          "percentile": {"type": ["number", "null"], "exclusiveMinimum": 0, "exclusiveMaximum": 1},
+          "confidenceLevel": {"type": ["number", "null"], "minimum": 0.8, "maximum": 0.999},
+          "parameters": {"type": "object"},
+          "visibility": {"enum": ["viewer", "admin"]}
+        }
+      }
+    },
+    "rollups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "semanticView", "measures", "dimensions", "nonAdditive"],
+        "allOf": [
+          {
+            "if": {
+              "required": ["timeDimension"],
+              "properties": {"timeDimension": {"type": "string"}}
+            },
+            "then": {"required": ["granularity", "partitionGranularity"]},
+            "else": {
+              "properties": {
+                "granularity": {"type": ["null"]},
+                "partitionGranularity": {"type": ["null"]}
+              }
+            }
+          }
+        ],
+        "properties": {
+          "name": {"$ref": "#/$defs/identifier"},
+          "semanticView": {"$ref": "#/$defs/semanticView"},
+          "measures": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 5,
+            "items": {"$ref": "#/$defs/identifier"}
+          },
+          "dimensions": {
+            "type": "array",
+            "maxItems": 3,
+            "items": {"$ref": "#/$defs/identifier"}
+          },
+          "timeDimension": {"type": ["string", "null"]},
+          "granularity": {"type": ["string", "null"], "enum": ["day", "month", null]},
+          "partitionGranularity": {"enum": ["month", "year", null]},
+          "nonAdditive": {"type": "boolean"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+      "maxLength": 63
+    },
+    "semanticView": {
+      "enum": ["survey_responses", "survey_topics", "survey_departments", "survey_keywords"]
+    }
+  }
+}
