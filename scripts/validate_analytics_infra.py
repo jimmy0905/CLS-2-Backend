@@ -102,6 +102,8 @@ def main() -> int:
         for name in ("CUBE_IMAGE_DIGEST", "CUBESTORE_IMAGE_DIGEST"):
             if not DIGEST.fullmatch(env.get(name, "")):
                 errors.append(f"{name} must be a tested sha256 digest")
+        if env.get("CUBESTORE_PLATFORM", "linux/amd64") != "linux/amd64":
+            errors.append("Cube Store v1.7.26 requires CUBESTORE_PLATFORM=linux/amd64")
         prefixes = [
             env.get(
                 f"ANALYTICS_AZURE_BLOB_PREFIX_SHARD_{shard}",

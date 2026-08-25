@@ -127,6 +127,7 @@ def test_images_require_operator_supplied_tested_digests_and_are_version_pinned(
     compose_text = ANALYTICS_COMPOSE.read_text()
     assert "cubejs/cube:v1.7.26@${CUBE_IMAGE_DIGEST:?" in compose_text
     assert "cubejs/cubestore:v1.7.26@${CUBESTORE_IMAGE_DIGEST:?" in compose_text
+    assert 'platform: "${CUBESTORE_PLATFORM:-linux/amd64}"' in compose_text
     assert "sha256:000" not in compose_text
     assert ":latest" not in compose_text
 

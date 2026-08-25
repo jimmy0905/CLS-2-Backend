@@ -72,8 +72,9 @@ profiles.
 Then set the Cube analytics values in the same file:
 
 ```dotenv
-CUBE_IMAGE_DIGEST=sha256:<tested-cube-v1.7.26-digest>
-CUBESTORE_IMAGE_DIGEST=sha256:<tested-cubestore-v1.7.26-digest>
+CUBE_IMAGE_DIGEST=sha256:51d467b223492da5c35139c31760c5329e770028bbe6cb4faa590400e5445941
+CUBESTORE_IMAGE_DIGEST=sha256:038d4491cd77799a440655053f8f67ea16d3d2ecceffe812d314e47993f1ce08
+CUBESTORE_PLATFORM=linux/amd64
 
 ANALYTICS_DATABASE_PORT=5432
 ANALYTICS_DATABASE_SSL=true
@@ -135,16 +136,29 @@ The backend is published on host port `8000`.
 ### Provision the Cube read-only database role
 
 Allow the backend migration to finish before this step so the governed analytics
-views and helper functions exist. Execute the supplied SQL with `psql` as a
-PostgreSQL administrator connected to `wtchk_cls`:
+views and helper functions exist. First, log in with `psql` as a PostgreSQL
+administrator connected to `wtchk_cls`:
 
 ```bash
 psql \
   --host <postgres-host> \
   --username postgres \
-  --dbname wtchk_cls \
-  --file scripts/provision_wtchk_cls_analytics_readonly.sql
+  --dbname wtchk_cls
 ```
+
+Then run the provisioning file from the `psql` prompt:
+
+```text
+\i scripts/provision_wtchk_cls_analytics_readonly.sql
+```
+
+The SQL performs a preflight check and stops before changing the role if the
+database has not reached analytics migration `0009_cube_semantic_catalog`.
+
+The ready prompt normally ends in `=#`, for example `wtchk_cls=#`. A prompt
+ending in `-#` means an earlier SQL statement is unfinished. The provisioning
+file clears that stale query buffer automatically; you can also clear it
+manually with `\r` before running `\i`.
 
 The script creates or reconciles `wtchk_cls_analytics` and securely prompts for
 its password. Enter the same value configured as
@@ -292,6 +306,13 @@ intentional.
 
 Set both `CUBE_IMAGE_DIGEST` and `CUBESTORE_IMAGE_DIGEST` to architecture-tested
 `v1.7.26` manifest digests. Tags alone are intentionally rejected.
+
+### ARM64 reports `no matching manifest` for Cube Store
+
+Cube itself has a native ARM64 manifest, but Cube Store v1.7.26 publishes only
+`linux/amd64`. Keep `CUBESTORE_PLATFORM=linux/amd64`; Docker Desktop on an ARM64
+machine will run Cube Store through emulation. Use an AMD64 host for production
+and performance/load acceptance because emulation changes latency and capacity.
 
 ### `connex_network` is missing
 

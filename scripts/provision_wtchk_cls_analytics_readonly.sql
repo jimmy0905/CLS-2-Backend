@@ -4,11 +4,61 @@
 -- wtchk_cls. The \password command prompts securely and does not place the new
 -- password in this file or your shell history.
 --
--- Example:
---   psql --host <postgres-host> --username postgres --dbname wtchk_cls \
---     --file scripts/provision_wtchk_cls_analytics_readonly.sql
+-- Step 1 - log in to the wtchk_cls database from the repository root:
+--   psql --host <postgres-host> --username postgres --dbname wtchk_cls
+--
+-- Step 2 - run this file from the psql prompt:
+--   \i scripts/provision_wtchk_cls_analytics_readonly.sql
 
+-- Clear any unfinished statement that was already buffered at the psql prompt.
+\r
 \set ON_ERROR_STOP on
+
+-- Fail before creating/changing the role when migration 0009 has not created
+-- the governed semantic views and safe JSON helper functions.
+DO $preflight$
+DECLARE
+    missing_objects text;
+BEGIN
+    SELECT string_agg(required.name, ', ' ORDER BY required.name)
+    INTO missing_objects
+    FROM (
+        VALUES
+            ('public.analytics_survey_facts',
+             to_regclass('public.analytics_survey_facts') IS NOT NULL),
+            ('public.analytics_survey_topics',
+             to_regclass('public.analytics_survey_topics') IS NOT NULL),
+            ('public.analytics_survey_departments',
+             to_regclass('public.analytics_survey_departments') IS NOT NULL),
+            ('public.analytics_survey_keywords',
+             to_regclass('public.analytics_survey_keywords') IS NOT NULL),
+            ('public.analytics_normalize_raw_row(json)',
+             to_regprocedure('public.analytics_normalize_raw_row(json)') IS NOT NULL),
+            ('public.analytics_raw_value(json,text)',
+             to_regprocedure('public.analytics_raw_value(json,text)') IS NOT NULL),
+            ('public.analytics_raw_number(json,text)',
+             to_regprocedure('public.analytics_raw_number(json,text)') IS NOT NULL),
+            ('public.analytics_raw_number_invalid(json,text)',
+             to_regprocedure('public.analytics_raw_number_invalid(json,text)') IS NOT NULL),
+            ('public.analytics_raw_boolean(json,text)',
+             to_regprocedure('public.analytics_raw_boolean(json,text)') IS NOT NULL),
+            ('public.analytics_raw_date(json,text)',
+             to_regprocedure('public.analytics_raw_date(json,text)') IS NOT NULL),
+            ('public.analytics_raw_time(json,text)',
+             to_regprocedure('public.analytics_raw_time(json,text)') IS NOT NULL),
+            ('public.analytics_raw_timestamp(json,text)',
+             to_regprocedure('public.analytics_raw_timestamp(json,text)') IS NOT NULL)
+    ) AS required(name, present)
+    WHERE NOT required.present;
+
+    IF missing_objects IS NOT NULL THEN
+        RAISE EXCEPTION
+            'Analytics migration 0009 must run before role provisioning. Missing: %',
+            missing_objects
+            USING HINT = 'Upgrade the backend database to Alembic head, then rerun this file.';
+    END IF;
+END
+$preflight$;
 
 DO $provision$
 BEGIN

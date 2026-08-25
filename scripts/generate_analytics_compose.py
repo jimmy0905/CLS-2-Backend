@@ -137,6 +137,7 @@ def compose_document(manifest: dict) -> str:
         "",
         "x-cubestore-runtime: &cubestore-runtime",
         '  image: "cubejs/cubestore:v1.7.26@${CUBESTORE_IMAGE_DIGEST:?Set a tested sha256 digest for Cube Store v1.7.26}"',
+        '  platform: "${CUBESTORE_PLATFORM:-linux/amd64}"',
         "  restart: unless-stopped",
         "  init: true",
         "  security_opt:",

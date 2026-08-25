@@ -11,9 +11,12 @@ For a complete canary startup walkthrough, see
 
 ## Runtime boundaries
 
-- Cube and Cube Store are pinned to `v1.7.26`. Operators must supply tested
-  registry manifest digests; the repository intentionally contains no guessed
-  digest.
+- Cube and Cube Store are pinned to `v1.7.26` official manifest-index digests.
+  Operators must still validate those immutable images on the target
+  architecture before production rollout.
+- Cube Store v1.7.26 publishes only a `linux/amd64` runtime image. The Compose
+  overlay sets `CUBESTORE_PLATFORM=linux/amd64`, allowing Docker Desktop ARM64
+  development through emulation. Production and load tests must use AMD64.
 - Cube API instances publish no host ports. They join `connex_network` to reach
   their matching backend/PostgreSQL database and only their assigned
   `analytics_store_shard_N` network to reach Cube Store. Each of the four shard
