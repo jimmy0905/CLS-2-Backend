@@ -1,30 +1,13 @@
 import os
 from models.Survey import Survey
 import json
-from openai import AzureOpenAI, DefaultHttpxClient
-from dotenv import load_dotenv
 from utils.llm.text_cleaning_helper import (
     _clean_response_content,
 )
 from utils.llm.models import ActionsResponse
 from fastapi.concurrency import run_in_threadpool
-import httpx
-
-load_dotenv()
-
-client = AzureOpenAI(
-    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    http_client=(
-        DefaultHttpxClient(
-            proxy=os.getenv("ASW_PROXY_URL"),
-            transport=httpx.HTTPTransport(local_address="0.0.0.0"),
-        )
-        if os.getenv("ASW_PROXY_URL")
-        else None
-    ),
-)
+from utils.llm.client import get_azure_openai_client
+from utils.logger import logger
 
 # Configs for generate actions
 GENERATE_ACTIONS_MODEL = os.getenv("GENERATE_ACTIONS_MODEL", "gpt-4.1")
@@ -137,7 +120,7 @@ def _generate_actions_sync(
     user_prompt = f"""Data:
 {json.dumps(survey_data, indent=4)}"""
 
-    response = client.chat.completions.create(
+    response = get_azure_openai_client().chat.completions.create(
         model=GENERATE_ACTIONS_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
@@ -154,19 +137,16 @@ def _generate_actions_sync(
         cleaned_content = _clean_response_content(response_content)
         parsed_json = json.loads(cleaned_content)
         return ActionsResponse.model_validate(parsed_json), response.usage
-    except Exception as e:
-        print(f"Error validating JSON response: {e}")
-        print(f"Response content (first 500 chars): {response_content[:500]}")
-        # Try to save the problematic response for debugging
-        try:
-            with open(
-                "/tmp/debug_response.txt", "w", encoding="utf-8", errors="replace"
-            ) as f:
-                f.write(response_content)
-            print("Full response saved to /tmp/debug_response.txt")
-        except:
-            pass
-        raise Exception(f"Failed to validate actions response: {e}")
+    except Exception as error:
+        logger.error(
+            "Action-generation response validation failed",
+            extra={
+                "event": "llm.response_validation_failed",
+                "response_length": len(response_content),
+                "error_type": type(error).__name__,
+            },
+        )
+        raise Exception("Failed to validate actions response") from error
 
 
 async def generate_actions(data: list[Survey]) -> tuple[ActionsResponse, dict]:

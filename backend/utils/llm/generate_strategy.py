@@ -1,26 +1,9 @@
 import os
 import json
-from openai import AzureOpenAI, DefaultHttpxClient
-from dotenv import load_dotenv
 from models.Survey import Survey
 from fastapi.concurrency import run_in_threadpool
-import httpx
+from utils.llm.client import get_azure_openai_client
 
-load_dotenv()
-
-client = AzureOpenAI(
-    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    http_client=(
-        DefaultHttpxClient(
-            proxy=os.getenv("ASW_PROXY_URL"),
-            transport=httpx.HTTPTransport(local_address="0.0.0.0"),
-        )
-        if os.getenv("ASW_PROXY_URL")
-        else None
-    ),
-)
 # Configs for generate strategy
 GENERATE_STRATEGY_MODEL = os.getenv("GENERATE_STRATEGY_MODEL", "gpt-4.1")
 GENERATE_STRATEGY_TEMPERATURE = float(os.getenv("GENERATE_STRATEGY_TEMPERATURE", 0.25))
@@ -83,7 +66,7 @@ Chain‑of‑thought guidance:
     user_prompt = f"""
     {json.dumps(survey_dicts, indent=4, ensure_ascii=False, default=str)}
 """
-    response = client.chat.completions.create(
+    response = get_azure_openai_client().chat.completions.create(
         model=GENERATE_STRATEGY_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
@@ -221,7 +204,7 @@ Chain‑of‑thought guidance:
     user_prompt = f"""
     {json.dumps(survey_dicts, indent=4, ensure_ascii=False, default=str)}
 """
-    response = client.chat.completions.create(
+    response = get_azure_openai_client().chat.completions.create(
         model=GENERATE_STRATEGY_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
@@ -336,7 +319,7 @@ Guidance:
     user_prompt = f"""
     {json.dumps(survey_dicts, indent=4, ensure_ascii=False, default=str)}
 """
-    response = client.chat.completions.create(
+    response = get_azure_openai_client().chat.completions.create(
         model=GENERATE_STRATEGY_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
@@ -452,7 +435,7 @@ Guidance:
     user_prompt = f"""
     {json.dumps(survey_dicts, indent=4, ensure_ascii=False, default=str)}
 """
-    response = client.chat.completions.create(
+    response = get_azure_openai_client().chat.completions.create(
         model=GENERATE_STRATEGY_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},

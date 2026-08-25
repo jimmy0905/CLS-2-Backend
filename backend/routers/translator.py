@@ -2,15 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from utils.database import get_db
 from utils.security import get_current_user
 from pydantic import BaseModel
-from azure.ai.translation.text.models import InputTextItem
 from models.User import User
 import os
-from azure.ai.translation.text import TextTranslationClient, TranslatorCredential
 import uuid
 import requests
-from requests.exceptions import RequestException, ProxyError, Timeout
-import urllib3
 import asyncio
+from utils.logger import logger
 
 key = os.getenv("AZURE_TRANSLATOR_KEY")
 endpoint = os.getenv("AZURE_TRANSLATOR_ENDPOINT")
@@ -83,9 +80,11 @@ async def translate(
     
     try:
         response_data = await asyncio.to_thread(make_translation_request)
-    except requests.exceptions.RequestException as e:
-        print(f"Request failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except requests.exceptions.RequestException as error:
+        logger.exception("Translation provider request failed")
+        raise HTTPException(
+            status_code=502, detail="Translation service unavailable"
+        ) from error
 
     if isinstance(response_data, list) and len(response_data) > 0:
         first_result = response_data[0]
@@ -103,5 +102,11 @@ async def translate(
             ],
         )
     else:
-        print(f"Unexpected response format: {response_data}")
+        logger.warning(
+            "Translation provider returned an unexpected response",
+            extra={
+                "event": "translator.invalid_response",
+                "response_type": type(response_data).__name__,
+            },
+        )
         raise HTTPException(status_code=400, detail="Translation failed or unexpected response")

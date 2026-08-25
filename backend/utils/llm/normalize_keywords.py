@@ -1,29 +1,10 @@
-from openai import AzureOpenAI, DefaultHttpxClient
 import os
 import json
 from fastapi.concurrency import run_in_threadpool
 from utils.llm.text_cleaning_helper import _clean_response_content
-from dotenv import load_dotenv
 from utils.llm.models import TotalResponse
-import httpx
-
-load_dotenv()
-client = AzureOpenAI(
-    api_key=os.getenv(
-        "AZURE_OPENAI_API_KEY",
-        "",
-    ),
-    api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-07-01-preview"),
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT", ""),
-    http_client=(
-        DefaultHttpxClient(
-            proxy=os.getenv("ASW_PROXY_URL"),
-            transport=httpx.HTTPTransport(local_address="0.0.0.0"),
-        )
-        if os.getenv("ASW_PROXY_URL")
-        else None
-    ),
-)
+from utils.llm.client import get_azure_openai_client
+from utils.logger import logger
 
 # Configs for normalize keywords
 NORMALIZE_KEYWORDS_MODEL = os.getenv("NORMALIZE_KEYWORDS_MODEL", "gpt-4.1-mini-CLS-DataUpload")
@@ -680,7 +661,7 @@ def _normalize_keywords_sync(comment: str, result_json: dict) -> tuple[TotalResp
     comment: {comment}
     result_json: {json.dumps(result_json, indent=4, ensure_ascii=False, default=str)}
     """
-    response = client.chat.completions.create(
+    response = get_azure_openai_client().chat.completions.create(
         model=NORMALIZE_KEYWORDS_MODEL,
         messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": content}],
         temperature=NORMALIZE_KEYWORDS_TEMPERATURE,
@@ -719,10 +700,16 @@ def _normalize_keywords_sync(comment: str, result_json: dict) -> tuple[TotalResp
         # Create and return TotalResponse object
         return TotalResponse.model_validate(response_json), response.usage.model_dump()
 
-    except Exception as e:
-        print(f"Error validating JSON response: {e}")
-        print(f"Response content (first 500 chars): {response_content[:500]}")
-        raise Exception(f"Failed to validate keywords response: {e}")
+    except Exception as error:
+        logger.error(
+            "Keyword-normalization response validation failed",
+            extra={
+                "event": "llm.response_validation_failed",
+                "response_length": len(response_content),
+                "error_type": type(error).__name__,
+            },
+        )
+        raise Exception("Failed to validate keywords response") from error
 
 def normalize_keywords(comment: str, result_json: dict) -> tuple[TotalResponse, dict]:
     return run_in_threadpool(_normalize_keywords_sync, comment, result_json)

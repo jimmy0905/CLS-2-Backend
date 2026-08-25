@@ -676,7 +676,7 @@ async def extract_total_route(
 ) -> tuple[TotalResponse, dict]:
     total, usage = await extract_total(request.comment)
     if total.cannot_classified:
-        print("Cannot classified in AI Analysis, retrying...")
+        logger.info("Classifier requested a retry", extra={"event": "classifier.retry"})
         total, usage = await extract_total_retry(request.comment)
     # Normalize keywords
     normalized_total, usage = await normalize_keywords(request.comment, total.model_dump())

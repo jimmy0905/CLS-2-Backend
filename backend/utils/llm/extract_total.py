@@ -1,29 +1,10 @@
-from openai import AzureOpenAI, DefaultHttpxClient
 import os
 import json
 from fastapi.concurrency import run_in_threadpool
 from utils.llm.text_cleaning_helper import _clean_response_content
-from dotenv import load_dotenv
 from utils.llm.models import TotalResponse
-import httpx
-
-load_dotenv()
-client = AzureOpenAI(
-    api_key=os.getenv(
-        "AZURE_OPENAI_API_KEY",
-        "",
-    ),
-    api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-07-01-preview"),
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT", ""),
-    http_client=(
-        DefaultHttpxClient(
-            proxy=os.getenv("ASW_PROXY_URL"),
-            transport=httpx.HTTPTransport(local_address="0.0.0.0"),
-        )
-        if os.getenv("ASW_PROXY_URL")
-        else None
-    ),
-)
+from utils.llm.client import get_azure_openai_client
+from utils.logger import logger
 
 # Configs for extract departments, topics, total sentiment
 EXTRACT_TOTAL_MODEL = os.getenv("EXTRACT_TOTAL_MODEL", "gpt-4.1-mini-CLS-DataUpload")
@@ -842,13 +823,10 @@ Stop Condition
 
 system_prompt = ecls_system_prompt if IS_ECLS_ENABLED else cls_system_prompt
 
-print("IS_ECLS_ENABLED: ", IS_ECLS_ENABLED)  # Print the value of the flag for verification
-print("System prompt loaded: ", system_prompt[:500])  # Print the first 500 characters of the system prompt for verification)
-
 def _extract_total_sync(text: str) -> tuple[TotalResponse, dict]:
     user_prompt = f"""{text}"""
 
-    response = client.chat.completions.create(
+    response = get_azure_openai_client().chat.completions.create(
         model=EXTRACT_TOTAL_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
@@ -892,10 +870,16 @@ def _extract_total_sync(text: str) -> tuple[TotalResponse, dict]:
 
         # Create and return TotalResponse object
         return TotalResponse.model_validate(response_json), response.usage.model_dump()
-    except Exception as e:
-        print(f"Error validating JSON response: {e}")
-        print(f"Response content (first 500 chars): {response_content[:500]}")
-        raise Exception(f"Failed to validate keywords response: {e}")
+    except Exception as error:
+        logger.error(
+            "Classifier response validation failed",
+            extra={
+                "event": "llm.response_validation_failed",
+                "response_length": len(response_content),
+                "error_type": type(error).__name__,
+            },
+        )
+        raise Exception("Failed to validate classifier response") from error
 
 
 EXTRACT_TOTAL_RETRY_MODEL = os.getenv(
@@ -908,7 +892,7 @@ EXTRACT_TOTAL_RETRY_TEMPERATURE = float(
 
 def _extract_total_retry_sync(text: str) -> tuple[TotalResponse, dict]:
     user_prompt = f"""{text}"""
-    response = client.chat.completions.create(
+    response = get_azure_openai_client().chat.completions.create(
         model=EXTRACT_TOTAL_RETRY_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
@@ -952,10 +936,16 @@ def _extract_total_retry_sync(text: str) -> tuple[TotalResponse, dict]:
 
         # Create and return TotalResponse object
         return TotalResponse.model_validate(response_json), response.usage.model_dump()
-    except Exception as e:
-        print(f"Error validating JSON response (retry): {e}")
-        print(f"Response content (first 500 chars): {response_content[:500]}")
-        raise Exception(f"Failed to validate keywords response on retry: {e}")
+    except Exception as error:
+        logger.error(
+            "Classifier retry response validation failed",
+            extra={
+                "event": "llm.retry_response_validation_failed",
+                "response_length": len(response_content),
+                "error_type": type(error).__name__,
+            },
+        )
+        raise Exception("Failed to validate classifier retry response") from error
 
 
 async def extract_total(text: str) -> tuple[TotalResponse, dict]:

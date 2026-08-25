@@ -12,9 +12,9 @@ from utils.llm.models import (
 )
 from utils.llm.generate_actions import generate_actions
 from utils.llm.generate_email import generate_email
-from utils.utc import utc_now
 from utils.smtp import send_email as send_email_utils
 from utils.security import get_current_user
+from utils.logger import logger
 from typing import List
 from models.User import User
 from models.Action import Action as ActionDatabaseModel
@@ -154,22 +154,28 @@ async def get_actions(
     # Check the length of the surveys
     if len(surveys) == 0:
         raise HTTPException(status_code=404, detail="No surveys found")
-    # print the start time
-    print(f"Start time: {utc_now()}")
+    logger.info(
+        "Generating recommended actions",
+        extra={"event": "actions.generation.started", "survey_count": len(surveys)},
+    )
     actions, _ = await generate_actions(surveys)
-    print(f"request time end: {utc_now()}")
+    logger.info(
+        "Generated recommended actions",
+        extra={"event": "actions.generation.completed", "survey_count": len(surveys)},
+    )
     action = ActionDatabaseModel(
         user_id=current_user.id,
         summary=actions.summary,
         actions_items=[action.model_dump(mode="json") for action in actions.actions],
         survey_data=[survey.to_dict() for survey in surveys],
     )
-    # print the end time
-    print(f"End time: {utc_now()}")
     db.add(action)
     db.commit()
     db.refresh(action)
-    print(f"After commit time: {utc_now()}")
+    logger.info(
+        "Persisted recommended actions",
+        extra={"event": "actions.persisted", "action_id": action.id},
+    )
     return GetActionsResponse(
         id=action.id,
         summary=actions.summary,

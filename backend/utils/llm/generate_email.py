@@ -1,26 +1,11 @@
 import os
 import json
-from openai import AzureOpenAI, DefaultHttpxClient
-from dotenv import load_dotenv
 from utils.llm.models import EmailData, EmailResponse
 from utils.llm.text_cleaning_helper import _clean_response_content
 from fastapi.concurrency import run_in_threadpool
-import httpx
+from utils.llm.client import get_azure_openai_client
+from utils.logger import logger
 
-load_dotenv()
-client = AzureOpenAI(
-    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    http_client=(
-        DefaultHttpxClient(
-            proxy=os.getenv("ASW_PROXY_URL"),
-            transport=httpx.HTTPTransport(local_address="0.0.0.0"),
-        )
-        if os.getenv("ASW_PROXY_URL")
-        else None
-    ),
-)
 # Configs for generate email
 GENERATE_EMAILS_MODEL = os.getenv("GENERATE_EMAIL_MODEL", "gpt-4.1")
 GENERATE_EMAILS_TEMPERATURE = float(os.getenv("GENERATE_EMAIL_TEMPERATURE", 0.25))
@@ -103,7 +88,7 @@ Output requirements
     {data.action}
     {json.dumps(data.survey_data, indent=4, ensure_ascii=False, default=str)}
 """
-    response = client.chat.completions.create(
+    response = get_azure_openai_client().chat.completions.create(
         model=GENERATE_EMAILS_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
@@ -123,19 +108,16 @@ Output requirements
             EmailResponse.model_validate_json(cleaned_response_content),
             response.usage,
         )
-    except Exception as e:
-        print(f"Error validating email JSON response: {e}")
-        print(f"Response content (first 500 chars): {response_content[:500]}")
-        # Try to save the problematic response for debugging
-        try:
-            with open(
-                "/tmp/debug_email_response.txt", "w", encoding="utf-8", errors="replace"
-            ) as f:
-                f.write(response_content)
-            print("Full response saved to /tmp/debug_email_response.txt")
-        except:
-            pass
-        raise Exception(f"Failed to validate email response: {e}")
+    except Exception as error:
+        logger.error(
+            "Email-generation response validation failed",
+            extra={
+                "event": "llm.response_validation_failed",
+                "response_length": len(response_content),
+                "error_type": type(error).__name__,
+            },
+        )
+        raise Exception("Failed to validate email response") from error
 
 
 async def generate_email(data: EmailData) -> tuple[EmailResponse, dict]:

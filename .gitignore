@@ -134,8 +134,10 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 
-# Environments
+# Runtime deployment secrets, including profile-specific Azure OAuth credentials
 .env
+
+# Environments
 .envrc
 .venv
 env/
@@ -209,3 +211,6 @@ __marimo__/
 .DS_Store
 /backend/upload_tasks/*.csv
 /notebooks/docs/*
+
+.env.prod
+/deploy/profile/*
