@@ -19,8 +19,10 @@ docker compose version
 
 The deployment expects:
 
-- a populated root `.env` containing the normal backend database and security
+- a populated root `.env` containing shared backend database and security
   configuration;
+- BU-specific Azure OAuth and feedback settings in
+  `deploy/profile/wtchk_cls.env`;
 - an existing `connex_network` Docker network;
 - PostgreSQL reachable as `postgres:5432` on that network;
 - an existing `wtchk_cls` database;
@@ -39,16 +41,35 @@ If this is a new local environment and the network does not exist, create it:
 docker network create connex_network
 ```
 
-## 2. Configure the profile
+## 2. Configure the BU and analytics profile
 
 Create the ignored profile environment file. Do not overwrite an existing file
-that may already contain deployment secrets.
+that may already contain deployment secrets. The focused BU application
+template is [`deploy/bu.env.example`](bu.env.example), the complete profile
+catalog is [`deploy/profile.env.example`](profile.env.example), and the Cube
+variable template is [`deploy/analytics.env.example`](analytics.env.example).
+The BU and Cube settings belong in the same `deploy/profile/wtchk_cls.env` file.
 
 ```bash
 cp deploy/analytics.env.example deploy/profile/wtchk_cls.env
 ```
 
-Set at least these values in `deploy/profile/wtchk_cls.env`:
+Add the `wtchk_cls` BU application settings:
+
+```dotenv
+WTCHK_CLS_AZURE_CLIENT_ID=
+WTCHK_CLS_AZURE_CLIENT_SECRET=
+WTCHK_CLS_AZURE_TENANT_ID=
+WTCHK_CLS_ANALYZE_FEEDBACK_API_URL=
+```
+
+The host-side names must include the `WTCHK_CLS_` prefix. Compose maps the
+first three values to `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, and
+`AZURE_TENANT_ID` inside `backend-wtchk-cls`. Generic host-side Azure names are
+intentionally not used because they could leak credentials between BU
+profiles.
+
+Then set the Cube analytics values in the same file:
 
 ```dotenv
 CUBE_IMAGE_DIGEST=sha256:<tested-cube-v1.7.26-digest>
@@ -105,10 +126,32 @@ docker compose \
   -f docker-compose.yml \
   --profile wtchk_cls \
   --env-file .env \
+  --env-file deploy/profile/wtchk_cls.env \
   up -d --build backend-wtchk-cls
 ```
 
 The backend is published on host port `8000`.
+
+### Provision the Cube read-only database role
+
+Allow the backend migration to finish before this step so the governed analytics
+views and helper functions exist. Execute the supplied SQL with `psql` as a
+PostgreSQL administrator connected to `wtchk_cls`:
+
+```bash
+psql \
+  --host <postgres-host> \
+  --username postgres \
+  --dbname wtchk_cls \
+  --file scripts/provision_wtchk_cls_analytics_readonly.sql
+```
+
+The script creates or reconciles `wtchk_cls_analytics` and securely prompts for
+its password. Enter the same value configured as
+`WTCHK_CLS_ANALYTICS_DB_PASSWORD`. It removes direct table and sequence grants,
+then grants only database `CONNECT`, schema `USAGE`, analytics-view `SELECT`,
+and analytics helper-function `EXECUTE`. Re-running it also rotates the role's
+password through the secure `psql` prompt.
 
 ## 5. Start the complete analytics stack
 
