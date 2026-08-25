@@ -91,6 +91,17 @@ def _client(db: FakeDb, role: str = "user") -> TestClient:
     return TestClient(app)
 
 
+def test_openapi_describes_every_analytics_endpoint() -> None:
+    schema = _client(FakeDb()).get("/openapi.json").json()
+    for route in analytics.router.routes:
+        for method in route.methods or ():
+            if method not in {"GET", "POST", "PUT"}:
+                continue
+            operation = schema["paths"][route.path][method.lower()]
+            assert operation["summary"]
+            assert operation["description"]
+
+
 def test_feature_gate_is_evaluated_dynamically(monkeypatch) -> None:
     db = FakeDb()
     monkeypatch.setattr(config, "ANALYTICS_ENABLED", False)

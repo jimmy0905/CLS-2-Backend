@@ -88,6 +88,87 @@ _CHART_TYPES = (
     "heatmap",
     "store_map",
 )
+
+# OpenAPI descriptions deliberately mirror the public analytics contract.  The
+# Markdown reference gives examples; these strings keep Swagger/ReDoc useful to
+# frontend and integration clients without exposing Cube member names or SQL.
+_ENDPOINT_DESCRIPTIONS = {
+    "viewer_catalog": "Return the active immutable catalog visible to the current role. "
+    "Only published viewer-visible fields, metrics, and chart types are returned; "
+    "draft definitions, source keys, and raw payload fields are never exposed.",
+    "viewer_query": "Run one governed aggregate query against exactly one semantic view. "
+    "The API validates published member slugs, typed filters, limits, time settings, "
+    "and role visibility before forwarding it to private Cube.",
+    "viewer_charts": "List published charts visible to the current role in the active "
+    "catalog. Draft, archived, invalid, and more-restricted charts are omitted.",
+    "viewer_chart_data": "Run a published chart by ID. Its defined members stay fixed; "
+    "callers may only override safe filters, time settings, ordering, and limit. "
+    "The response is shaped for the declared chart type.",
+    "viewer_drilldown": "Return cursor-paginated survey-response rows for a governed "
+    "drilldown. Only visible core and promoted fields may be selected; unpromoted "
+    "raw payload keys are never returned.",
+    "viewer_export_create": "Queue an asynchronous CSV or XLSX export for exactly one "
+    "governed aggregate query or drilldown. Visibility is revalidated while the job "
+    "runs and files expire after 24 hours.",
+    "viewer_export_get": "Return export-job status for its owner or an administrator. "
+    "Unauthorized callers receive not found rather than information about the job.",
+    "viewer_export_download": "Download a completed, unexpired export belonging to the "
+    "current user or visible to an administrator. The file response is non-cacheable.",
+    "internal_catalog": "Private Cube metadata endpoint. It requires a fresh, "
+    "profile-bound HMAC signature and remains available during shadow compilation "
+    "even while user analytics is feature-disabled.",
+    "admin_candidates": "List upload-discovered raw-column candidates, including type "
+    "inference, bounded samples, conflicts, and promotion state. Admin-only because "
+    "candidate metadata can contain sensitive source keys.",
+    "admin_fields_list": "List all local governed field records, including candidates, "
+    "drafts, published records, archival state, and discovery metadata.",
+    "admin_field_get": "Return one local governed field record by numeric ID.",
+    "admin_field_create": "Create a draft raw-JSON field with a safe slug, typed source "
+    "key, semantic view, and visibility. The field must later be published and a "
+    "catalog version activated before users can query it.",
+    "admin_field_update": "Update a non-archived field. A change returns the field to "
+    "draft so it must be revalidated and republished before a future activation.",
+    "admin_field_promote": "Promote an upload-discovered candidate by selecting its "
+    "governed data type, visibility, and optional display metadata.",
+    "admin_field_validate": "Validate a field without activating it. The response reports "
+    "a boolean and safe validation errors.",
+    "admin_field_publish": "Mark a promoted, valid field published and audit the action. "
+    "It becomes visible only after catalog publication succeeds.",
+    "admin_field_archive": "Archive a field instead of deleting it. Archiving is rejected "
+    "while any published metric or chart references the field.",
+    "admin_metrics_list": "List every governed metric, including source/weight references, "
+    "operation, confidence configuration, visibility, and lifecycle state.",
+    "admin_metric_get": "Return one governed metric by numeric ID.",
+    "admin_metric_create": "Create a draft metric over a promoted field or fixed governed "
+    "core member. Only declarative metric parameters are accepted; executable SQL or "
+    "expressions are rejected.",
+    "admin_metric_update": "Update a non-archived metric and reset it to draft, requiring "
+    "fresh validation and publication.",
+    "admin_metric_validate": "Validate metric source types, operation, weighting, visibility "
+    "dependencies, confidence level, and semantic-view compatibility.",
+    "admin_metric_publish": "Mark a valid metric published and audit it. Catalog activation "
+    "is a separate operation.",
+    "admin_metric_archive": "Archive a metric unless it is referenced by a published chart.",
+    "admin_charts_list": "List all chart definitions, including drafts, archived charts, "
+    "validation errors, visibility, and model-version metadata.",
+    "admin_chart_get": "Return one chart definition by numeric ID.",
+    "admin_chart_create": "Create a draft frontend chart contract. This defines governed "
+    "members and rendering shape; it does not render a chart server-side.",
+    "admin_chart_update": "Update a non-archived chart and reset it to draft so it must "
+    "be validated and republished.",
+    "admin_chart_validate": "Validate chart member visibility, filters, time settings, and "
+    "type-specific shape requirements without activating it.",
+    "admin_chart_publish": "Publish a valid chart, making it eligible for the next catalog "
+    "activation and chart-specific rollup planning.",
+    "admin_chart_archive": "Archive a chart so it is omitted from future catalog versions.",
+    "admin_versions": "List immutable catalog-version history without embedding each "
+    "potentially large snapshot.",
+    "admin_version_get": "Return one catalog version, including its immutable snapshot and "
+    "generated Cube metadata. Admin-only because it can contain local source keys.",
+    "admin_catalog_publish": "Revalidate all currently published definitions, create an "
+    "immutable catalog snapshot, and atomically activate the next catalog version. "
+    "Invalid definitions prevent activation.",
+}
 _CI_OPERATIONS = {
     Aggregation.MEAN_CONFIDENCE_INTERVAL,
     Aggregation.WEIGHTED_MEAN_CONFIDENCE_INTERVAL,
@@ -1394,7 +1475,9 @@ internal_router = APIRouter(
 )
 
 
-@viewer_router.get("/catalog")
+@viewer_router.get(
+    "/catalog", summary="Get the active analytics catalog", description=_ENDPOINT_DESCRIPTIONS["viewer_catalog"]
+)
 async def get_catalog(
     db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ) -> dict[str, Any]:
@@ -1407,7 +1490,9 @@ async def get_catalog(
     return _catalog_response(catalog, version.catalog_version if version else 0)
 
 
-@viewer_router.post("/query")
+@viewer_router.post(
+    "/query", summary="Run a governed aggregate query", description=_ENDPOINT_DESCRIPTIONS["viewer_query"]
+)
 async def query_analytics(
     payload: QuerySpec,
     db: Session = Depends(get_db),
@@ -1416,14 +1501,18 @@ async def query_analytics(
     return await _execute_query(payload, db, current_user)
 
 
-@viewer_router.get("/charts/published")
+@viewer_router.get(
+    "/charts/published", summary="List published charts", description=_ENDPOINT_DESCRIPTIONS["viewer_charts"]
+)
 async def get_published_charts(
     db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ) -> list[dict[str, Any]]:
     return _snapshot_charts(_active_model_version(db), _role(current_user))
 
 
-@viewer_router.post("/charts/{chart_id}/data")
+@viewer_router.post(
+    "/charts/{chart_id}/data", summary="Run published chart data", description=_ENDPOINT_DESCRIPTIONS["viewer_chart_data"]
+)
 async def get_published_chart_data(
     chart_id: int,
     payload: ChartDataInput | None = Body(default=None),
@@ -1545,7 +1634,9 @@ def _lock_export_admission(db: Session) -> None:
         )
 
 
-@internal_router.get("/catalog")
+@internal_router.get(
+    "/catalog", summary="Get signed Cube catalog metadata", description=_ENDPOINT_DESCRIPTIONS["internal_catalog"]
+)
 async def get_internal_catalog(
     response: Response,
     x_analytics_profile: str = Header(alias="X-Analytics-Profile"),
@@ -1598,7 +1689,9 @@ def _ensure_unique_slug(
         raise HTTPException(status_code=409, detail="Slug already exists")
 
 
-@admin_router.get("/candidates")
+@admin_router.get(
+    "/candidates", summary="List discovered field candidates", description=_ENDPOINT_DESCRIPTIONS["admin_candidates"]
+)
 async def list_candidates(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     records = (
         db.query(AnalyticsField)
@@ -1609,7 +1702,9 @@ async def list_candidates(db: Session = Depends(get_db)) -> list[dict[str, Any]]
     return [record.to_dict() for record in records]
 
 
-@admin_router.get("/fields")
+@admin_router.get(
+    "/fields", summary="List governed fields", description=_ENDPOINT_DESCRIPTIONS["admin_fields_list"]
+)
 async def list_fields(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     return [
         record.to_dict()
@@ -1619,12 +1714,16 @@ async def list_fields(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     ]
 
 
-@admin_router.get("/fields/{field_id}")
+@admin_router.get(
+    "/fields/{field_id}", summary="Get governed field", description=_ENDPOINT_DESCRIPTIONS["admin_field_get"]
+)
 async def get_field(field_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     return _record_or_404(db, AnalyticsField, field_id, "Field").to_dict()
 
 
-@admin_router.post("/fields", status_code=201)
+@admin_router.post(
+    "/fields", status_code=201, summary="Create governed field", description=_ENDPOINT_DESCRIPTIONS["admin_field_create"]
+)
 async def create_field(
     payload: FieldInput,
     db: Session = Depends(get_db),
@@ -1650,7 +1749,9 @@ async def create_field(
     return field.to_dict()
 
 
-@admin_router.put("/fields/{field_id}")
+@admin_router.put(
+    "/fields/{field_id}", summary="Update governed field", description=_ENDPOINT_DESCRIPTIONS["admin_field_update"]
+)
 async def update_field(
     field_id: int,
     payload: FieldInput,
@@ -1672,7 +1773,9 @@ async def update_field(
     return field.to_dict()
 
 
-@admin_router.post("/fields/{field_id}/promote")
+@admin_router.post(
+    "/fields/{field_id}/promote", summary="Promote field candidate", description=_ENDPOINT_DESCRIPTIONS["admin_field_promote"]
+)
 async def promote_candidate(
     field_id: int,
     payload: CandidatePromotionInput,
@@ -1700,7 +1803,9 @@ async def promote_candidate(
     return field.to_dict()
 
 
-@admin_router.post("/fields/{field_id}/validate")
+@admin_router.post(
+    "/fields/{field_id}/validate", summary="Validate governed field", description=_ENDPOINT_DESCRIPTIONS["admin_field_validate"]
+)
 async def validate_field(
     field_id: int, db: Session = Depends(get_db)
 ) -> dict[str, Any]:
@@ -1712,7 +1817,9 @@ async def validate_field(
     return {"valid": True, "errors": []}
 
 
-@admin_router.post("/fields/{field_id}/publish")
+@admin_router.post(
+    "/fields/{field_id}/publish", summary="Publish governed field", description=_ENDPOINT_DESCRIPTIONS["admin_field_publish"]
+)
 async def publish_field(
     field_id: int,
     db: Session = Depends(get_db),
@@ -1733,7 +1840,9 @@ async def publish_field(
     return field.to_dict()
 
 
-@admin_router.post("/fields/{field_id}/archive")
+@admin_router.post(
+    "/fields/{field_id}/archive", summary="Archive governed field", description=_ENDPOINT_DESCRIPTIONS["admin_field_archive"]
+)
 async def archive_field(
     field_id: int,
     db: Session = Depends(get_db),
@@ -1773,7 +1882,9 @@ async def archive_field(
     return field.to_dict()
 
 
-@admin_router.get("/metrics")
+@admin_router.get(
+    "/metrics", summary="List governed metrics", description=_ENDPOINT_DESCRIPTIONS["admin_metrics_list"]
+)
 async def list_metrics(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     return [
         record.to_dict()
@@ -1783,7 +1894,9 @@ async def list_metrics(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     ]
 
 
-@admin_router.get("/metrics/{metric_id}")
+@admin_router.get(
+    "/metrics/{metric_id}", summary="Get governed metric", description=_ENDPOINT_DESCRIPTIONS["admin_metric_get"]
+)
 async def get_metric(metric_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     return _record_or_404(db, AnalyticsMetric, metric_id, "Metric").to_dict()
 
@@ -1793,7 +1906,9 @@ def _assign_metric(metric: AnalyticsMetric, payload: MetricInput) -> None:
         setattr(metric, key, value)
 
 
-@admin_router.post("/metrics", status_code=201)
+@admin_router.post(
+    "/metrics", status_code=201, summary="Create governed metric", description=_ENDPOINT_DESCRIPTIONS["admin_metric_create"]
+)
 async def create_metric(
     payload: MetricInput,
     db: Session = Depends(get_db),
@@ -1810,7 +1925,9 @@ async def create_metric(
     return metric.to_dict()
 
 
-@admin_router.put("/metrics/{metric_id}")
+@admin_router.put(
+    "/metrics/{metric_id}", summary="Update governed metric", description=_ENDPOINT_DESCRIPTIONS["admin_metric_update"]
+)
 async def update_metric(
     metric_id: int,
     payload: MetricInput,
@@ -1845,7 +1962,9 @@ def _validate_metric_for_admin(db: Session, metric: AnalyticsMetric) -> None:
     _validate_metric_record(metric, fields, catalog)
 
 
-@admin_router.post("/metrics/{metric_id}/validate")
+@admin_router.post(
+    "/metrics/{metric_id}/validate", summary="Validate governed metric", description=_ENDPOINT_DESCRIPTIONS["admin_metric_validate"]
+)
 async def validate_metric_endpoint(
     metric_id: int, db: Session = Depends(get_db)
 ) -> dict[str, Any]:
@@ -1857,7 +1976,9 @@ async def validate_metric_endpoint(
     return {"valid": True, "errors": []}
 
 
-@admin_router.post("/metrics/{metric_id}/publish")
+@admin_router.post(
+    "/metrics/{metric_id}/publish", summary="Publish governed metric", description=_ENDPOINT_DESCRIPTIONS["admin_metric_publish"]
+)
 async def publish_metric(
     metric_id: int,
     db: Session = Depends(get_db),
@@ -1876,7 +1997,9 @@ async def publish_metric(
     return metric.to_dict()
 
 
-@admin_router.post("/metrics/{metric_id}/archive")
+@admin_router.post(
+    "/metrics/{metric_id}/archive", summary="Archive governed metric", description=_ENDPOINT_DESCRIPTIONS["admin_metric_archive"]
+)
 async def archive_metric(
     metric_id: int,
     db: Session = Depends(get_db),
@@ -1903,7 +2026,9 @@ async def archive_metric(
     return metric.to_dict()
 
 
-@admin_router.get("/charts")
+@admin_router.get(
+    "/charts", summary="List chart definitions", description=_ENDPOINT_DESCRIPTIONS["admin_charts_list"]
+)
 async def list_charts(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     return [
         record.to_dict()
@@ -1913,7 +2038,9 @@ async def list_charts(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     ]
 
 
-@admin_router.get("/charts/{chart_id}")
+@admin_router.get(
+    "/charts/{chart_id}", summary="Get chart definition", description=_ENDPOINT_DESCRIPTIONS["admin_chart_get"]
+)
 async def get_chart(chart_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
     return _record_or_404(db, AnalyticsChart, chart_id, "Chart").to_dict()
 
@@ -1925,7 +2052,9 @@ def _assign_chart(chart: AnalyticsChart, payload: ChartInput) -> None:
         setattr(chart, key, value)
 
 
-@admin_router.post("/charts", status_code=201)
+@admin_router.post(
+    "/charts", status_code=201, summary="Create chart definition", description=_ENDPOINT_DESCRIPTIONS["admin_chart_create"]
+)
 async def create_chart(
     payload: ChartInput,
     db: Session = Depends(get_db),
@@ -1942,7 +2071,9 @@ async def create_chart(
     return chart.to_dict()
 
 
-@admin_router.put("/charts/{chart_id}")
+@admin_router.put(
+    "/charts/{chart_id}", summary="Update chart definition", description=_ENDPOINT_DESCRIPTIONS["admin_chart_update"]
+)
 async def update_chart(
     chart_id: int,
     payload: ChartInput,
@@ -1971,7 +2102,9 @@ def _validate_chart_for_admin(db: Session, chart: AnalyticsChart) -> None:
     _validate_chart_record(chart, catalog)
 
 
-@admin_router.post("/charts/{chart_id}/validate")
+@admin_router.post(
+    "/charts/{chart_id}/validate", summary="Validate chart definition", description=_ENDPOINT_DESCRIPTIONS["admin_chart_validate"]
+)
 async def validate_chart_endpoint(
     chart_id: int, db: Session = Depends(get_db)
 ) -> dict[str, Any]:
@@ -1989,7 +2122,9 @@ async def validate_chart_endpoint(
     return {"valid": True, "errors": []}
 
 
-@admin_router.post("/charts/{chart_id}/publish")
+@admin_router.post(
+    "/charts/{chart_id}/publish", summary="Publish chart definition", description=_ENDPOINT_DESCRIPTIONS["admin_chart_publish"]
+)
 async def publish_chart(
     chart_id: int,
     db: Session = Depends(get_db),
@@ -2013,7 +2148,9 @@ async def publish_chart(
     return chart.to_dict()
 
 
-@admin_router.post("/charts/{chart_id}/archive")
+@admin_router.post(
+    "/charts/{chart_id}/archive", summary="Archive chart definition", description=_ENDPOINT_DESCRIPTIONS["admin_chart_archive"]
+)
 async def archive_chart(
     chart_id: int,
     db: Session = Depends(get_db),
@@ -2028,7 +2165,9 @@ async def archive_chart(
     return chart.to_dict()
 
 
-@admin_router.get("/catalog/versions")
+@admin_router.get(
+    "/catalog/versions", summary="List catalog versions", description=_ENDPOINT_DESCRIPTIONS["admin_versions"]
+)
 async def list_catalog_versions(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     versions = (
         db.query(AnalyticsModelVersion)
@@ -2038,7 +2177,9 @@ async def list_catalog_versions(db: Session = Depends(get_db)) -> list[dict[str,
     return [version.to_dict() for version in versions]
 
 
-@admin_router.get("/catalog/versions/{version_id}")
+@admin_router.get(
+    "/catalog/versions/{version_id}", summary="Get catalog version", description=_ENDPOINT_DESCRIPTIONS["admin_version_get"]
+)
 async def get_catalog_version(
     version_id: int, db: Session = Depends(get_db)
 ) -> dict[str, Any]:
@@ -2047,7 +2188,9 @@ async def get_catalog_version(
     ).to_dict(include_snapshot=True)
 
 
-@admin_router.post("/catalog/publish", status_code=201)
+@admin_router.post(
+    "/catalog/publish", status_code=201, summary="Activate a catalog version", description=_ENDPOINT_DESCRIPTIONS["admin_catalog_publish"]
+)
 async def publish_catalog_version(
     payload: CatalogPublicationInput,
     db: Session = Depends(get_db),
@@ -2163,7 +2306,9 @@ async def publish_catalog_version(
     return version.to_dict(include_snapshot=True)
 
 
-@viewer_router.post("/drilldown")
+@viewer_router.post(
+    "/drilldown", summary="Drill down to survey responses", description=_ENDPOINT_DESCRIPTIONS["viewer_drilldown"]
+)
 def drilldown_analytics(
     payload: DrilldownSpec,
     db: Session = Depends(get_db),
@@ -2235,7 +2380,9 @@ def drilldown_analytics(
     }
 
 
-@viewer_router.post("/exports", status_code=201)
+@viewer_router.post(
+    "/exports", status_code=201, summary="Queue analytics export", description=_ENDPOINT_DESCRIPTIONS["viewer_export_create"]
+)
 async def create_analytics_export(
     payload: ExportInput,
     background_tasks: BackgroundTasks,
@@ -2364,7 +2511,9 @@ def _export_job_for_user(
     return job
 
 
-@viewer_router.get("/exports/{job_id}")
+@viewer_router.get(
+    "/exports/{job_id}", summary="Get analytics export status", description=_ENDPOINT_DESCRIPTIONS["viewer_export_get"]
+)
 async def get_analytics_export(
     job_id: str,
     db: Session = Depends(get_db),
@@ -2373,7 +2522,9 @@ async def get_analytics_export(
     return _export_job_for_user(db, job_id, current_user).to_dict()
 
 
-@viewer_router.get("/exports/{job_id}/download")
+@viewer_router.get(
+    "/exports/{job_id}/download", summary="Download analytics export", description=_ENDPOINT_DESCRIPTIONS["viewer_export_download"]
+)
 async def download_analytics_export(
     job_id: str,
     db: Session = Depends(get_db),
