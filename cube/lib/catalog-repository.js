@@ -76,7 +76,6 @@ const RESPONSE_CORE_FIELDS = {
   created_at: ['created_at', 'date'],
   updated_at: ['updated_at', 'date'],
   comment: ['comment', 'string'],
-  sentiment: ['sentiment', 'string'],
   topic_sentiment: ['topic_sentiment', 'string'],
   topic_sentiment_score: ['topic_sentiment_score', 'number'],
   cls: ['cls', 'number'],
@@ -123,14 +122,13 @@ const RESPONSE_CORE_FIELDS = {
   delivery_service_id: ['delivery_service_id', 'number'],
 };
 const ASSIGNMENT_RESPONSE_CORE_FIELDS = Object.fromEntries(
-  Object.entries(RESPONSE_CORE_FIELDS).filter(([slug]) => !['id', 'sentiment'].includes(slug)),
+  Object.entries(RESPONSE_CORE_FIELDS).filter(([slug]) => slug !== 'id'),
 );
 const ASSIGNMENT_SHARED_CORE_FIELDS = {
   ...ASSIGNMENT_RESPONSE_CORE_FIELDS,
   assignment_id: ['assignment_id', 'number'],
   response_id: ['id', 'number'],
   sentiment: ['assignment_sentiment', 'string'],
-  response_sentiment: ['sentiment', 'string'],
 };
 const CORE_FIELDS = {
   survey_responses: RESPONSE_CORE_FIELDS,

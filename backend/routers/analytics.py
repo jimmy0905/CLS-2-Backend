@@ -194,7 +194,6 @@ _AVAILABILITY_VIEW_NAMES = {
 _ASSIGNMENT_AVAILABILITY_ALIASES = {
     "response_id": "id",
     "sentiment": "assignment_sentiment",
-    "response_sentiment": "sentiment",
     "department": "department_name",
 }
 
@@ -218,7 +217,6 @@ _RESPONSE_FIELD_TYPES: dict[str, FieldType] = {
     "created_at": FieldType.DATE,
     "updated_at": FieldType.DATE,
     "comment": FieldType.STRING,
-    "sentiment": FieldType.STRING,
     "topic_sentiment": FieldType.STRING,
     "topic_sentiment_score": FieldType.NUMBER,
     "cls": FieldType.NUMBER,
@@ -285,13 +283,12 @@ for _view, _assignment_members in {
     _CORE_FIELDS += (
         _core_field("assignment_id", FieldType.NUMBER, _view),
         _core_field("response_id", FieldType.NUMBER, _view),
-        _core_field("response_sentiment", FieldType.STRING, _view),
         _core_field("sentiment", FieldType.STRING, _view),
     )
     _CORE_FIELDS += tuple(
         _core_field(slug, data_type, _view)
         for slug, data_type in _RESPONSE_FIELD_TYPES.items()
-        if slug not in {"id", "sentiment"}
+        if slug != "id"
     )
     _CORE_FIELDS += tuple(
         _core_field(slug, data_type, _view)
@@ -373,7 +370,10 @@ class FieldInput(_StrictInput):
     data_type: FieldType
     source_kind: Literal["raw_json"] = "raw_json"
     source_key: str = Field(min_length=1, max_length=128)
-    semantic_view: Literal["survey_responses"] = "survey_responses"
+    semantic_view: Literal["survey_responses"] = Field(
+        default="survey_responses",
+        description="Imported raw fields are projected from one survey response into all assignment views.",
+    )
     visibility: Visibility = Visibility.VIEWER
     definition: dict[str, Any] = Field(default_factory=dict)
 
@@ -428,7 +428,7 @@ class MetricInput(_StrictInput):
                     "slug": "negative_response_rate",
                     "label": "Negative response rate",
                     "semantic_view": "survey_responses",
-                    "source_member": "sentiment",
+                    "source_member": "topic_sentiment",
                     "operation": "filtered_rate",
                     "definition": {
                         "filter": {"operator": "equals", "value": "NEGATIVE"}
@@ -455,7 +455,15 @@ class MetricInput(_StrictInput):
         "survey_topics",
         "survey_departments",
         "survey_keywords",
-    ] = "survey_responses"
+    ] = Field(
+        default="survey_responses",
+        description=(
+            "Metric row grain. survey_responses is one survey; assignment views "
+            "are one topic, department, or keyword assignment and expose assignment "
+            "sentiment as assignment sentiment plus surveys.topic_sentiment as "
+            "the canonical response sentiment."
+        ),
+    )
     field_id: int | None = None
     source_member: str | None = None
     operation: Aggregation
@@ -514,7 +522,7 @@ class ChartDefinitionInput(_StrictInput):
                     "metrics": ["response_count"],
                     "filters": [
                         {
-                            "member": "sentiment",
+                            "member": "topic_sentiment",
                             "operator": "equals",
                             "value": "NEGATIVE",
                         }
@@ -604,7 +612,12 @@ class ChartInput(_StrictInput):
         "survey_topics",
         "survey_departments",
         "survey_keywords",
-    ]
+    ] = Field(
+        description=(
+            "Required chart row grain. Use survey_responses for response-level "
+            "analysis; use one assignment view for topic, department, or keyword analysis."
+        )
+    )
     definition: ChartDefinitionInput
     visibility: Visibility = Visibility.VIEWER
 

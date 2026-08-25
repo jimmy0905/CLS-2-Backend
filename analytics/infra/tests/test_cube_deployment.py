@@ -171,7 +171,6 @@ def test_cube_models_keep_assignment_grains_separate_and_use_stable_percentiles(
         for response_name, response_dimension in response_dimensions.items():
             assignment_name = {
                 "id": "response_id",
-                "sentiment": "response_sentiment",
             }.get(response_name, response_name)
             assert dimensions[assignment_name]["sql"] == response_dimension["sql"]
             assert dimensions[assignment_name]["type"] == response_dimension["type"]

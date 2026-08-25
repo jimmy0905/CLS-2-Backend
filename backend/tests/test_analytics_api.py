@@ -605,14 +605,16 @@ def test_field_archive_dependency_scan_covers_chart_filters_time_and_order() -> 
     definition = {
         "dimensions": ["store_name"],
         "time_dimension": "reported_at",
-        "filters": [{"member": "sentiment", "operator": "equals", "value": "ok"}],
+        "filters": [
+            {"member": "topic_sentiment", "operator": "equals", "value": "ok"}
+        ],
         "order": [{"member": "raw_score", "direction": "desc"}],
     }
 
     assert analytics._chart_dimension_dependencies(definition) == {
         "store_name",
         "reported_at",
-        "sentiment",
+        "topic_sentiment",
         "raw_score",
     }
 

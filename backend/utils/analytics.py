@@ -153,7 +153,14 @@ class _CatalogModel(BaseModel):
 
     slug: str
     label: str = Field(min_length=1, max_length=200)
-    semantic_view: str
+    semantic_view: str = Field(
+        description=(
+            "Required row grain: survey_responses is one survey response; "
+            "survey_topics, survey_departments, and survey_keywords are one "
+            "assignment row each. In assignment views, sentiment is assignment "
+            "sentiment and topic_sentiment is the canonical surveys.topic_sentiment."
+        )
+    )
     visibility: Visibility = Visibility.VIEWER
     published: bool = True
 
@@ -300,7 +307,11 @@ class FilterSpec(BaseModel):
         frozen=True,
         json_schema_extra={
             "examples": [
-                {"member": "sentiment", "operator": "equals", "value": "NEGATIVE"},
+                {
+                    "member": "topic_sentiment",
+                    "operator": "equals",
+                    "value": "NEGATIVE",
+                },
                 {
                     "member": "reported_at",
                     "operator": "between",
@@ -349,7 +360,7 @@ class QuerySpec(BaseModel):
                     "metrics": ["response_count", "cls_average"],
                     "filters": [
                         {
-                            "member": "sentiment",
+                            "member": "topic_sentiment",
                             "operator": "equals",
                             "value": "NEGATIVE",
                         }
@@ -364,7 +375,14 @@ class QuerySpec(BaseModel):
         },
     )
 
-    semantic_view: str
+    semantic_view: str = Field(
+        description=(
+            "Required row grain: survey_responses is one survey response; "
+            "survey_topics, survey_departments, and survey_keywords are one "
+            "assignment row each. In assignment views, sentiment is assignment "
+            "sentiment and topic_sentiment is the canonical surveys.topic_sentiment."
+        )
+    )
     dimensions: tuple[str, ...] = Field(default=(), max_length=MAX_DIMENSIONS)
     metrics: tuple[str, ...] = Field(default=(), max_length=MAX_METRICS)
     filters: tuple[FilterSpec, ...] = Field(default=(), max_length=MAX_FILTERS)

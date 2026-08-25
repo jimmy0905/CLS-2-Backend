@@ -270,17 +270,9 @@ test('metrics resolve fixed core sources and weights without catalog field dupli
     fields: [],
     metrics: [
       ...coreMetrics('survey_responses', 'id'),
-      ...assignmentViews.flatMap((semanticView) => [
-        ...coreMetrics(semanticView, 'response_id'),
-        {
-          slug: 'response_sentiment_distinct',
-          label: 'Distinct response sentiments',
-          semanticView,
-          operation: 'distinct_count',
-          sourceField: 'response_sentiment',
-          visibility: 'viewer',
-        },
-      ]),
+      ...assignmentViews.flatMap((semanticView) => (
+        coreMetrics(semanticView, 'response_id')
+      )),
     ],
   }, profile);
   const core = [
@@ -303,10 +295,6 @@ test('metrics resolve fixed core sources and weights without catalog field dupli
   assert.match(responses, /name: weighted_cls[\s\S]*?\{CUBE\}\.id/);
   for (const compiled of assignments) {
     assert.match(compiled, /name: weighted_cls[\s\S]*?\{CUBE\}\.id/);
-    assert.match(
-      compiled,
-      /name: response_sentiment_distinct[\s\S]*?\{CUBE\}\.sentiment/,
-    );
   }
 });
 

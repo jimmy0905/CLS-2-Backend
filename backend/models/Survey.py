@@ -38,6 +38,7 @@ class Survey(Base):
     )
     # Columns
     comment = Column(Text)
+    # sentiment is a legacy column that is no longer used for sentiment calculations. It is kept for backward compatibility and historical data. The actual sentiment is now calculated based on the associated topics and stored in topic_sentiment and topic_sentiment_score.
     sentiment = Column(Enum(Sentiment, name="sentiment_enum"))
     reported_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
@@ -46,12 +47,9 @@ class Survey(Base):
     )
     is_deleted = Column(Boolean, default=False)
     topic_sentiment = Column(Enum(TopicSentiment, name="topic_sentiment_enum"))
-    # Insert this column in the database, sql commands for PostgreSQL:
-    # ALTER TABLE surveys ADD COLUMN IF NOT EXISTS topic_sentiment topic_sentiment_enum;
     topic_sentiment_score = Column(
         Float, default=0.0
-    )  # Insert this column in the database, sql commands for PostgreSQL:
-    # ALTER TABLE surveys ADD COLUMN IF NOT EXISTS topic_sentiment_score FLOAT DEFAULT 0.0;
+    )
     cls = Column(Float, nullable=True, default=None)
     # Relationships
     store = relationship("Store", back_populates="surveys")

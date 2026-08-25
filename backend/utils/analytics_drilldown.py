@@ -30,7 +30,7 @@ DEFAULT_DRILLDOWN_FIELDS = (
     "reported_at",
     "store_key",
     "store_name",
-    "sentiment",
+    "topic_sentiment",
     "comment",
 )
 
@@ -47,14 +47,14 @@ class DrilldownSpec(BaseModel):
                         "respondent_id",
                         "reported_at",
                         "store_key",
-                        "sentiment",
+                        "topic_sentiment",
                         "topic_sentiment_score",
                         "cls",
                         "comment",
                     ],
                     "filters": [
                         {
-                            "member": "sentiment",
+                            "member": "topic_sentiment",
                             "operator": "equals",
                             "value": "NEGATIVE",
                         }
@@ -66,7 +66,13 @@ class DrilldownSpec(BaseModel):
         },
     )
 
-    semantic_view: Literal["survey_responses"] = "survey_responses"
+    semantic_view: Literal["survey_responses"] = Field(
+        default="survey_responses",
+        description=(
+            "Drilldown is intentionally limited to one survey-response row; "
+            "topic, department, and keyword assignment views are aggregate-only."
+        ),
+    )
     fields: tuple[str, ...] = Field(default=DEFAULT_DRILLDOWN_FIELDS, max_length=50)
     filters: tuple[FilterSpec, ...] = Field(default=(), max_length=20)
     cursor: int | None = Field(default=None, ge=0)
@@ -92,7 +98,6 @@ _CORE_EXPRESSIONS = {
     "created_at": Survey.created_at,
     "updated_at": Survey.updated_at,
     "comment": Survey.comment,
-    "sentiment": Survey.sentiment,
     "topic_sentiment": Survey.topic_sentiment,
     "topic_sentiment_score": Survey.topic_sentiment_score,
     "cls": Survey.cls,

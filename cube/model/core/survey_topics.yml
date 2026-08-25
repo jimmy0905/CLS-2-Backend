@@ -44,10 +44,6 @@ cubes:
         sql: assignment_sentiment
         type: string
 
-      - name: response_sentiment
-        sql: sentiment
-        type: string
-
       - name: reported_at
         sql: reported_at
         type: time

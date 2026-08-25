@@ -67,10 +67,6 @@ cubes:
         sql: comment
         type: string
 
-      - name: sentiment
-        sql: sentiment
-        type: string
-
       - name: topic_sentiment
         sql: topic_sentiment
         type: string
@@ -257,7 +253,7 @@ cubes:
           - topic_sentiment_score_sum
         dimensions:
           - store_key
-          - sentiment
+          - topic_sentiment
           - region
           - channel_name
         time_dimension: reported_at
@@ -274,7 +270,7 @@ cubes:
           - topic_sentiment_score_sum
         dimensions:
           - store_key
-          - sentiment
+          - topic_sentiment
           - region
           - channel_name
         time_dimension: reported_at

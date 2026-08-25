@@ -29,6 +29,23 @@ Roles are enforced at the API boundary:
 
 The only supported semantic views are `survey_responses`, `survey_topics`, `survey_departments`, and `survey_keywords`. Each is a separate grain. A request always names exactly one view, so assignment views cannot be combined and inflate response counts through topic/department/keyword fan-out.
 
+### Semantic-view grains and sentiment mapping
+
+`survey_responses` is plural—there is no `survey_response` view. Choose the view based on the question you are asking, not simply on which word “sentiment” appears in its source table.
+
+| Semantic view | One row represents | Database source | Canonical response sentiment | Assignment sentiment | Use it for |
+| --- | --- | --- | --- | --- | --- |
+| `survey_responses` | One non-deleted survey response | `surveys`, joined to `stores`, `channels`, and `delivery_services` | `topic_sentiment` = `surveys.topic_sentiment`; score = `surveys.topic_sentiment_score` | None. The legacy `surveys.sentiment` is intentionally not a public semantic field. | Overall response volume, CLS, store/channel analysis, and response-level sentiment. `response_count` counts survey rows. |
+| `survey_topics` | One topic assigned to a survey | `survey_topics` joined to the survey facts and `topics` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_topics.sentiment` | Topic analysis: group by `topic`, use `assignment_count` for topic assignments, or `distinct_survey_count` for unique surveys. |
+| `survey_departments` | One department assigned to a survey | `survey_departments` joined to the survey facts and `departments` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_departments.sentiment` | Department analysis: group by `department`, then use assignment or distinct-survey counts as appropriate. |
+| `survey_keywords` | One keyword assigned to a survey | `survey_keywords` joined to the survey facts and `keywords` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_keywords.sentiment` | Keyword analysis: group/filter by `keyword`, then use assignment or distinct-survey counts. |
+
+In `survey_responses`, always use `topic_sentiment`; `sentiment` is not a valid public member. In assignment views, use `topic_sentiment` for the response-level value and `sentiment` only for that topic/department/keyword assignment row. This keeps the legacy `surveys.sentiment` out of analytics.
+
+Migration note: update any existing response-level metric, chart, saved query, drilldown, or frontend field selector that names `sentiment` to use `topic_sentiment`, then validate/publish a new catalog version. Do **not** change `sentiment` in an assignment-view definition unless you specifically mean the response-level value; in that case use `topic_sentiment`.
+
+Do not combine `survey_topics`, `survey_departments`, and `survey_keywords` in one query. A response can have multiple assignments of each kind, so doing so would multiply rows and make counts/averages ambiguous.
+
 ### Shared query concepts
 
 `POST /analytics/query`, chart data, and exports use published member *slugs*, never raw SQL or Cube member names.
@@ -70,11 +87,11 @@ Swagger/ReDoc marks required JSON fields from the OpenAPI schema. The following 
 | Request model | Required fields | Optional fields / rules | Example |
 | --- | --- | --- | --- |
 | Aggregate query | `semantic_view`; at least one of `dimensions`, `metrics`, or `time_dimension` | `dimensions`, `metrics`, `filters`, time controls, `order`, `limit`. `time_range`/`time_granularity` require `time_dimension`. | `{ "semantic_view": "survey_responses", "dimensions": ["store_format"], "metrics": ["response_count"] }` |
-| Filter | `member`, `operator` | `value` is required for scalar comparisons; `values` is required for `in`, `not_in`, and `between`; neither is used for `set`/`not_set`. | `{ "member": "sentiment", "operator": "equals", "value": "NEGATIVE" }` |
-| Drilldown | None: defaults select common response fields | `semantic_view` is fixed to `survey_responses`; choose `fields` (1–50), `filters` (0–20), `cursor`, and `limit` (1–250). | `{ "fields": ["survey_id", "respondent_id", "store_key", "comment", "sentiment", "cls"], "limit": 100 }` |
+| Filter | `member`, `operator` | `value` is required for scalar comparisons; `values` is required for `in`, `not_in`, and `between`; neither is used for `set`/`not_set`. | `{ "member": "topic_sentiment", "operator": "equals", "value": "NEGATIVE" }` |
+| Drilldown | None: defaults select common response fields | `semantic_view` is fixed to `survey_responses`; choose `fields` (1–50), `filters` (0–20), `cursor`, and `limit` (1–250). | `{ "fields": ["survey_id", "respondent_id", "store_key", "comment", "topic_sentiment", "cls"], "limit": 100 }` |
 | Create field | `slug`, `label`, `data_type`, `source_key` | `semantic_view` defaults to `survey_responses`; `source_kind` is fixed to `raw_json`; `description` and `visibility` are optional. | `{ "slug": "overall_score", "label": "Overall score", "data_type": "number", "source_key": "Overall Score" }` |
 | Promote candidate | `data_type` | `visibility`, `label`, `description`. | `{ "data_type": "number", "visibility": "viewer", "label": "Overall score" }` |
-| Create metric | `slug`, `label`, `operation` | `semantic_view` defaults to `survey_responses`; use at most one of `field_id`/`source_member`, and at most one of `weight_field_id`/`weight_member`. A source is required when the operation needs one; CI operations require `confidence_level` (0.8–0.999). | `{ "slug": "negative_response_rate", "label": "Negative response rate", "source_member": "sentiment", "operation": "filtered_rate", "definition": { "filter": { "operator": "equals", "value": "NEGATIVE" } } }` |
+| Create metric | `slug`, `label`, `operation` | `semantic_view` defaults to `survey_responses`; use at most one of `field_id`/`source_member`, and at most one of `weight_field_id`/`weight_member`. A source is required when the operation needs one; CI operations require `confidence_level` (0.8–0.999). | `{ "slug": "negative_response_rate", "label": "Negative response rate", "source_member": "topic_sentiment", "operation": "filtered_rate", "definition": { "filter": { "operator": "equals", "value": "NEGATIVE" } } }` |
 | Create chart | `slug`, `title`, `chart_type`, `semantic_view`, `definition` | `description`, `visibility`; definition members depend on chart type. | `{ "slug": "responses_by_store_format", "title": "Responses by store format", "chart_type": "bar", "semantic_view": "survey_responses", "definition": { "dimensions": ["store_format"], "metrics": ["response_count"] } }` |
 | Chart data override | None | `filters`, `time_range`, `time_granularity`, `order`, `limit` only; it cannot replace the chart’s governed dimensions or metrics. | `{ "time_range": ["2026-01-01", "2026-03-31"], "time_granularity": "month" }` |
 | Export | `export_format`; exactly one of `query` or `drilldown` | `export_format` is `csv` or `xlsx`; its selected object follows the relevant query model above. | `{ "export_format": "csv", "drilldown": { "fields": ["survey_id", "comment"] } }` |
@@ -147,7 +164,7 @@ Runs one governed aggregate query against a single semantic view. The request bo
   "semantic_view": "survey_responses",
   "dimensions": ["store_name_english", "store_format"],
   "metrics": ["response_count", "cls_average"],
-  "filters": [{"member": "sentiment", "operator": "equals", "value": "NEGATIVE"}],
+  "filters": [{"member": "topic_sentiment", "operator": "equals", "value": "NEGATIVE"}],
   "time_dimension": "reported_at",
   "time_range": ["2024-08-01", "2024-08-31"],
   "time_granularity": "month",
@@ -184,8 +201,8 @@ Returns cursor-paginated response-level rows from `survey_responses` only. It is
 
 ```json
 {
-  "fields": ["survey_id", "respondent_id", "store_key", "reported_at", "comment", "sentiment", "topic_sentiment_score", "cls"],
-  "filters": [{"member": "sentiment", "operator": "equals", "value": "NEGATIVE"}],
+  "fields": ["survey_id", "respondent_id", "store_key", "reported_at", "comment", "topic_sentiment", "topic_sentiment_score", "cls"],
+  "filters": [{"member": "topic_sentiment", "operator": "equals", "value": "NEGATIVE"}],
   "cursor": 0,
   "limit": 100
 }
