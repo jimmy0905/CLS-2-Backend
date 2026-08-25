@@ -9,6 +9,9 @@ Store clusters. It is an overlay: always use it together with the existing
 For a complete canary startup walkthrough, see
 [`deploy/WTCHK_CLS_STARTUP.md`](../deploy/WTCHK_CLS_STARTUP.md).
 
+For every viewer, admin, and internal semantic-layer endpoint, see
+[`docs/ANALYTICS_API_REFERENCE.md`](../docs/ANALYTICS_API_REFERENCE.md).
+
 ## Runtime boundaries
 
 - Cube and Cube Store are pinned to `v1.7.26` official manifest-index digests.
