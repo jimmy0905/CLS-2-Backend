@@ -6,6 +6,9 @@ for each of the 61 application profiles, plus four independently persisted Cube
 Store clusters. It is an overlay: always use it together with the existing
 `docker-compose.yml`.
 
+For a complete canary startup walkthrough, see
+[`deploy/WTCHK_CLS_STARTUP.md`](../deploy/WTCHK_CLS_STARTUP.md).
+
 ## Runtime boundaries
 
 - Cube and Cube Store are pinned to `v1.7.26`. Operators must supply tested
