@@ -1,7 +1,14 @@
 from datetime import datetime, timezone
 import unittest
 
-from utils.utc import as_utc, utc_isoformat, utc_now
+from utils.utc import (
+    as_timezone,
+    as_utc,
+    local_isoformat,
+    resolve_timezone,
+    utc_isoformat,
+    utc_now,
+)
 
 
 class UtcHelperTests(unittest.TestCase):
@@ -17,6 +24,20 @@ class UtcHelperTests(unittest.TestCase):
         value = utc_isoformat(datetime(2026, 8, 4, 20, 30, tzinfo=timezone.utc))
 
         self.assertEqual(value, "2026-08-04T20:30:00+00:00")
+
+    def test_resolves_iana_timezone_and_formats_local_time(self) -> None:
+        value = datetime(2026, 8, 4, 16, 30, tzinfo=timezone.utc)
+
+        self.assertEqual(resolve_timezone("Asia/Hong_Kong").key, "Asia/Hong_Kong")
+        self.assertEqual(
+            local_isoformat(value, "Asia/Hong_Kong"),
+            "2026-08-05T00:30:00+08:00",
+        )
+        self.assertEqual(as_timezone(value, "America/New_York").hour, 12)
+
+    def test_rejects_unknown_timezone(self) -> None:
+        with self.assertRaises(ValueError):
+            resolve_timezone("Not/A_Timezone")
 
 
 if __name__ == "__main__":

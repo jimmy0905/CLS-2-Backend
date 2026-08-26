@@ -773,7 +773,7 @@ async def get_strategy_v2(
                 .all()
             )
             for survey in surveys:
-                csv_value = survey.to_csv()
+                csv_value = survey.to_csv(filter_params.timezone)
                 # Write row values
                 for col_idx, header in enumerate(headers, start=1):
                     value = format_excel_value(csv_value[header])

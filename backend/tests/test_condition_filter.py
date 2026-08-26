@@ -63,6 +63,19 @@ class SurveyFilterDateRangeTests(unittest.TestCase):
 
         self.assertEqual(error_context.exception.status_code, 400)
 
+    def test_timezone_interprets_date_only_boundary_as_local_time(self) -> None:
+        conditions = build_survey_filter_conditions(
+            {
+                "from_date": "2026-08-04",
+                "timezone": "Asia/Hong_Kong",
+            }
+        )
+
+        self.assertEqual(
+            conditions[1].right.value,
+            datetime(2026, 8, 3, 16, 0, tzinfo=timezone.utc),
+        )
+
 
 class SurveyClsTests(unittest.TestCase):
     def test_cls_range_filters_are_inclusive(self) -> None:

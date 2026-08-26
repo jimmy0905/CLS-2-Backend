@@ -64,7 +64,7 @@ from utils.analytics_results import (
 )
 from utils.database import get_db
 from utils.security import get_current_user, require_admin
-from utils.utc import utc_now
+from utils.utc import resolve_timezone, utc_now
 
 
 _SEMANTIC_VIEWS = {
@@ -570,6 +570,7 @@ class ChartDefinitionInput(_StrictInput):
                     "time_dimension": "reported_at",
                     "time_range": ["2024-08-01", "2024-08-31"],
                     "time_granularity": "month",
+                    "timezone": "Asia/Hong_Kong",
                     "order": [{"member": "response_count", "direction": "desc"}],
                     "limit": 100,
                 }
@@ -582,6 +583,7 @@ class ChartDefinitionInput(_StrictInput):
     filters: tuple[FilterSpec, ...] = Field(default=(), max_length=20)
     time_dimension: str | None = None
     time_range: tuple[str, str] | None = None
+    timezone: str | None = None
     time_granularity: Literal[
         "second", "minute", "hour", "day", "week", "month", "quarter", "year"
     ] | None = None
@@ -601,6 +603,13 @@ class ChartDefinitionInput(_StrictInput):
     @classmethod
     def _time_member(cls, value: str | None) -> str | None:
         return validate_identifier(value) if value else value
+
+    @field_validator("timezone")
+    @classmethod
+    def _timezone(cls, value: str | None) -> str | None:
+        if value is not None:
+            resolve_timezone(value)
+        return value
 
     @model_validator(mode="after")
     def _time_contract(self) -> "ChartDefinitionInput":
@@ -682,6 +691,7 @@ class ChartDataInput(_StrictInput):
                     ],
                     "time_range": ["2026-01-01", "2026-03-31"],
                     "time_granularity": "month",
+                    "timezone": "Asia/Hong_Kong",
                     "limit": 100,
                 }
             ]
@@ -690,6 +700,7 @@ class ChartDataInput(_StrictInput):
 
     filters: tuple[FilterSpec, ...] | None = Field(default=None, max_length=20)
     time_range: tuple[str, str] | None = None
+    timezone: str | None = None
     time_granularity: Literal[
         "second", "minute", "hour", "day", "week", "month", "quarter", "year"
     ] | None = None
@@ -716,6 +727,7 @@ class FilterOptionsInput(_StrictInput):
                         }
                     ],
                     "search": "Mall",
+                    "timezone": "Asia/Hong_Kong",
                     "limit": 100,
                     "cursor": 0,
                 }
@@ -734,6 +746,7 @@ class FilterOptionsInput(_StrictInput):
     # Reserve room for the endpoint's non-null filter and optional search.
     filters: tuple[FilterSpec, ...] = Field(default=(), max_length=18)
     search: str | None = Field(default=None, max_length=100)
+    timezone: str | None = None
     limit: int = Field(default=100, ge=1, le=1_000)
     cursor: int | None = Field(default=None, ge=0, le=1_000_000)
 
@@ -750,6 +763,13 @@ class FilterOptionsInput(_StrictInput):
     @classmethod
     def _member(cls, value: str) -> str:
         return validate_identifier(value)
+
+    @field_validator("timezone")
+    @classmethod
+    def _timezone(cls, value: str | None) -> str | None:
+        if value is not None:
+            resolve_timezone(value)
+        return value
 
     @field_validator("search")
     @classmethod
@@ -1239,6 +1259,7 @@ async def _execute_query(
     return {
         "query_id": query_id,
         "model_version": version.catalog_version if version else 0,
+        "timezone": query.timezone or "UTC",
         "columns": columns,
         "rows": rows,
         "confidence": formatted_result["confidence"],
@@ -1345,6 +1366,7 @@ def _chart_query(
             filters=values["filters"],
             time_dimension=values.get("time_dimension"),
             time_range=values.get("time_range"),
+            timezone=values.get("timezone"),
             time_granularity=values.get("time_granularity"),
             order=values["order"],
             limit=query_limit,
@@ -1362,6 +1384,7 @@ def _chart_query(
         filters=values["filters"],
         time_dimension=values.get("time_dimension"),
         time_range=values.get("time_range"),
+        timezone=values.get("timezone"),
         time_granularity=values.get("time_granularity"),
         order=values["order"],
         limit=query_limit,
@@ -1990,6 +2013,7 @@ async def get_filter_options(
             dimensions=(payload.member,),
             metrics=(count_metric, *optional_metrics),
             filters=filters,
+            timezone=payload.timezone,
             order=(
                 OrderSpec(member=count_metric, direction="desc"),
                 OrderSpec(member=payload.member, direction="asc"),
@@ -2021,6 +2045,7 @@ async def get_filter_options(
     return {
         "query_id": result["query_id"],
         "model_version": result["model_version"],
+        "timezone": query.timezone or "UTC",
         "semantic_view": payload.semantic_view,
         "member": payload.member,
         "label": field.label,
@@ -2969,6 +2994,7 @@ def drilldown_analytics(
     return {
         "query_id": query_id,
         "model_version": version.catalog_version if version else 0,
+        "timezone": payload.timezone or "UTC",
         **result,
     }
 

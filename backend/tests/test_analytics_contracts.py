@@ -230,6 +230,27 @@ def test_compiler_emits_only_catalog_owned_cube_members(catalog: SemanticCatalog
     }
 
 
+def test_compiler_forwards_requested_timezone_to_cube(catalog: SemanticCatalog) -> None:
+    query = QuerySpec(
+        semantic_view="survey_responses",
+        metrics=["response_count"],
+        time_dimension="reported_at",
+        time_range=["2026-08-04", "2026-08-05"],
+        timezone="Asia/Hong_Kong",
+    )
+
+    compiled = compile_cube_query(query, catalog)
+
+    assert compiled["timezone"] == "Asia/Hong_Kong"
+
+    with pytest.raises(ValidationError, match="timezone"):
+        QuerySpec(
+            semantic_view="survey_responses",
+            metrics=["response_count"],
+            timezone="Not/A_Timezone",
+        )
+
+
 def test_aggregation_rules_and_metric_weight_contract(catalog: SemanticCatalog) -> None:
     assert Aggregation.SUM in allowed_aggregations(FieldType.NUMBER)
     assert Aggregation.MEDIAN not in allowed_aggregations(FieldType.STRING)

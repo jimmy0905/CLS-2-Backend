@@ -28,7 +28,7 @@ from utils.llm.normalize_keywords import normalize_keywords
 from utils.security import get_current_user
 from fastapi_pagination import Page, paginate
 from fastapi.responses import StreamingResponse
-from utils.utc import as_utc, utc_isoformat, utc_now
+from utils.utc import as_utc, resolve_timezone, utc_isoformat, utc_now
 import logging
 from openpyxl import Workbook
 from io import BytesIO
@@ -175,7 +175,10 @@ async def get_surveys(
 
     # Convert to response models
     survey_responses = [
-        SurveyResponse.model_validate(survey.to_dict()) for survey in surveys
+        SurveyResponse.model_validate(
+            survey.to_dict(filter_params.timezone)
+        )
+        for survey in surveys
     ]
 
     # Create pagination response
@@ -451,7 +454,7 @@ async def download_surveys(
                 .all()
             )
             for survey in surveys:
-                csv_value = survey.to_csv()
+                csv_value = survey.to_csv(filter_params.timezone)
                 # Write row values
                 for col_idx, header in enumerate(export_headers, start=1):
                     value = format_excel_value(csv_value.get(header))
@@ -474,7 +477,18 @@ async def download_surveys(
 
 
 @router.get("/{survey_id}")
-async def get_survey(survey_id: int, db: Session = Depends(get_db)) -> SurveyResponse:
+async def get_survey(
+    survey_id: int,
+    timezone: Optional[str] = Query(
+        default=None,
+        description="Optional IANA timezone for timestamp display; UTC is used when omitted",
+    ),
+    db: Session = Depends(get_db),
+) -> SurveyResponse:
+    try:
+        resolve_timezone(timezone)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     filter_dict = {"ids": [survey_id]}
     query = build_survey_query(db.query(Survey), filter_dict)
     query = query.options(
@@ -488,7 +502,7 @@ async def get_survey(survey_id: int, db: Session = Depends(get_db)) -> SurveyRes
     survey = query.first()
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
-    return SurveyResponse.model_validate(survey.to_dict())
+    return SurveyResponse.model_validate(survey.to_dict(timezone))
 
 
 class UpdateSurveyTopicRequest(BaseModel):

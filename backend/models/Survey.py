@@ -20,7 +20,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy import event
 from models.enum.Sentiment import Sentiment, TopicSentiment
-from utils.utc import utc_isoformat, utc_now
+from utils.utc import as_timezone, local_isoformat, utc_now
 
 
 class Survey(Base):
@@ -81,7 +81,7 @@ class Survey(Base):
         Index("idx_survey_cls", cls),
     )
 
-    def to_dict(self):
+    def to_dict(self, timezone_name: str | None = None):
         return {
             "id": self.id,
             # Foreign keys
@@ -162,9 +162,9 @@ class Survey(Base):
             "topic_sentiment": self.topic_sentiment,
             "topic_sentiment_score": self.topic_sentiment_score,
             "cls": self.cls,
-            "reported_at": utc_isoformat(self.reported_at),
-            "created_at": utc_isoformat(self.created_at),
-            "updated_at": utc_isoformat(self.updated_at),
+            "reported_at": local_isoformat(self.reported_at, timezone_name),
+            "created_at": local_isoformat(self.created_at, timezone_name),
+            "updated_at": local_isoformat(self.updated_at, timezone_name),
             "is_deleted": self.is_deleted,
         }
 
@@ -181,7 +181,7 @@ class Survey(Base):
             return sentiment_str.split(".")[-1].title()
         return sentiment_str.title()
 
-    def to_csv(self):
+    def to_csv(self, timezone_name: str | None = None):
         return {
             "id": self.id,
             "survey_id": self.survey_id,
@@ -252,9 +252,9 @@ class Survey(Base):
             ),  # use topic_sentiment instead of sentiment
             "sentiment_score": self.topic_sentiment_score,
             "cls": self.cls,
-            "reported_at": self.reported_at,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
+            "reported_at": as_timezone(self.reported_at, timezone_name),
+            "created_at": as_timezone(self.created_at, timezone_name),
+            "updated_at": as_timezone(self.updated_at, timezone_name),
         }
 
 

@@ -3,7 +3,7 @@ from models.Survey import Survey
 from utils.conditionFilter import build_survey_query
 from utils.database import get_db
 from sqlalchemy.orm import Session, joinedload
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from utils.llm.models import (
     Action,
@@ -22,6 +22,7 @@ from models.GeneratedEmail import GeneratedEmail
 from models.EmailRecord import EmailRecord
 from sqlalchemy import func
 import asyncio
+from utils.utc import resolve_timezone
 
 router = APIRouter(
     prefix="/actions",
@@ -49,12 +50,20 @@ class ActionFilterRequest(BaseModel):
     keywords: List[str] = []
     from_date: Optional[str] = ""
     to_date: Optional[str] = ""
+    timezone: Optional[str] = None
     sentiments: List[str] = []
     topic_sentiments: List[str] = []
     min_topic_sentiment_score: Optional[float] = None
     max_topic_sentiment_score: Optional[float] = None
     min_cls: Optional[float] = None
     max_cls: Optional[float] = None
+
+    @field_validator("timezone")
+    @classmethod
+    def _timezone(cls, value: str | None) -> str | None:
+        if value is not None:
+            resolve_timezone(value)
+        return value
 
 
 class GetActionsResponse(BaseModel):
@@ -167,7 +176,9 @@ async def get_actions(
         user_id=current_user.id,
         summary=actions.summary,
         actions_items=[action.model_dump(mode="json") for action in actions.actions],
-        survey_data=[survey.to_dict() for survey in surveys],
+        survey_data=[
+            survey.to_dict(action_filter_request.timezone) for survey in surveys
+        ],
     )
     db.add(action)
     db.commit()

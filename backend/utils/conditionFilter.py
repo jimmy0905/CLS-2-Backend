@@ -16,9 +16,10 @@ from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 from typing import List
 from fastapi import HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
 from datetime import date, datetime, time, timezone
+from utils.utc import resolve_timezone
 
 
 class FilterRequest(BaseModel):
@@ -68,12 +69,20 @@ class FilterRequest(BaseModel):
     keywords: List[str] = []
     from_date: Optional[str] = ""
     to_date: Optional[str] = ""
+    timezone: Optional[str] = None
     sentiments: List[str] = []
     topic_sentiments: List[str] = []
     min_topic_sentiment_score: Optional[float] = None
     max_topic_sentiment_score: Optional[float] = None
     min_cls: Optional[float] = None
     max_cls: Optional[float] = None
+
+    @field_validator("timezone")
+    @classmethod
+    def _timezone(cls, value: str | None) -> str | None:
+        if value is not None:
+            resolve_timezone(value)
+        return value
 
 
 def get_filter_params(
@@ -255,11 +264,24 @@ def get_filter_params(
     ),
     from_date: str = Query(
         default="",
-        description="The inclusive start timestamp to filter by, in UTC ISO format",
+        description=(
+            "The inclusive start timestamp to filter by, in UTC ISO format unless "
+            "timezone is supplied"
+        ),
     ),
     to_date: str = Query(
         default="",
-        description="The exclusive end timestamp to filter by, in UTC ISO format",
+        description=(
+            "The exclusive end timestamp to filter by, in UTC ISO format unless "
+            "timezone is supplied"
+        ),
+    ),
+    timezone: Optional[str] = Query(
+        default=None,
+        description=(
+            "Optional IANA timezone for date-only or timezone-less from_date/to_date "
+            "values and timestamp display; UTC is used when omitted"
+        ),
     ),
     sentiments: List[str] = Query(
         default=[],
@@ -334,6 +356,7 @@ def get_filter_params(
         keywords=keywords,
         from_date=from_date,
         to_date=to_date,
+        timezone=timezone,
         sentiments=[
             sentiment.lower() for sentiment in sentiments # Convert into list of lowercase strings
         ],
@@ -352,16 +375,22 @@ def build_survey_filter_conditions(filter_dict: FilterRequest):
     """Build filter conditions based on the filter dictionary"""
     conditions = []
 
+    timezone_name = filter_dict.get("timezone")
+    try:
+        local_timezone = resolve_timezone(timezone_name)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
     def parse_filter_datetime(value: str | date | datetime, field_name: str) -> datetime:
         if isinstance(value, datetime):
             parsed_datetime = value
         elif isinstance(value, date):
-            return datetime.combine(value, time.min, tzinfo=timezone.utc)
+            parsed_datetime = datetime.combine(value, time.min)
         else:
-            if "T" not in value and " " not in value:
+            if "T" not in value and " " not in value and not timezone_name:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"{field_name} must use UTC ISO timestamp format",
+                    detail=f"{field_name} must use UTC ISO timestamp format or provide timezone",
                 )
             normalized_value = value.replace("Z", "+00:00")
             try:
@@ -371,13 +400,18 @@ def build_survey_filter_conditions(filter_dict: FilterRequest):
                     status_code=400,
                     detail=f"{field_name} must use UTC ISO timestamp format",
                 ) from exc
-            if parsed_datetime.tzinfo is None:
+            if parsed_datetime.tzinfo is None and not timezone_name:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"{field_name} must use UTC ISO timestamp format",
+                    detail=f"{field_name} must use UTC ISO timestamp format or provide timezone",
                 )
         if parsed_datetime.tzinfo is None:
-            return parsed_datetime.replace(tzinfo=timezone.utc)
+            try:
+                parsed_datetime = parsed_datetime.replace(
+                    tzinfo=local_timezone
+                )
+            except ValueError as error:
+                raise HTTPException(status_code=400, detail=str(error)) from error
         return parsed_datetime.astimezone(timezone.utc)
 
     # Add is_deleted check

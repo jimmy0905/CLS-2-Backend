@@ -14,6 +14,7 @@ import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from utils.utc import resolve_timezone
 
 
 MAX_DIMENSIONS = 3
@@ -368,6 +369,7 @@ class QuerySpec(BaseModel):
                     "time_dimension": "reported_at",
                     "time_range": ["2024-08-01", "2024-08-31"],
                     "time_granularity": "month",
+                    "timezone": "Asia/Hong_Kong",
                     "order": [{"member": "response_count", "direction": "desc"}],
                     "limit": 1000,
                 }
@@ -388,6 +390,13 @@ class QuerySpec(BaseModel):
     filters: tuple[FilterSpec, ...] = Field(default=(), max_length=MAX_FILTERS)
     time_dimension: str | None = None
     time_range: tuple[str, str] | None = None
+    timezone: str | None = Field(
+        default=None,
+        description=(
+            "Optional IANA timezone used for time-range boundaries and time buckets; "
+            "UTC is used when omitted."
+        ),
+    )
     time_granularity: Literal[
         "second", "minute", "hour", "day", "week", "month", "quarter", "year"
     ] | None = None
@@ -412,6 +421,13 @@ class QuerySpec(BaseModel):
     @classmethod
     def _time_identifier(cls, value: str | None) -> str | None:
         return validate_identifier(value) if value is not None else None
+
+    @field_validator("timezone")
+    @classmethod
+    def _timezone(cls, value: str | None) -> str | None:
+        if value is not None:
+            resolve_timezone(value)
+        return value
 
     @field_validator("time_range")
     @classmethod
@@ -696,9 +712,29 @@ _CUBE_OPERATORS = {
 }
 
 
-def _cube_value(value: Any) -> str:
+def _cube_value(
+    value: Any,
+    field_type: FieldType | None = None,
+    timezone_name: str | None = None,
+) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
+    if field_type is FieldType.DATE:
+        if isinstance(value, datetime):
+            timestamp = value
+        elif isinstance(value, date):
+            timestamp = datetime.combine(value, time.min)
+        elif isinstance(value, str):
+            try:
+                timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                timestamp = None
+        else:
+            timestamp = None
+        if timestamp is not None:
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=resolve_timezone(timezone_name))
+            return timestamp.astimezone(timezone.utc).isoformat()
     if isinstance(value, (date, datetime, time)):
         return value.isoformat()
     return str(value)
@@ -720,6 +756,7 @@ def compile_cube_query(
 
     filters: list[dict[str, Any]] = []
     for item in query.filters:
+        field = catalog.field(item.member, query.semantic_view)
         if item.operator == "between":
             assert item.values is not None
             filters.extend(
@@ -727,12 +764,16 @@ def compile_cube_query(
                     {
                         "member": prefix + item.member,
                         "operator": "gte",
-                        "values": [_cube_value(item.values[0])],
+                    "values": [
+                        _cube_value(item.values[0], field.data_type, query.timezone)
+                    ],
                     },
                     {
                         "member": prefix + item.member,
                         "operator": "lte",
-                        "values": [_cube_value(item.values[1])],
+                    "values": [
+                        _cube_value(item.values[1], field.data_type, query.timezone)
+                    ],
                     },
                 ]
             )
@@ -744,7 +785,10 @@ def compile_cube_query(
         if item.operator not in {"set", "not_set"}:
             values = item.values if item.operator in {"in", "not_in"} else (item.value,)
             assert values is not None
-            compiled_filter["values"] = [_cube_value(value) for value in values]
+            compiled_filter["values"] = [
+                _cube_value(value, field.data_type, query.timezone)
+                for value in values
+            ]
         filters.append(compiled_filter)
     if filters:
         result["filters"] = filters
@@ -756,6 +800,8 @@ def compile_cube_query(
         if query.time_granularity:
             time_dimension["granularity"] = query.time_granularity
         result["timeDimensions"] = [time_dimension]
+    if query.timezone is not None:
+        result["timezone"] = query.timezone
     if query.order:
         result["order"] = {
             prefix + order.member: order.direction for order in query.order

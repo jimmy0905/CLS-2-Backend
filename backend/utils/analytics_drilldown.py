@@ -1,7 +1,7 @@
 """Governed cursor-paginated survey drilldown queries."""
 from __future__ import annotations
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -22,6 +22,7 @@ from utils.analytics import (
     validate_identifier,
     validate_query,
 )
+from utils.utc import as_timezone, resolve_timezone
 
 
 DEFAULT_DRILLDOWN_FIELDS = (
@@ -61,6 +62,7 @@ class DrilldownSpec(BaseModel):
                     ],
                     "cursor": 0,
                     "limit": 100,
+                    "timezone": "Asia/Hong_Kong",
                 }
             ]
         },
@@ -77,6 +79,13 @@ class DrilldownSpec(BaseModel):
     filters: tuple[FilterSpec, ...] = Field(default=(), max_length=20)
     cursor: int | None = Field(default=None, ge=0)
     limit: int = Field(default=100, ge=1, le=250)
+    timezone: str | None = Field(
+        default=None,
+        description=(
+            "Optional IANA timezone used for timestamp filters and returned values; "
+            "UTC is used when omitted."
+        ),
+    )
 
     @field_validator("fields")
     @classmethod
@@ -88,6 +97,13 @@ class DrilldownSpec(BaseModel):
         if len(set(values)) != len(values):
             raise ValueError("Drilldown fields must be unique")
         return values
+
+    @field_validator("timezone")
+    @classmethod
+    def _timezone(cls, value: str | None) -> str | None:
+        if value is not None:
+            resolve_timezone(value)
+        return value
 
 
 _CORE_EXPRESSIONS = {
@@ -169,6 +185,36 @@ def _expression(
     return _raw_expression(raw_definition[0], FieldType(raw_definition[1]))
 
 
+def _timestamp_filter_value(value: Any, timezone_name: str | None) -> Any:
+    if isinstance(value, datetime):
+        timestamp = value
+    elif isinstance(value, date):
+        timestamp = datetime.combine(value, time.min)
+    elif isinstance(value, str):
+        try:
+            timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return value
+    else:
+        return value
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=resolve_timezone(timezone_name))
+    return timestamp.astimezone(timezone.utc)
+
+
+def _normalise_filter(item: FilterSpec, field_type: FieldType, timezone_name: str | None) -> FilterSpec:
+    if field_type is not FieldType.DATE:
+        return item
+    if item.values is not None:
+        values = tuple(_timestamp_filter_value(value, timezone_name) for value in item.values)
+        return item.model_copy(update={"values": values})
+    if item.value is not None:
+        return item.model_copy(
+            update={"value": _timestamp_filter_value(item.value, timezone_name)}
+        )
+    return item
+
+
 def _condition(expression: Any, item: FilterSpec):
     if item.operator == "equals":
         return expression == item.value
@@ -245,7 +291,8 @@ def build_drilldown_statement(
     conditions = []
     for item in spec.filters:
         field = catalog.field(item.member, spec.semantic_view)
-        conditions.append(_condition(_expression(field, raw_fields), item))
+        normalized_item = _normalise_filter(item, field.data_type, spec.timezone)
+        conditions.append(_condition(_expression(field, raw_fields), normalized_item))
     if conditions:
         statement = statement.where(and_(*conditions))
     if spec.cursor is not None:
@@ -253,10 +300,12 @@ def build_drilldown_statement(
     return statement.order_by(Survey.id.asc()).limit(spec.limit + 1)
 
 
-def _json_value(value: Any) -> Any:
+def _json_value(value: Any, timezone_name: str | None = None) -> Any:
     if hasattr(value, "value"):
         return value.value
     if isinstance(value, (date, datetime, time)):
+        if isinstance(value, datetime):
+            value = as_timezone(value, timezone_name)
         return value.isoformat()
     return value
 
@@ -281,7 +330,7 @@ def execute_drilldown(
     page = result[: spec.limit]
     rows = [
         {
-            key: _json_value(value)
+            key: _json_value(value, spec.timezone)
             for key, value in dict(row).items()
             if key != "__cursor_id"
         }

@@ -22,7 +22,7 @@ from utils.conditionFilter import (
 from typing import List, Optional
 from utils.security import get_current_user
 from datetime import date
-from utils.utc import utc_isoformat
+from utils.utc import local_isoformat, resolve_timezone
 
 router = APIRouter(
     prefix="/dashboard",
@@ -359,11 +359,14 @@ async def get_sentiment_distribution(
     # Single query to get sentiment counts and score by date
     base_query, _joined_tables, _ = build_optimized_query(db, filter_dict)
 
+    reported_at_local = func.timezone(
+        filter_params.timezone or "UTC", Survey.reported_at
+    )
     date_results = (
         base_query.with_entities(
-            extract("year", Survey.reported_at).label("year"),
-            extract("month", Survey.reported_at).label("month"),
-            extract("day", Survey.reported_at).label("day"),
+            extract("year", reported_at_local).label("year"),
+            extract("month", reported_at_local).label("month"),
+            extract("day", reported_at_local).label("day"),
             func.count(
                 func.distinct(
                     case((Survey.topic_sentiment == TopicSentiment.NEUTRAL, Survey.id))
@@ -387,9 +390,9 @@ async def get_sentiment_distribution(
             func.avg(Survey.topic_sentiment_score).label("sentiment_score"),
         )
         .group_by(
-            extract("year", Survey.reported_at),
-            extract("month", Survey.reported_at),
-            extract("day", Survey.reported_at),
+            extract("year", reported_at_local),
+            extract("month", reported_at_local),
+            extract("day", reported_at_local),
         )
         .all()
     )
@@ -734,12 +737,20 @@ async def get_topic_sentiment_score(
 
 @router.get("/last-updated-date")
 async def get_last_updated_date(
+    timezone: Optional[str] = Query(
+        default=None,
+        description="Optional IANA timezone for timestamp display; UTC is used when omitted",
+    ),
     db: Session = Depends(get_db),
 ) -> str:
+    try:
+        resolve_timezone(timezone)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     last_updated_date = db.query(func.max(Survey.updated_at)).first()
     if last_updated_date[0] is None:
         return ""
-    return utc_isoformat(last_updated_date[0]) or ""
+    return local_isoformat(last_updated_date[0], timezone) or ""
 
 
 class DataCoverageResponse(BaseModel):
@@ -749,8 +760,16 @@ class DataCoverageResponse(BaseModel):
 
 @router.get("/data-coverage")
 async def get_data_coverage(
+    timezone: Optional[str] = Query(
+        default=None,
+        description="Optional IANA timezone for timestamp display; UTC is used when omitted",
+    ),
     db: Session = Depends(get_db),
 ) -> DataCoverageResponse:
+    try:
+        resolve_timezone(timezone)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     last_data_reported_date = (
         db.query(func.max(Survey.reported_at))
         .filter(Survey.is_deleted == False)
@@ -764,8 +783,8 @@ async def get_data_coverage(
     if last_data_reported_date[0] is None or first_data_reported_date[0] is None:
         raise HTTPException(status_code=404, detail="No data reported")
     return DataCoverageResponse(
-        last_data_reported_date=utc_isoformat(last_data_reported_date[0]) or "",
-        first_data_reported_date=utc_isoformat(first_data_reported_date[0]) or "",
+        last_data_reported_date=local_isoformat(last_data_reported_date[0], timezone) or "",
+        first_data_reported_date=local_isoformat(first_data_reported_date[0], timezone) or "",
     )
 
 

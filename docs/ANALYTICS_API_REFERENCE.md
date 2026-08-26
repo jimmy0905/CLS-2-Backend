@@ -62,6 +62,7 @@ Do not combine `survey_topics`, `survey_departments`, and `survey_keywords` in o
 | `time_dimension` | A published date/time dimension. It may be paired with `time_range` and `time_granularity`; do not also include it as an ordinary dimension. |
 | `time_range` | Two ISO-8601 date/datetime values, each at most 64 characters, with start no later than end. |
 | `time_granularity` | Cube-supported granularity such as day, week, month, quarter, or year, when valid for the time member. |
+| `timezone` | Optional IANA timezone (for example, `Asia/Hong_Kong` or `America/New_York`) used for time-range boundaries, time buckets, and timestamp display. UTC is used when omitted. |
 | `order` | A list of `{ "member": "<slug>", "direction": "asc" | "desc" }`. |
 | `limit` | Aggregate queries allow 1–1,000 rows. Published charts can set their own governed limit up to 5,000 where the chart type allows it. |
 
@@ -71,6 +72,7 @@ A successful aggregate response has this shape:
 {
   "query_id": "8f5c…",
   "model_version": 4,
+  "timezone": "Asia/Hong_Kong",
   "columns": [{"name": "region", "label": "Region", "type": "string", "kind": "dimension"}],
   "rows": [{"region": "North", "response_count": 120}],
   "confidence": [],
@@ -89,15 +91,15 @@ Swagger/ReDoc marks required JSON fields from the OpenAPI schema. The following 
 
 | Request model | Required fields | Optional fields / rules | Example |
 | --- | --- | --- | --- |
-| Aggregate query | `semantic_view`; at least one of `dimensions`, `metrics`, or `time_dimension` | `dimensions`, `metrics`, `filters`, time controls, `order`, `limit`. `time_range`/`time_granularity` require `time_dimension`. | `{ "semantic_view": "survey_responses", "dimensions": ["store_format"], "metrics": ["response_count"] }` |
+| Aggregate query | `semantic_view`; at least one of `dimensions`, `metrics`, or `time_dimension` | `dimensions`, `metrics`, `filters`, time controls, `timezone`, `order`, `limit`. `time_range`/`time_granularity` require `time_dimension`. | `{ "semantic_view": "survey_responses", "dimensions": ["store_format"], "metrics": ["response_count"], "timezone": "Asia/Hong_Kong" }` |
 | Filter | `member`, `operator` | `value` is required for scalar comparisons; `values` is required for `in`, `not_in`, and `between`; neither is used for `set`/`not_set`. | `{ "member": "topic_sentiment", "operator": "equals", "value": "NEGATIVE" }` |
-| Drilldown | None: defaults select common response fields | `semantic_view` is fixed to `survey_responses`; choose `fields` (1–50), `filters` (0–20), `cursor`, and `limit` (1–250). | `{ "fields": ["survey_id", "respondent_id", "store_key", "comment", "topic_sentiment", "cls"], "limit": 100 }` |
+| Drilldown | None: defaults select common response fields | `semantic_view` is fixed to `survey_responses`; choose `fields` (1–50), `filters` (0–20), `cursor`, `limit` (1–250), and optional `timezone` for local timestamp filters/display. | `{ "fields": ["survey_id", "respondent_id", "store_key", "reported_at", "comment", "topic_sentiment", "cls"], "limit": 100, "timezone": "Asia/Hong_Kong" }` |
 | Create field | `slug`, `label`, `data_type`, `source_key` | `semantic_view` defaults to `survey_responses`; `source_kind` is fixed to `raw_json`; `description` and `visibility` are optional. | `{ "slug": "overall_score", "label": "Overall score", "data_type": "number", "source_key": "Overall Score" }` |
 | Promote candidate | `data_type` | `visibility`, `label`, `description`. | `{ "data_type": "number", "visibility": "viewer", "label": "Overall score" }` |
 | Create metric | `slug`, `label`, `operation` | `semantic_view` defaults to `survey_responses`; use at most one of `field_id`/`source_member`, and at most one of `weight_field_id`/`weight_member`. A source is required when the operation needs one; CI operations require `confidence_level` (0.8–0.999). | `{ "slug": "negative_response_rate", "label": "Negative response rate", "source_member": "topic_sentiment", "operation": "filtered_rate", "definition": { "filter": { "operator": "equals", "value": "NEGATIVE" } } }` |
 | Create chart | `slug`, `title`, `chart_type`, `semantic_view`, `definition` | `description`, `visibility`; definition members depend on chart type. | `{ "slug": "responses_by_store_format", "title": "Responses by store format", "chart_type": "bar", "semantic_view": "survey_responses", "definition": { "dimensions": ["store_format"], "metrics": ["response_count"] } }` |
-| Chart data override | None | `filters`, `time_range`, `time_granularity`, `order`, `limit` only; it cannot replace the chart’s governed dimensions or metrics. | `{ "time_range": ["2026-01-01", "2026-03-31"], "time_granularity": "month" }` |
-| Filter options | `semantic_view`, `member` | `filters` (up to 18), optional governed `metrics` (up to 4), string-only `search`, `limit` (1–1,000), and offset `cursor` (0–1,000,000). The endpoint automatically excludes null values. | `{ "semantic_view": "survey_responses", "member": "store_format", "metrics": ["topic_sentiment_score_average"], "search": "Mall", "cursor": 0 }` |
+| Chart data override | None | `filters`, `time_range`, `time_granularity`, `timezone`, `order`, `limit` only; it cannot replace the chart’s governed dimensions or metrics. | `{ "time_range": ["2026-01-01", "2026-03-31"], "time_granularity": "month", "timezone": "Asia/Hong_Kong" }` |
+| Filter options | `semantic_view`, `member` | `filters` (up to 18), optional governed `metrics` (up to 4), string-only `search`, optional `timezone`, `limit` (1–1,000), and offset `cursor` (0–1,000,000). The endpoint automatically excludes null values. | `{ "semantic_view": "survey_responses", "member": "store_format", "metrics": ["topic_sentiment_score_average"], "search": "Mall", "timezone": "Asia/Hong_Kong", "cursor": 0 }` |
 | Export | `export_format`; exactly one of `query` or `drilldown` | `export_format` is `csv` or `xlsx`; its selected object follows the relevant query model above. | `{ "export_format": "csv", "drilldown": { "fields": ["survey_id", "comment"] } }` |
 | Catalog publication | None | `description` is optional release/audit text. | `{ "description": "Quarterly metric release" }` |
 
@@ -224,6 +226,7 @@ Runs one governed aggregate query against a single semantic view. The request bo
   "time_dimension": "reported_at",
   "time_range": ["2024-08-01", "2024-08-31"],
   "time_granularity": "month",
+  "timezone": "Asia/Hong_Kong",
   "order": [{"member": "response_count", "direction": "desc"}],
   "limit": 1000
 }
@@ -264,7 +267,7 @@ Returns cursor-paginated response-level rows from `survey_responses` only. It is
 }
 ```
 
-`fields` accepts 1–50 permitted core/promoted fields, `filters` accepts up to 20 compatible filters, and `limit` is 1–250. The response is `{ "rows": [...], "next_cursor": 100, "has_more": true }`. Only current-role-visible promoted fields are returned; unpromoted payload keys and the raw JSON payload are never returned. Capacity protection can return `429` with `Retry-After`; a database timeout/unavailability returns `503`.
+`fields` accepts 1–50 permitted core/promoted fields, `filters` accepts up to 20 compatible filters, and `limit` is 1–250. An optional IANA `timezone` applies local timestamp filters and formats returned timestamp fields; UTC is used when omitted. The response includes the effective `timezone` alongside `{ "rows": [...], "next_cursor": 100, "has_more": true }`. Only current-role-visible promoted fields are returned; unpromoted payload keys and the raw JSON payload are never returned. Capacity protection can return `429` with `Retry-After`; a database timeout/unavailability returns `503`.
 
 ### `POST /analytics/exports`
 
