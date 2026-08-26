@@ -124,7 +124,6 @@ Retention runs after startup and every `RETENTION_CHECK_INTERVAL_SECONDS`
 (default 86400). It purges only operational data older than the cutoff:
 
 - login records;
-- user activity/actions and generated/email records;
 - completed or failed upload tasks and their error rows;
 - rotated application log files when `SERVER_LOG_FILE` is configured.
 

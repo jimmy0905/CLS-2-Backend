@@ -35,6 +35,18 @@ cubes:
         sql: PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY {CUBE}.topic_sentiment_score)
         type: number
 
+      - name: first_reported_at
+        sql: reported_at
+        type: min
+
+      - name: last_reported_at
+        sql: reported_at
+        type: max
+
+      - name: last_updated_at
+        sql: updated_at
+        type: max
+
       # Standard response-level dashboard sentiment measures. The response
       # sentiment source is topic_sentiment; surveys.sentiment is legacy.
       - name: topic_sentiment_positive_count

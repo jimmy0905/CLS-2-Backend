@@ -100,7 +100,8 @@ Swagger/ReDoc marks required JSON fields from the OpenAPI schema. The following 
 | Create chart | `slug`, `title`, `chart_type`, `semantic_view`, `definition` | `description`, `visibility`; definition members depend on chart type. | `{ "slug": "responses_by_store_format", "title": "Responses by store format", "chart_type": "bar", "semantic_view": "survey_responses", "definition": { "dimensions": ["store_format"], "metrics": ["response_count"] } }` |
 | Chart data override | None | `filters`, `time_range`, `time_granularity`, `timezone`, `order`, `limit` only; it cannot replace the chart’s governed dimensions or metrics. | `{ "time_range": ["2026-01-01", "2026-03-31"], "time_granularity": "month", "timezone": "Asia/Hong_Kong" }` |
 | Filter options | `semantic_view`, `member` | `filters` (up to 18), optional governed `metrics` (up to 4), string-only `search`, optional `timezone`, `limit` (1–1,000), and offset `cursor` (0–1,000,000). The endpoint automatically excludes null values. | `{ "semantic_view": "survey_responses", "member": "store_format", "metrics": ["topic_sentiment_score_average"], "search": "Mall", "timezone": "Asia/Hong_Kong", "cursor": 0 }` |
-| Export | `export_format`; exactly one of `query` or `drilldown` | `export_format` is `csv` or `xlsx`; its selected object follows the relevant query model above. | `{ "export_format": "csv", "drilldown": { "fields": ["survey_id", "comment"] } }` |
+| Record query | `resource` | `filters` (up to 20 typed allowlisted filters), `order` (up to 3 allowlisted fields), `page`, `size`, and optional IANA `timezone`. Survey pages are capped at 100; master-data pages at 1,000. | `{ "resource": "surveys", "filters": [{"member": "topic_sentiment", "operator": "equals", "value": "NEGATIVE"}], "size": 100 }` |
+| Export | `export_format`; exactly one of `query`, `drilldown`, or `record_query` | `export_format` is `csv` or `xlsx`; its selected object follows the relevant query model above. Record exports are live-DB queries and retain configured survey columns. | `{ "export_format": "csv", "record_query": { "resource": "surveys", "size": 100 } }` |
 | Catalog publication | None | `description` is optional release/audit text. | `{ "description": "Quarterly metric release" }` |
 
 ## Viewer endpoints
@@ -234,6 +235,44 @@ Runs one governed aggregate query against a single semantic view. The request bo
 
 The server validates visibility, member types, limits, filter operators, and metric dependencies before sending a short-lived role/profile token to private Cube. It returns the common aggregate response. `422` means the query cannot be expressed by the active catalog; `503` means Cube cannot currently serve it.
 
+### `POST /analytics/records/query`
+
+Runs a governed record query directly against the live application database. The
+supported resources are `surveys`, `stores`, `departments`, `channels`,
+`delivery_services`, and `topics`. Filters and ordering accept only typed,
+resource-specific allowlisted fields. Use `member` for a field name (`field` is
+accepted as an input alias), and use `value` for scalar operators or `values`
+for `in`, `not_in`, and `between`.
+
+Survey results exclude soft-deleted rows and preserve the existing nested store,
+channel, delivery-service, department, topic, and keyword objects. Survey
+responses include both the legacy `sentiment` and canonical `topic_sentiment`
+fields. Topic, department, and keyword filters on a survey use `EXISTS`
+predicates, so assignment matches do not duplicate survey rows.
+
+```json
+{
+  "resource": "surveys",
+  "filters": [
+    {"member": "topic", "operator": "equals", "value": "Delivery"},
+    {"member": "reported_at", "operator": "between", "values": ["2026-01-01", "2026-02-01"]}
+  ],
+  "order": [
+    {"member": "reported_at", "direction": "desc"},
+    {"member": "id", "direction": "desc"}
+  ],
+  "page": 1,
+  "size": 100,
+  "timezone": "Asia/Hong_Kong"
+}
+```
+
+The response is `{ "resource", "items", "page", "size", "total",
+"has_more", "timezone" }`. Surveys default to `reported_at DESC, id DESC`;
+master-data resources default to their primary key ascending. Master-data queries
+return unused values as well as values referenced by surveys, which supports
+zero-filling dashboard selectors.
+
 ### `GET /analytics/charts/published`
 
 Lists published charts visible to the caller in the active catalog. Each chart includes its ID, slug, title, type, semantic view, governed definition, visibility, lifecycle status, validation state, and model-version metadata. Draft, archived, invalid, or admin-only charts are omitted for viewers.
@@ -271,7 +310,7 @@ Returns cursor-paginated response-level rows from `survey_responses` only. It is
 
 ### `POST /analytics/exports`
 
-Creates an asynchronous CSV or XLSX export. The body uses **exactly one** of an aggregate query or a drilldown query:
+Creates an asynchronous CSV or XLSX export. The body uses **exactly one** of an aggregate query, a drilldown query, or a live record query:
 
 ```json
 {
@@ -292,6 +331,18 @@ or:
   "drilldown": {
     "fields": ["survey_id", "comment"],
     "filters": []
+  }
+}
+```
+
+or:
+
+```json
+{
+  "export_format": "csv",
+  "record_query": {
+    "resource": "surveys",
+    "filters": [{"member": "topic_sentiment", "operator": "equals", "value": "NEGATIVE"}]
   }
 }
 ```

@@ -20,23 +20,14 @@ from utils.conditionFilter import (
     FilterRequest,
     get_filter_params,
 )
-from utils.llm.extract_total import (
-    extract_total,
-    extract_total_retry,
-)
-from utils.llm.normalize_keywords import normalize_keywords
-from utils.security import get_current_user
+from utils.security import get_current_user, require_admin
 from fastapi_pagination import Page, paginate
 from fastapi.responses import StreamingResponse
 from utils.utc import as_utc, resolve_timezone, utc_isoformat, utc_now
-import logging
 from openpyxl import Workbook
 from io import BytesIO
 import asyncio
 from config import is_survey_export_column_enabled
-
-logger = logging.getLogger(__name__)
-
 
 router = APIRouter(
     prefix="/surveys",
@@ -221,6 +212,7 @@ class CreateSurveyRequest(BaseModel):
 async def create_survey(
     survey_request: CreateSurveyRequest,
     db: Session = Depends(get_db),
+    _: object = Depends(require_admin),
 ):
 
     # Check if store exists
@@ -315,7 +307,6 @@ async def create_survey(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @router.get("/download")
 async def download_surveys(
@@ -535,7 +526,10 @@ class UpdateSurveyRequest(BaseModel):
 
 @router.put("/{survey_id}")
 async def update_survey(
-    survey_id: int, survey_request: UpdateSurveyRequest, db: Session = Depends(get_db)
+    survey_id: int,
+    survey_request: UpdateSurveyRequest,
+    db: Session = Depends(get_db),
+    _: object = Depends(require_admin),
 ) -> SurveyResponse:
     try:
         filter_dict = {"ids": [survey_id]}
@@ -632,7 +626,9 @@ async def update_survey(
 
 @router.delete("/{survey_id}")
 async def delete_survey(
-    survey_id: int, db: Session = Depends(get_db)
+    survey_id: int,
+    db: Session = Depends(get_db),
+    _: object = Depends(require_admin),
 ) -> SurveyResponse:
     try:
         filter_dict = {"ids": [survey_id]}
@@ -655,43 +651,3 @@ async def delete_survey(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
-
-
-class ExtractRequest(BaseModel):
-    comment: str
-
-
-class ExtractedTopicResponse(BaseModel):
-    text: str
-    sentiment: str
-
-
-class ExtractedDepartmentResponse(BaseModel):
-    text: str
-    sentiment: str
-
-
-class ExtractedKeywordResponse(BaseModel):
-    text: str
-    sentiment: str
-
-
-class TotalResponse(BaseModel):
-    topics: list[ExtractedTopicResponse]
-    departments: list[ExtractedDepartmentResponse]
-    keywords: list[ExtractedKeywordResponse]
-    overall_sentiment: str
-    cannot_classified: bool
-
-
-@router.post("/extract-total")
-async def extract_total_route(
-    request: ExtractRequest,
-) -> tuple[TotalResponse, dict]:
-    total, usage = await extract_total(request.comment)
-    if total.cannot_classified:
-        logger.info("Classifier requested a retry", extra={"event": "classifier.retry"})
-        total, usage = await extract_total_retry(request.comment)
-    # Normalize keywords
-    normalized_total, usage = await normalize_keywords(request.comment, total.model_dump())
-    return normalized_total, usage

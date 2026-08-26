@@ -11,9 +11,6 @@ from config import (
     RETENTION_CHECK_INTERVAL_SECONDS,
     SERVER_LOG_FILE,
 )
-from models.Action import Action
-from models.EmailRecord import EmailRecord
-from models.GeneratedEmail import GeneratedEmail
 from models.LoginRecord import LoginRecord
 from models.AnalyticsAuditLog import AnalyticsAuditLog
 from models.AnalyticsExportJob import AnalyticsExportJob
@@ -43,15 +40,6 @@ def purge_operational_records(cutoff: datetime) -> dict[str, int]:
         deleted = {
             "login_records": db.query(LoginRecord)
             .filter(LoginRecord.login_time < cutoff)
-            .delete(synchronize_session=False),
-            "actions": db.query(Action)
-            .filter(Action.created_at < cutoff)
-            .delete(synchronize_session=False),
-            "generated_emails": db.query(GeneratedEmail)
-            .filter(GeneratedEmail.created_at < cutoff)
-            .delete(synchronize_session=False),
-            "email_records": db.query(EmailRecord)
-            .filter(EmailRecord.created_at < cutoff)
             .delete(synchronize_session=False),
             "upload_task_errors": db.query(UploadTaskError)
             .filter(UploadTaskError.upload_task_id.in_(expired_upload_task_ids))

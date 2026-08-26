@@ -164,6 +164,53 @@ def _collect_drilldown_rows(
         db.close()
 
 
+def _collect_record_rows(
+    payload: dict[str, Any], max_rows: int
+) -> list[dict[str, Any]]:
+    """Collect a live record query in bounded pages for an export worker."""
+    from config import is_survey_export_column_enabled
+    from routers.analytics import RecordQueryInput
+    from utils.analytics_records import build_record_query, serialize_record
+    from utils.database import SessionLocal
+
+    spec = RecordQueryInput.model_validate(payload)
+    db = SessionLocal()
+    try:
+        query = build_record_query(
+            db,
+            spec.resource,
+            tuple(spec.filters),
+            tuple(spec.order),
+            spec.timezone,
+        )
+        total = query.order_by(None).count()
+        if total > max_rows:
+            raise ValueError("Analytics export exceeds the configured row limit")
+        records = query.limit(max_rows).all()
+        rows = [
+            serialize_record(spec.resource, record, spec.timezone)
+            if spec.resource != "surveys"
+            else record.to_csv(spec.timezone)
+            for record in records
+        ]
+        if spec.resource == "surveys":
+            if not rows:
+                return rows
+            configured = [
+                key
+                for key in rows[0]
+                if is_survey_export_column_enabled(key)
+            ]
+            if not configured:
+                raise ValueError(
+                    "No survey export columns are configured for analytics record exports"
+                )
+            return [{key: row.get(key) for key in configured} for row in rows]
+        return rows
+    finally:
+        db.close()
+
+
 async def _execute_export_job(job_id: str) -> None:
     """Execute a prevalidated aggregate query for a persisted export job."""
     from config import (
@@ -202,12 +249,14 @@ async def _execute_export_job(job_id: str) -> None:
             job.model_version_id,
             active_version.id if active_version is not None else None,
         )
-        if mode not in {"query", "drilldown"}:
+        if mode not in {"query", "drilldown", "record_query"}:
             raise ValueError("Export job contains an invalid governed query")
         if mode == "query" and not isinstance(cube_query, dict):
             raise ValueError("Export job contains an invalid governed query")
         if mode == "drilldown" and not isinstance(request.get("drilldown"), dict):
             raise ValueError("Export job contains an invalid governed drilldown")
+        if mode == "record_query" and not isinstance(request.get("record_query"), dict):
+            raise ValueError("Export job contains an invalid governed record query")
 
         job.status = "processing"
         job.started_at = utc_now()
@@ -241,11 +290,17 @@ async def _execute_export_job(job_id: str) -> None:
                 request_id=job.id,
             )
             rows = format_query_result(result, semantic_query, catalog)["rows"]
-        else:
+        elif mode == "drilldown":
             rows = await asyncio.to_thread(
                 _collect_drilldown_rows,
                 request["drilldown"],
                 role,
+                ANALYTICS_EXPORT_MAX_ROWS,
+            )
+        else:
+            rows = await asyncio.to_thread(
+                _collect_record_rows,
+                request["record_query"],
                 ANALYTICS_EXPORT_MAX_ROWS,
             )
         output_path = build_export_path(

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from utils.database import get_db
 from models.DeliveryService import DeliveryService
-from utils.security import get_current_user
+from utils.security import get_current_user, require_admin
 from pydantic import BaseModel
 
 router = APIRouter(
@@ -31,6 +31,7 @@ class CreateDeliveryServiceRequest(BaseModel):
 async def create_delivery_service(
     create_delivery_service_request: CreateDeliveryServiceRequest,
     db: Session = Depends(get_db),
+    _: object = Depends(require_admin),
 ):
     # Check if delivery service already exists
     delivery_service = (
@@ -56,6 +57,7 @@ async def update_delivery_service(
     delivery_service_id: int,
     update_delivery_service_request: UpdateDeliveryServiceRequest,
     db: Session = Depends(get_db),
+    _: object = Depends(require_admin),
 ):
     delivery_service = (
         db.query(DeliveryService)
@@ -72,7 +74,9 @@ async def update_delivery_service(
 
 @router.delete("/{delivery_service_id}")
 async def delete_delivery_service(
-    delivery_service_id: int, db: Session = Depends(get_db)
+    delivery_service_id: int,
+    db: Session = Depends(get_db),
+    _: object = Depends(require_admin),
 ):
     delivery_service = (
         db.query(DeliveryService)

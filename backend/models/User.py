@@ -2,7 +2,6 @@ from utils.database import Base
 from sqlalchemy import CHAR, Column, DateTime, String, Boolean, UniqueConstraint
 import uuid
 from werkzeug.security import generate_password_hash, check_password_hash
-from sqlalchemy.orm import relationship
 from sqlalchemy import event
 from utils.utc import utc_isoformat, utc_now
 
@@ -33,11 +32,6 @@ class User(Base):
 
     def check_oauth_identity(self, id: str, provider: str):
         return self.oauth_id == id and self.oauth_provider == provider
-
-    # Relationships
-    actions = relationship("Action", back_populates="user")
-    generated_emails = relationship("GeneratedEmail", back_populates="user")
-    email_records = relationship("EmailRecord", back_populates="user")
 
     def to_dict(self):
         return {

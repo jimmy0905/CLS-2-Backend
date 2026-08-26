@@ -7,9 +7,6 @@ from models.Topic import Topic
 from models.Keyword import Keyword
 from models.Store import Store
 from models.Department import Department
-from models.Action import Action
-from models.GeneratedEmail import GeneratedEmail
-from models.EmailRecord import EmailRecord
 from models.UploadTask import UploadTask
 from models.UploadTaskError import UploadTaskError
 from models.Channel import Channel
@@ -33,9 +30,6 @@ __all__ = [
     "Keyword",
     "Store",
     "Department",
-    "Action",
-    "GeneratedEmail",
-    "EmailRecord",
     "UploadTask",
     "UploadTaskError",
     "Channel",

@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from utils.database import get_db
 from models.Topic import Topic
-from utils.security import get_current_user
+from utils.security import get_current_user, require_admin
 from pydantic import BaseModel
 
 router = APIRouter(
@@ -30,7 +30,9 @@ class CreateTopicRequest(BaseModel):
 
 @router.post("/")
 async def create_topic(
-    create_topic_request: CreateTopicRequest, db: Session = Depends(get_db)
+    create_topic_request: CreateTopicRequest,
+    db: Session = Depends(get_db),
+    _: object = Depends(require_admin),
 ):
     # Check if topic already exists
     topic = db.query(Topic).filter(Topic.topic == create_topic_request.topic).first()
@@ -52,6 +54,7 @@ async def update_topic(
     topic_id: int,
     update_topic_request: UpdateTopicRequest,
     db: Session = Depends(get_db),
+    _: object = Depends(require_admin),
 ):
     topic = db.query(Topic).filter(Topic.id == topic_id).first()
     if not topic:
@@ -63,7 +66,11 @@ async def update_topic(
 
 
 @router.delete("/{topic_id}")
-async def delete_topic(topic_id: int, db: Session = Depends(get_db)):
+async def delete_topic(
+    topic_id: int,
+    db: Session = Depends(get_db),
+    _: object = Depends(require_admin),
+):
     topic = db.query(Topic).filter(Topic.id == topic_id).first()
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")

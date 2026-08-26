@@ -338,20 +338,8 @@ Use the keyword-assignment grain. `limit: 10` replaces `k=10`:
 
 ### `GET /dashboard/data-coverage`
 
-Publish two response-level metrics once:
-
-```json
-{
-  "slug": "first_reported_at",
-  "label": "First reported at",
-  "semantic_view": "survey_responses",
-  "source_member": "reported_at",
-  "operation": "min",
-  "visibility": "viewer"
-}
-```
-
-Create `last_reported_at` identically with `operation: "max"`, then query:
+The built-in `first_reported_at` and `last_reported_at` metrics require no
+publication. Query them directly:
 
 ```json
 {
@@ -363,20 +351,7 @@ Create `last_reported_at` identically with `operation: "max"`, then query:
 
 ### `GET /dashboard/last-updated-date`
 
-Publish this response-level metric:
-
-```json
-{
-  "slug": "last_updated_at",
-  "label": "Last survey update",
-  "semantic_view": "survey_responses",
-  "source_member": "updated_at",
-  "operation": "max",
-  "visibility": "viewer"
-}
-```
-
-Then query it:
+The built-in `last_updated_at` metric requires no publication. Query it directly:
 
 ```json
 {
@@ -405,7 +380,8 @@ the old endpoints can be removed completely:
 2. **Zero-count master values.** Old store/topic/department routes return
    master-data entries even when they have no matching survey, filled with
    zeros. Semantic aggregate queries intentionally return observed groups only.
-   Retain a small master-data lookup/zero-fill step if the UI must display
+   Use `POST /analytics/records/query` for the relevant master resource, then
+   join/zero-fill its values against aggregate results when the UI must display
    inactive stores or unused topic/department definitions.
 3. **Cross-assignment filters.** The old generic filter object can apply a
    topic filter while rendering a department/keyword card. The semantic layer

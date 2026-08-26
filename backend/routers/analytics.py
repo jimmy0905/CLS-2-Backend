@@ -19,7 +19,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, Header, HTTPException, Response, status
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import func, or_, text as sql_text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.exc import SQLAlchemyError
@@ -62,6 +62,7 @@ from utils.analytics_results import (
     augment_cube_query_with_supports,
     format_query_result,
 )
+from utils.analytics_records import build_record_query, query_records
 from utils.database import get_db
 from utils.security import get_current_user, require_admin
 from utils.utc import resolve_timezone, utc_now
@@ -104,7 +105,11 @@ _ENDPOINT_DESCRIPTIONS = {
     "narrow the list for a frontend filter control; use cursor to page beyond 1,000 values.",
     "viewer_query": "Run one governed aggregate query against exactly one semantic view. "
     "The API validates published member slugs, typed filters, limits, time settings, "
-    "and role visibility before forwarding it to private Cube.",
+        "and role visibility before forwarding it to private Cube.",
+    "viewer_records_query": "Return role-authorized, paginated records from the live database. "
+    "Survey records exclude soft-deleted rows, preserve the legacy and canonical "
+    "sentiment fields, and use EXISTS predicates for assignment filters so each "
+    "survey remains one row.",
     "viewer_charts": "List published charts visible to the current role in the active "
     "catalog. Draft, archived, invalid, and more-restricted charts are omitted.",
     "viewer_chart_data": "Run a published chart by ID. Its defined members stay fixed; "
@@ -341,6 +346,9 @@ _CORE_METRICS: tuple[CatalogMetric, ...] = (
         Aggregation.MEDIAN,
         "topic_sentiment_score",
     ),
+    _core_metric("first_reported_at", Aggregation.MIN, "reported_at"),
+    _core_metric("last_reported_at", Aggregation.MAX, "reported_at"),
+    _core_metric("last_updated_at", Aggregation.MAX, "updated_at"),
     # These are standard dashboard measures, not BU-specific local definitions.
     # Keep them core so existing sentiment-breakdown cards work immediately on a
     # new profile without an administrator first publishing four duplicate
@@ -791,6 +799,101 @@ class CatalogPublicationInput(_StrictInput):
     description: str | None = Field(default=None, max_length=1_000)
 
 
+class RecordFilterInput(_StrictInput):
+    """A typed filter over one of the live analytics record resources."""
+
+    member: str = Field(validation_alias=AliasChoices("member", "field"))
+    operator: Literal[
+        "equals",
+        "not_equals",
+        "contains",
+        "not_contains",
+        "starts_with",
+        "ends_with",
+        "greater_than",
+        "greater_than_or_equal",
+        "less_than",
+        "less_than_or_equal",
+        "in",
+        "not_in",
+        "set",
+        "not_set",
+        "between",
+    ]
+    value: Any = None
+    values: tuple[Any, ...] | None = None
+
+    @field_validator("member")
+    @classmethod
+    def _member(cls, value: str) -> str:
+        return validate_identifier(value)
+
+
+class RecordOrderInput(_StrictInput):
+    member: str = Field(validation_alias=AliasChoices("member", "field"))
+    direction: Literal["asc", "desc"] = "asc"
+
+    @field_validator("member")
+    @classmethod
+    def _member(cls, value: str) -> str:
+        return validate_identifier(value)
+
+
+class RecordQueryInput(_StrictInput):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "resource": "surveys",
+                    "filters": [
+                        {
+                            "member": "topic_sentiment",
+                            "operator": "equals",
+                            "value": "NEGATIVE",
+                        }
+                    ],
+                    "order": [
+                        {"member": "reported_at", "direction": "desc"},
+                        {"member": "id", "direction": "desc"},
+                    ],
+                    "page": 1,
+                    "size": 100,
+                    "timezone": "Asia/Hong_Kong",
+                }
+            ]
+        },
+    )
+
+    resource: Literal[
+        "surveys",
+        "stores",
+        "departments",
+        "channels",
+        "delivery_services",
+        "topics",
+    ]
+    filters: tuple[RecordFilterInput, ...] = Field(default=(), max_length=20)
+    order: tuple[RecordOrderInput, ...] = Field(default=(), max_length=3)
+    page: int = Field(default=1, ge=1)
+    size: int = Field(default=100, ge=1, le=1_000)
+    timezone: str | None = None
+
+    @field_validator("timezone")
+    @classmethod
+    def _timezone(cls, value: str | None) -> str | None:
+        if value is not None:
+            resolve_timezone(value)
+        return value
+
+    @model_validator(mode="after")
+    def _unique_order_members(self) -> "RecordQueryInput":
+        members = [item.member for item in self.order]
+        if len(members) != len(set(members)):
+            raise ValueError("Record order fields must not be duplicated")
+        return self
+
+
 class ExportInput(_StrictInput):
     model_config = ConfigDict(
         extra="forbid",
@@ -808,6 +911,14 @@ class ExportInput(_StrictInput):
                     "export_format": "csv",
                     "drilldown": {"fields": ["survey_id", "comment"], "limit": 100},
                 },
+                {
+                    "export_format": "csv",
+                    "record_query": {
+                        "resource": "surveys",
+                        "filters": [],
+                        "size": 100,
+                    },
+                },
             ]
         },
     )
@@ -815,11 +926,18 @@ class ExportInput(_StrictInput):
     export_format: Literal["csv", "xlsx"]
     query: QuerySpec | None = None
     drilldown: DrilldownSpec | None = None
+    record_query: RecordQueryInput | None = None
 
     @model_validator(mode="after")
     def _one_request_kind(self) -> "ExportInput":
-        if (self.query is None) == (self.drilldown is None):
-            raise ValueError("Export requires exactly one query or drilldown")
+        request_kinds = sum(
+            value is not None
+            for value in (self.query, self.drilldown, self.record_query)
+        )
+        if request_kinds != 1:
+            raise ValueError(
+                "Export requires exactly one query, drilldown, or record_query"
+            )
         return self
 
 
@@ -2082,6 +2200,45 @@ async def query_analytics(
     return await _execute_query(payload, db, current_user)
 
 
+@viewer_router.post(
+    "/records/query",
+    summary="Query governed analytics records",
+    description=_ENDPOINT_DESCRIPTIONS["viewer_records_query"],
+)
+async def query_analytics_records(
+    payload: RecordQueryInput,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    max_size = 100 if payload.resource == "surveys" else 1_000
+    if payload.size > max_size:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Record pages for {payload.resource} are capped at {max_size} rows",
+        )
+    try:
+        return query_records(
+            db,
+            payload.resource,
+            tuple(payload.filters),
+            tuple(payload.order),
+            payload.page,
+            payload.size,
+            payload.timezone,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except SQLAlchemyError as error:
+        db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "analytics_records_unavailable",
+                "message": "Analytics records are temporarily unavailable",
+            },
+        ) from error
+
+
 @viewer_router.get(
     "/charts/published", summary="List published charts", description=_ENDPOINT_DESCRIPTIONS["viewer_charts"]
 )
@@ -3058,19 +3215,37 @@ async def create_analytics_export(
                 "cube_query": cube_query,
             }
         else:
-            assert payload.drilldown is not None
-            semantic_view = payload.drilldown.semantic_view
-            build_drilldown_statement(
-                payload.drilldown,
-                catalog,
-                role=role,
-                raw_fields=_raw_field_sources(db, role),
-            )
-            request_payload = {
-                "mode": "drilldown",
-                "role": role,
-                "drilldown": payload.drilldown.model_dump(mode="json"),
-            }
+            if payload.drilldown is not None:
+                semantic_view = payload.drilldown.semantic_view
+                build_drilldown_statement(
+                    payload.drilldown,
+                    catalog,
+                    role=role,
+                    raw_fields=_raw_field_sources(db, role),
+                )
+                request_payload = {
+                    "mode": "drilldown",
+                    "role": role,
+                    "drilldown": payload.drilldown.model_dump(mode="json"),
+                }
+            else:
+                assert payload.record_query is not None
+                semantic_view = payload.record_query.resource
+                # Validate all allowlists, operators, and typed values at
+                # admission time. The worker repeats this validation before
+                # reading the live database.
+                build_record_query(
+                    db,
+                    payload.record_query.resource,
+                    tuple(payload.record_query.filters),
+                    tuple(payload.record_query.order),
+                    payload.record_query.timezone,
+                )
+                request_payload = {
+                    "mode": "record_query",
+                    "role": role,
+                    "record_query": payload.record_query.model_dump(mode="json"),
+                }
     except (AnalyticsValidationError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 

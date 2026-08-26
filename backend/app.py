@@ -23,7 +23,6 @@ from config import (
     LOG_SERVICE_NAME,
 )
 from routers import (
-    actions,
     analytics,
     auth,
     channels,
@@ -36,7 +35,6 @@ from routers import (
     tasks,
     topics,
     translator,
-    userBehavoiorLogs,
     users,
 )
 from utils.database import (
@@ -260,11 +258,9 @@ app.include_router(auth.router)
 app.include_router(analytics.router)
 app.include_router(surveys.router)
 app.include_router(dashboard.router)
-app.include_router(actions.router)
 app.include_router(strategy.router)
 app.include_router(stores.router)
 app.include_router(departments.router)
-app.include_router(userBehavoiorLogs.router)
 app.include_router(tasks.router)
 app.include_router(users.router)
 app.include_router(channels.router)
