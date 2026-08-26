@@ -1,6 +1,6 @@
 """remove retired action and email history tables
 
-Revision ID: 0010_remove_legacy_action_email_history
+Revision ID: 0010_remove_legacy_history
 Revises: 0009_cube_semantic_catalog
 Create Date: 2026-08-26 00:00:00.000000
 
@@ -15,16 +15,20 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision: str = "0010_remove_legacy_action_email_history"
+revision: str = "0010_remove_legacy_history"
 down_revision: Union[str, Sequence[str], None] = "0009_cube_semantic_catalog"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.drop_table("email_records")
-    op.drop_table("generated_emails")
-    op.drop_table("actions")
+    # Some deployments removed these retired tables before the migration was
+    # introduced. Keep the upgrade repeatable across those schema states so a
+    # missing legacy table does not restart the service before Alembic can
+    # record revision 0010.
+    op.execute("DROP TABLE IF EXISTS email_records")
+    op.execute("DROP TABLE IF EXISTS generated_emails")
+    op.execute("DROP TABLE IF EXISTS actions")
 
 
 def downgrade() -> None:
