@@ -97,7 +97,7 @@ Swagger/ReDoc marks required JSON fields from the OpenAPI schema. The following 
 | Create metric | `slug`, `label`, `operation` | `semantic_view` defaults to `survey_responses`; use at most one of `field_id`/`source_member`, and at most one of `weight_field_id`/`weight_member`. A source is required when the operation needs one; CI operations require `confidence_level` (0.8–0.999). | `{ "slug": "negative_response_rate", "label": "Negative response rate", "source_member": "topic_sentiment", "operation": "filtered_rate", "definition": { "filter": { "operator": "equals", "value": "NEGATIVE" } } }` |
 | Create chart | `slug`, `title`, `chart_type`, `semantic_view`, `definition` | `description`, `visibility`; definition members depend on chart type. | `{ "slug": "responses_by_store_format", "title": "Responses by store format", "chart_type": "bar", "semantic_view": "survey_responses", "definition": { "dimensions": ["store_format"], "metrics": ["response_count"] } }` |
 | Chart data override | None | `filters`, `time_range`, `time_granularity`, `order`, `limit` only; it cannot replace the chart’s governed dimensions or metrics. | `{ "time_range": ["2026-01-01", "2026-03-31"], "time_granularity": "month" }` |
-| Filter options | `semantic_view`, `member` | `filters` (up to 18), string-only `search`, `limit` (1–1,000), and offset `cursor` (0–1,000,000). The endpoint automatically excludes null values. | `{ "semantic_view": "survey_responses", "member": "store_format", "search": "Mall", "cursor": 0 }` |
+| Filter options | `semantic_view`, `member` | `filters` (up to 18), optional governed `metrics` (up to 4), string-only `search`, `limit` (1–1,000), and offset `cursor` (0–1,000,000). The endpoint automatically excludes null values. | `{ "semantic_view": "survey_responses", "member": "store_format", "metrics": ["topic_sentiment_score_average"], "search": "Mall", "cursor": 0 }` |
 | Export | `export_format`; exactly one of `query` or `drilldown` | `export_format` is `csv` or `xlsx`; its selected object follows the relevant query model above. | `{ "export_format": "csv", "drilldown": { "fields": ["survey_id", "comment"] } }` |
 | Catalog publication | None | `description` is optional release/audit text. | `{ "description": "Quarterly metric release" }` |
 
@@ -167,6 +167,7 @@ Returns values that can populate one frontend filter control. The target `member
 {
   "semantic_view": "survey_responses",
   "member": "store_format",
+  "metrics": ["topic_sentiment_score_average"],
   "filters": [
     {"member": "topic_sentiment", "operator": "equals", "value": "NEGATIVE"}
   ],
@@ -178,6 +179,8 @@ Returns values that can populate one frontend filter control. The target `member
 
 `semantic_view` and `member` are required. `filters` is optional and can express dependent choices (for example, list stores only after choosing a store format). `search` is optional and accepted only for string fields. Use `GET /analytics/catalog/availability` first if the UI should hide dimensions containing no data at all.
 
+`metrics` is optional and accepts at most four unique, published, role-visible metrics owned by the requested semantic view. The view's fixed count metric must not be included because it is returned separately as `count`; unknown, duplicate, cross-view, or inaccessible metrics are rejected with `422`. Every response includes `metric_columns` and every option includes a `metrics` object, even when no optional metrics were requested.
+
 For more than 1,000 values, use `next_cursor` from the response as the next request’s `cursor`. Values are ordered by matching-row count descending, then the value ascending for stable paging. `has_more` is true when the page was full; one final request can return an empty page when the total is an exact multiple of `limit`.
 
 ```json
@@ -188,12 +191,20 @@ For more than 1,000 values, use `next_cursor` from the response as the next requ
   "member": "store_format",
   "label": "Store Format",
   "data_type": "string",
+  "metric_columns": [
+    {
+      "name": "topic_sentiment_score_average",
+      "label": "Topic Sentiment Score Average",
+      "type": "number",
+      "kind": "metric"
+    }
+  ],
   "cursor": 0,
   "next_cursor": 100,
   "has_more": true,
   "values": [
-    {"value": "Mall", "count": 245},
-    {"value": "Commercial", "count": 81}
+    {"value": "Mall", "count": 245, "metrics": {"topic_sentiment_score_average": 0.42}},
+    {"value": "Commercial", "count": 81, "metrics": {"topic_sentiment_score_average": 0.18}}
   ],
   "warnings": [],
   "freshness_time": "2026-08-26T08:00:00Z"

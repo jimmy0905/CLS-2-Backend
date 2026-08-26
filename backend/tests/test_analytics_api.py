@@ -288,7 +288,8 @@ def test_filter_options_return_non_null_governed_values(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert response.json()["values"] == [{"value": "Mall", "count": 12}]
+    assert response.json()["values"] == [{"value": "Mall", "count": 12, "metrics": {}}]
+    assert response.json()["metric_columns"] == []
     assert response.json()["cursor"] == 1000
     assert response.json()["next_cursor"] == 1001
     assert response.json()["has_more"] is True

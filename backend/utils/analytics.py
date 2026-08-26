@@ -789,6 +789,7 @@ def validate_chart_definition(
     catalog: SemanticCatalog | None = None,
     *,
     semantic_view: str | None = None,
+    time_dimension: str | None = None,
     role: str = "viewer",
 ) -> None:
     """Validate chart arity before a definition can be published."""
@@ -797,7 +798,17 @@ def validate_chart_definition(
         raise AnalyticsValidationError("Unsupported chart type")
     for member in (*dimensions, *metrics):
         validate_identifier(member)
-    dimension_count = len(dimensions)
+    if time_dimension is not None:
+        validate_identifier(time_dimension)
+        if time_dimension in dimensions:
+            raise AnalyticsValidationError(
+                "Granular time dimensions must not be duplicated as ordinary dimensions"
+            )
+        if chart_type not in {"line", "area"}:
+            raise AnalyticsValidationError(
+                "Time dimensions are supported only by line and area charts"
+            )
+    dimension_count = len(dimensions) + (1 if time_dimension is not None else 0)
     metric_count = len(metrics)
 
     valid = False
@@ -809,7 +820,13 @@ def validate_chart_definition(
             and metric_count <= MAX_METRICS
             and dimension_count + metric_count > 0
         )
-    elif chart_type in {"bar", "column", "line", "area"}:
+    elif chart_type in {"bar", "column"}:
+        valid = (
+            1 <= dimension_count <= MAX_DIMENSIONS
+            and time_dimension is None
+            and 1 <= metric_count <= MAX_METRICS
+        )
+    elif chart_type in {"line", "area"}:
         valid = 1 <= dimension_count <= MAX_DIMENSIONS and 1 <= metric_count <= MAX_METRICS
     elif chart_type == "stacked_bar":
         valid = dimension_count == 2 and 1 <= metric_count <= MAX_METRICS
@@ -859,6 +876,11 @@ def validate_chart_definition(
                     raise AnalyticsValidationError(
                         f"Chart type {chart_type} requires numeric metrics"
                     )
+        if time_dimension is not None:
+            time_field = catalog.field(time_dimension, semantic_view)
+            _ensure_query_member(time_field, semantic_view, role)
+            if time_field.data_type not in {FieldType.DATE, FieldType.TIME}:
+                raise AnalyticsValidationError("Time dimension must be a date or time field")
 
 
 def escape_spreadsheet_formula(value: Any) -> Any:

@@ -707,6 +707,7 @@ class FilterOptionsInput(_StrictInput):
                 {
                     "semantic_view": "survey_responses",
                     "member": "store_format",
+                    "metrics": ["topic_sentiment_score_average"],
                     "filters": [
                         {
                             "member": "topic_sentiment",
@@ -729,11 +730,21 @@ class FilterOptionsInput(_StrictInput):
         "survey_keywords",
     ]
     member: str
+    metrics: tuple[str, ...] = Field(default=(), max_length=4)
     # Reserve room for the endpoint's non-null filter and optional search.
     filters: tuple[FilterSpec, ...] = Field(default=(), max_length=18)
     search: str | None = Field(default=None, max_length=100)
     limit: int = Field(default=100, ge=1, le=1_000)
     cursor: int | None = Field(default=None, ge=0, le=1_000_000)
+
+    @field_validator("metrics")
+    @classmethod
+    def _metrics(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        for value in values:
+            validate_identifier(value)
+        if len(values) != len(set(values)):
+            raise ValueError("Filter option metrics must not be duplicated")
+        return values
 
     @field_validator("member")
     @classmethod
@@ -1313,6 +1324,7 @@ def _chart_query(
         metrics,
         catalog,
         semantic_view=chart["semantic_view"],
+        time_dimension=values.get("time_dimension"),
         role=role,
     )
 
@@ -1950,6 +1962,14 @@ async def get_filter_options(
         catalog = _catalog(db, role)
         field = catalog.field(payload.member, payload.semantic_view)
         count_metric = _FILTER_OPTION_COUNT_METRICS[payload.semantic_view]
+        optional_metrics: list[str] = []
+        for metric_slug in payload.metrics:
+            if metric_slug == count_metric:
+                raise AnalyticsValidationError(
+                    "The fixed filter option count metric must not be requested"
+                )
+            catalog.metric(metric_slug, payload.semantic_view)
+            optional_metrics.append(metric_slug)
         filters: tuple[FilterSpec, ...] = (
             *payload.filters,
             FilterSpec(member=payload.member, operator="set"),
@@ -1968,7 +1988,7 @@ async def get_filter_options(
         query = QuerySpec(
             semantic_view=payload.semantic_view,
             dimensions=(payload.member,),
-            metrics=(count_metric,),
+            metrics=(count_metric, *optional_metrics),
             filters=filters,
             order=(
                 OrderSpec(member=count_metric, direction="desc"),
@@ -1988,6 +2008,10 @@ async def get_filter_options(
         {
             "value": row.get(payload.member),
             "count": row.get(count_metric, 0),
+            "metrics": {
+                metric_slug: row.get(metric_slug)
+                for metric_slug in payload.metrics
+            },
         }
         for row in result["rows"]
         if row.get(payload.member) is not None
@@ -2001,6 +2025,18 @@ async def get_filter_options(
         "member": payload.member,
         "label": field.label,
         "data_type": field.data_type.value,
+        "metric_columns": [
+            column
+            for column in _column_metadata(
+                QuerySpec(
+                    semantic_view=payload.semantic_view,
+                    dimensions=(payload.member,),
+                    metrics=tuple(payload.metrics),
+                ),
+                catalog,
+            )
+            if column["kind"] == "metric"
+        ],
         "values": values,
         "cursor": cursor,
         "next_cursor": cursor + len(values) if has_more else None,
