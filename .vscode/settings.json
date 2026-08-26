@@ -1,0 +1,9 @@
+{
+    "python.testing.pytestArgs": [
+        "backend",
+        "--log-cli-level=INFO"
+    ],
+    "python.testing.envFile": "${workspaceFolder}/.env",
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true
+}

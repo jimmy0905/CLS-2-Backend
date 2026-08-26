@@ -6,7 +6,7 @@ Run the live suite explicitly so the normal unit-test run stays hermetic::
     ANALYTICS_E2E_BASE_URL=http://localhost:8000 \
     ANALYTICS_E2E_USERNAME=viewer \
     ANALYTICS_E2E_PASSWORD='...' \
-    .venv/bin/python -m pytest -m analytics_e2e -v \
+    .venv/bin/python -m pytest -m analytics_e2e -v --log-cli-level=INFO \
         backend/tests/test_analytics_dashboard_e2e.py
 
 An already-issued application JWT can be supplied with
@@ -35,15 +35,29 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 import pytest
 
 
 pytestmark = pytest.mark.analytics_e2e
+
+LOGGER = logging.getLogger("analytics_e2e")
+_LOG_RESULT_MAX_BYTES = int(os.getenv("ANALYTICS_E2E_LOG_MAX_BYTES", "50000"))
+_SECRET_KEYS = {
+    "access_token",
+    "api_secret",
+    "authorization",
+    "password",
+    "refresh_token",
+    "secret",
+    "token",
+}
 
 DEFAULT_CHART_SLUGS = (
     "dashboard_sentiment_distribution",
@@ -91,13 +105,23 @@ class E2EConfig:
 
     @classmethod
     def from_environment(cls) -> "E2EConfig":
+        explicit_username = os.getenv("ANALYTICS_E2E_USERNAME") or None
+        explicit_password = os.getenv("ANALYTICS_E2E_PASSWORD") or None
+        bootstrap_username = os.getenv("BOOTSTRAP_DEFAULT_ADMIN_USERNAME") or None
+        bootstrap_password = os.getenv("BOOTSTRAP_DEFAULT_ADMIN_PASSWORD") or None
+        using_bootstrap_credentials = not (explicit_username and explicit_password) and bool(
+            bootstrap_username and bootstrap_password
+        )
         return cls(
             base_url=os.getenv("ANALYTICS_E2E_BASE_URL", "http://localhost:8000").rstrip("/"),
             api_prefix=os.getenv("ANALYTICS_E2E_API_PREFIX", "").strip("/"),
             token=os.getenv("ANALYTICS_E2E_TOKEN") or None,
-            username=os.getenv("ANALYTICS_E2E_USERNAME") or None,
-            password=os.getenv("ANALYTICS_E2E_PASSWORD") or None,
-            expected_role=os.getenv("ANALYTICS_E2E_EXPECTED_ROLE", "viewer"),
+            username=explicit_username or bootstrap_username,
+            password=explicit_password or bootstrap_password,
+            expected_role=os.getenv(
+                "ANALYTICS_E2E_EXPECTED_ROLE",
+                "admin" if using_bootstrap_credentials else "viewer",
+            ),
             timezone=os.getenv("ANALYTICS_E2E_TIMEZONE", "Asia/Hong_Kong"),
             from_date=os.getenv("ANALYTICS_E2E_FROM_DATE", "2020-01-01T00:00:00Z"),
             to_date=os.getenv("ANALYTICS_E2E_TO_DATE", "2030-01-01T00:00:00Z"),
@@ -118,8 +142,69 @@ def _require_auth(config: E2EConfig) -> None:
     if not config.token and not (config.username and config.password):
         pytest.skip(
             "Set ANALYTICS_E2E_TOKEN or ANALYTICS_E2E_USERNAME and "
-            "ANALYTICS_E2E_PASSWORD to run authenticated dashboard tests"
+            "ANALYTICS_E2E_PASSWORD (or the BOOTSTRAP_DEFAULT_ADMIN_USERNAME and "
+            "BOOTSTRAP_DEFAULT_ADMIN_PASSWORD pair) to run authenticated dashboard tests"
         )
+
+
+def _redact(value: Any, key: str | None = None) -> Any:
+    if key and key.lower() in _SECRET_KEYS:
+        return "<redacted>"
+    if isinstance(value, dict):
+        return {name: _redact(item, name) for name, item in value.items()}
+    if isinstance(value, list):
+        return [_redact(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact(item) for item in value)
+    return value
+
+
+def _log_value(value: Any) -> str:
+    try:
+        rendered = json.dumps(_redact(value), sort_keys=True, default=str)
+    except (TypeError, ValueError):
+        rendered = repr(_redact(value))
+    if len(rendered) <= _LOG_RESULT_MAX_BYTES:
+        return rendered
+    return f"{rendered[:_LOG_RESULT_MAX_BYTES]}...<truncated>"
+
+
+def _safe_url(url: httpx.URL) -> str:
+    parsed = urlsplit(str(url))
+    query = [
+        (key, "<redacted>" if key.lower() in _SECRET_KEYS else value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+    ]
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment))
+
+
+def _request_payload(response: httpx.Response) -> Any:
+    content = response.request.content
+    if not content:
+        return None
+    try:
+        return json.loads(content)
+    except (TypeError, UnicodeDecodeError, json.JSONDecodeError):
+        return "<non-JSON request body>"
+
+
+def _response_payload(response: httpx.Response) -> Any:
+    try:
+        return response.json()
+    except ValueError:
+        return response.text[:_LOG_RESULT_MAX_BYTES]
+
+
+def _log_http_result(response: httpx.Response, *, label: str | None = None) -> None:
+    LOGGER.info(
+        "analytics_e2e query_result label=%s method=%s url=%s status=%s request=%s result=%s",
+        label or "http",
+        response.request.method,
+        _safe_url(response.request.url),
+        response.status_code,
+        _log_value(_request_payload(response)),
+        _log_value(_response_payload(response)),
+    )
 
 
 def _json(response: httpx.Response) -> Any:
@@ -132,7 +217,13 @@ def _json(response: httpx.Response) -> Any:
         ) from error
 
 
-def _assert_status(response: httpx.Response, expected: int = 200) -> Any:
+def _assert_status(
+    response: httpx.Response,
+    expected: int = 200,
+    *,
+    label: str | None = None,
+) -> Any:
+    _log_http_result(response, label=label)
     body = response.text[:1_000]
     assert response.status_code == expected, (
         f"{response.request.method} {response.request.url} returned "
@@ -181,7 +272,7 @@ def e2e_client(e2e_config: E2EConfig) -> httpx.Client:
             e2e_config.url("auth/token"),
             data={"username": e2e_config.username, "password": e2e_config.password},
         )
-        payload = _assert_status(response)
+        payload = _assert_status(response, label="auth/token")
         token = payload.get("access_token") if isinstance(payload, dict) else None
         assert isinstance(token, str) and token, "The token endpoint returned no access_token"
     client.headers.update({"Authorization": f"Bearer {token}"})
@@ -191,7 +282,10 @@ def e2e_client(e2e_config: E2EConfig) -> httpx.Client:
 
 @pytest.fixture(scope="session")
 def catalog(e2e_client: httpx.Client, e2e_config: E2EConfig) -> dict[str, Any]:
-    payload = _assert_status(e2e_client.get(e2e_config.url("analytics/catalog")))
+    payload = _assert_status(
+        e2e_client.get(e2e_config.url("analytics/catalog")),
+        label="analytics/catalog",
+    )
     assert isinstance(payload, dict)
     assert payload.get("model_version", 0) >= 1
     assert set(payload.get("semantic_views", [])) >= set(FILTER_MEMBERS)
@@ -204,7 +298,10 @@ def catalog(e2e_client: httpx.Client, e2e_config: E2EConfig) -> dict[str, Any]:
 def published_charts(
     e2e_client: httpx.Client, e2e_config: E2EConfig, catalog: dict[str, Any]
 ) -> dict[str, dict[str, Any]]:
-    payload = _assert_status(e2e_client.get(e2e_config.url("analytics/charts/published")))
+    payload = _assert_status(
+        e2e_client.get(e2e_config.url("analytics/charts/published")),
+        label="analytics/charts/published",
+    )
     assert isinstance(payload, list)
     charts = {item.get("slug"): item for item in payload if isinstance(item, dict)}
     missing = sorted(set(DEFAULT_CHART_SLUGS) - charts.keys())
@@ -231,7 +328,7 @@ def _filter_options(
         "limit": 100,
     }
     response = client.post(config.url("analytics/filter-options"), json=payload)
-    result = _assert_status(response)
+    result = _assert_status(response, label=f"analytics/filter-options/{semantic_view}.{member}")
     assert result["semantic_view"] == semantic_view
     assert result["member"] == member
     assert isinstance(result.get("values"), list)
@@ -260,7 +357,8 @@ def _chart_data(
             }
         )
     result = _assert_status(
-        client.post(config.url(f"analytics/charts/{chart['id']}/data"), json=payload)
+        client.post(config.url(f"analytics/charts/{chart['id']}/data"), json=payload),
+        label=f"analytics/charts/{chart['slug']}/data",
     )
     assert isinstance(result, dict)
     assert result.get("chart", {}).get("slug") == chart["slug"]
@@ -275,6 +373,7 @@ def test_unauthenticated_analytics_requests_are_rejected(e2e_config: E2EConfig) 
     try:
         for path in ("analytics/catalog", "analytics/charts/published"):
             response = client.get(e2e_config.url(path))
+            _log_http_result(response, label=f"unauthenticated/{path}")
             assert response.status_code == 401, (
                 f"{path} should reject unauthenticated access, got "
                 f"{response.status_code}: {response.text[:500]}"
@@ -409,6 +508,7 @@ def test_assignment_grains_reject_cross_assignment_filters(
             "filters": [{"member": "topic", "operator": "equals", "value": "Delivery"}],
         },
     )
+    _log_http_result(response, label="cross-assignment-filter")
     assert response.status_code == 422, response.text[:1_000]
 
 
@@ -416,6 +516,7 @@ def test_configured_role_has_expected_chart_management_access(
     e2e_client: httpx.Client, e2e_config: E2EConfig
 ) -> None:
     response = e2e_client.get(e2e_config.url("admin/analytics/charts"))
+    _log_http_result(response, label="admin/analytics/charts")
     expected = 200 if e2e_config.expected_role == "admin" else 403
     assert response.status_code == expected, response.text[:1_000]
 
@@ -446,7 +547,7 @@ def test_legacy_comparison_manifest(
             legacy_response = e2e_client.post(legacy_url, json=legacy.get("json"))
         else:
             pytest.fail(f"{name}: unsupported legacy method {method}")
-        legacy_payload = _assert_status(legacy_response)
+        legacy_payload = _assert_status(legacy_response, label=f"legacy/{name}")
         new_payload = _chart_data(
             e2e_client,
             e2e_config,

@@ -138,6 +138,7 @@ celerybeat.pid
 
 # Runtime deployment secrets, including profile-specific Azure OAuth credentials
 .env
+.env.testing
 /deploy/profile/*.env
 
 # Environments

@@ -114,12 +114,17 @@ The live, repeatable version of this request is
 normal unit-test run and can be executed against any deployment that exposes
 the application API:
 
+Use `env.testing.example` as the template for the local VS Code/test
+environment. Copy its values into the ignored `.env` file, then replace the
+credential placeholders with the bootstrap credentials for the deployment.
+
 ```bash
 ANALYTICS_E2E=1 \
 ANALYTICS_E2E_BASE_URL=http://localhost:8000 \
 ANALYTICS_E2E_USERNAME=<viewer-user> \
 ANALYTICS_E2E_PASSWORD=<viewer-password> \
 .venv/bin/python -m pytest -m analytics_e2e -v \
+  --log-cli-level=INFO \
   backend/tests/test_analytics_dashboard_e2e.py
 ```
 
@@ -128,6 +133,23 @@ already available. Set `ANALYTICS_E2E_API_PREFIX=/wtchk/api` when the API is
 behind the profile path. The runner defaults to `Asia/Hong_Kong` and a broad
 date range; override them with `ANALYTICS_E2E_TIMEZONE`,
 `ANALYTICS_E2E_FROM_DATE`, and `ANALYTICS_E2E_TO_DATE`.
+
+The runner logs one `analytics_e2e query_result` record for every HTTP request.
+Each record includes the method, URL, status, request payload, and response
+result. Secrets are redacted, and logged values are limited to 50,000 bytes by
+default; set `ANALYTICS_E2E_LOG_MAX_BYTES` to change the limit.
+
+VS Code Test Explorer loads the workspace `.env` and displays INFO logs using
+the checked-in workspace settings. Add `ANALYTICS_E2E=1` to the local `.env`
+before running these live tests from Test Explorer. When
+`BOOTSTRAP_DEFAULT_ADMIN_USERNAME` and `BOOTSTRAP_DEFAULT_ADMIN_PASSWORD` are
+present, the runner uses them automatically and expects the `admin` role;
+`ANALYTICS_E2E_EXPECTED_ROLE` can override that expectation. A result shown as
+`s` means the live suite was skipped and no HTTP query was made, so there is no
+query-result log to display.
+When the suite runs, look in VS Code's Python Test Log or integrated terminal;
+the `Query Results` panel is a database-query extension and does not receive
+these HTTP test logs.
 
 Set `ANALYTICS_E2E_EXPECTED_ROLE=admin` when using the bootstrap administrator
 credentials. The default role is `viewer`; chart-management access is expected
