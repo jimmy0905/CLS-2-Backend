@@ -109,6 +109,11 @@ async def require_admin(current_user: User = Depends(get_current_user)) -> User:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Administrator access is required",
         )
+    if bool(getattr(current_user, "oauth_provider", None)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrator access requires a username/password account",
+        )
     return current_user
 
 

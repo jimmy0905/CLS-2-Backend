@@ -18,7 +18,7 @@ from utils.database import get_db
 
 
 def test_require_admin_returns_an_admin_user() -> None:
-    user = SimpleNamespace(role="admin", is_deleted=False)
+    user = SimpleNamespace(role="admin", is_deleted=False, oauth_provider=None)
 
     assert asyncio.run(require_admin(user)) is user
 
@@ -30,6 +30,16 @@ def test_require_admin_rejects_a_viewer() -> None:
     assert error.value.status_code == 403
     assert error.value.detail == "Administrator access is required"
 
+
+def test_require_admin_rejects_an_sso_admin() -> None:
+    with pytest.raises(HTTPException, match="username/password"):
+        asyncio.run(
+            require_admin(
+                SimpleNamespace(
+                    role="admin", is_deleted=False, oauth_provider="microsoft"
+                )
+            )
+        )
 
 def test_require_admin_rejects_a_soft_deleted_admin() -> None:
     with pytest.raises(HTTPException) as error:
