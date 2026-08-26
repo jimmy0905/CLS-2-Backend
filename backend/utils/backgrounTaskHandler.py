@@ -31,6 +31,7 @@ from utils.database import engine
 from config import (
     ANALYTICS_CUBE_API_SECRET,
     ANALYTICS_CUBE_API_URL,
+    ANALYTICS_CUBE_REFRESH_TIME_ZONES,
     ANALYTICS_QUERY_TIMEOUT_SECONDS,
     DEPLOYMENT_PROFILE,
     MAX_WORKER_THREADS,
@@ -368,13 +369,15 @@ async def refresh_upload_pre_aggregations(
             ANALYTICS_CUBE_API_SECRET,
             ANALYTICS_QUERY_TIMEOUT_SECONDS,
         )
-        for date_range in date_ranges:
-            await client.refresh_pre_aggregations(
-                profile_id=DEPLOYMENT_PROFILE,
-                date_range=date_range,
-                pre_aggregations=tuple(dict.fromkeys(pre_aggregations)),
-                request_id=upload_task_id,
-            )
+        for timezone_name in ANALYTICS_CUBE_REFRESH_TIME_ZONES:
+            for date_range in date_ranges:
+                await client.refresh_pre_aggregations(
+                    profile_id=DEPLOYMENT_PROFILE,
+                    date_range=date_range,
+                    pre_aggregations=tuple(dict.fromkeys(pre_aggregations)),
+                    request_id=upload_task_id,
+                    timezone_name=timezone_name,
+                )
         if upload_task:
             upload_task.analytics_refresh_status = "requested"
             db.commit()

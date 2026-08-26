@@ -1,0 +1,468 @@
+"""Reusable live smoke/contract tests for the analytics dashboard migration.
+
+Run the live suite explicitly so the normal unit-test run stays hermetic::
+
+    ANALYTICS_E2E=1 \
+    ANALYTICS_E2E_BASE_URL=http://localhost:8000 \
+    ANALYTICS_E2E_USERNAME=viewer \
+    ANALYTICS_E2E_PASSWORD='...' \
+    .venv/bin/python -m pytest -m analytics_e2e -v \
+        backend/tests/test_analytics_dashboard_e2e.py
+
+An already-issued application JWT can be supplied with
+``ANALYTICS_E2E_TOKEN``.  For legacy comparisons, provide
+``ANALYTICS_E2E_COMPARISON_MANIFEST`` pointing to a JSON file containing a
+list of cases.  Each case has this shape::
+
+    {
+      "name": "store distribution",
+      "legacy": {"method": "GET", "path": "/dashboard/store-distribution"},
+      "chart_slug": "dashboard_store_distribution",
+      "chart_payload": {"timezone": "Asia/Hong_Kong"},
+      "legacy_rows_path": "data",
+      "row_key_map": {
+        "store_key": "store_key",
+        "topic_sentiment_negative_count": "negative_count"
+      }
+    }
+
+``row_key_map`` maps a new chart row key to the equivalent legacy row key.
+Rows are compared as sorted tuples, so ordering differences are reported as
+calculation differences rather than producing a false failure.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+import json
+import os
+from pathlib import Path
+from typing import Any
+
+import httpx
+import pytest
+
+
+pytestmark = pytest.mark.analytics_e2e
+
+DEFAULT_CHART_SLUGS = (
+    "dashboard_sentiment_distribution",
+    "dashboard_store_distribution",
+    "dashboard_store_format_distribution",
+    "dashboard_channel_delivery_distribution",
+    "dashboard_topic_sentiment_counts",
+    "dashboard_overall_topic_sentiment_score",
+    "dashboard_mixed_topic_sentiment_score",
+    "dashboard_topic_distribution",
+    "dashboard_department_distribution",
+    "dashboard_keyword_analysis",
+    "dashboard_first_reported_at",
+    "dashboard_last_reported_at",
+    "dashboard_last_updated_at",
+)
+
+FILTER_MEMBERS = {
+    "survey_responses": (
+        "store_key",
+        "store_name_english",
+        "store_format",
+        "channel_name",
+        "delivery_service_name",
+        "topic_sentiment",
+    ),
+    "survey_topics": ("topic",),
+    "survey_departments": ("department",),
+    "survey_keywords": ("keyword",),
+}
+
+
+@dataclass(frozen=True)
+class E2EConfig:
+    base_url: str
+    api_prefix: str
+    token: str | None = field(repr=False)
+    username: str | None = field(repr=False)
+    password: str | None = field(repr=False)
+    expected_role: str
+    timezone: str
+    from_date: str
+    to_date: str
+    timeout: float
+
+    @classmethod
+    def from_environment(cls) -> "E2EConfig":
+        return cls(
+            base_url=os.getenv("ANALYTICS_E2E_BASE_URL", "http://localhost:8000").rstrip("/"),
+            api_prefix=os.getenv("ANALYTICS_E2E_API_PREFIX", "").strip("/"),
+            token=os.getenv("ANALYTICS_E2E_TOKEN") or None,
+            username=os.getenv("ANALYTICS_E2E_USERNAME") or None,
+            password=os.getenv("ANALYTICS_E2E_PASSWORD") or None,
+            expected_role=os.getenv("ANALYTICS_E2E_EXPECTED_ROLE", "viewer"),
+            timezone=os.getenv("ANALYTICS_E2E_TIMEZONE", "Asia/Hong_Kong"),
+            from_date=os.getenv("ANALYTICS_E2E_FROM_DATE", "2020-01-01T00:00:00Z"),
+            to_date=os.getenv("ANALYTICS_E2E_TO_DATE", "2030-01-01T00:00:00Z"),
+            timeout=float(os.getenv("ANALYTICS_E2E_TIMEOUT", "30")),
+        )
+
+    def url(self, path: str) -> str:
+        suffix = f"/{self.api_prefix}" if self.api_prefix else ""
+        return f"{self.base_url}{suffix}/{path.lstrip('/')}"
+
+
+def _require_e2e_enabled() -> None:
+    if os.getenv("ANALYTICS_E2E", "").lower() not in {"1", "true", "yes"}:
+        pytest.skip("Set ANALYTICS_E2E=1 to run live analytics dashboard tests")
+
+
+def _require_auth(config: E2EConfig) -> None:
+    if not config.token and not (config.username and config.password):
+        pytest.skip(
+            "Set ANALYTICS_E2E_TOKEN or ANALYTICS_E2E_USERNAME and "
+            "ANALYTICS_E2E_PASSWORD to run authenticated dashboard tests"
+        )
+
+
+def _json(response: httpx.Response) -> Any:
+    try:
+        return response.json()
+    except ValueError as error:  # pragma: no cover - exercised by live failures
+        raise AssertionError(
+            f"Expected JSON from {response.request.method} {response.request.url}; "
+            f"received HTTP {response.status_code}: {response.text[:500]}"
+        ) from error
+
+
+def _assert_status(response: httpx.Response, expected: int = 200) -> Any:
+    body = response.text[:1_000]
+    assert response.status_code == expected, (
+        f"{response.request.method} {response.request.url} returned "
+        f"{response.status_code}, expected {expected}: {body}"
+    )
+    return _json(response)
+
+
+def _dotted_get(value: Any, path: str) -> Any:
+    for part in path.split("."):
+        if isinstance(value, dict):
+            value = value.get(part)
+        else:
+            return None
+    return value
+
+
+def _normalised_rows(
+    payload: Any,
+    rows_path: str,
+    row_key_map: dict[str, str],
+) -> list[tuple[Any, ...]]:
+    rows = _dotted_get(payload, rows_path)
+    assert isinstance(rows, list), f"Expected list at {rows_path!r}, got {rows!r}"
+    result = []
+    for row in rows:
+        assert isinstance(row, dict), f"Expected object row, got {row!r}"
+        result.append(tuple(row.get(legacy_key) for legacy_key in row_key_map.values()))
+    return sorted(result, key=repr)
+
+
+@pytest.fixture(scope="session")
+def e2e_config() -> E2EConfig:
+    _require_e2e_enabled()
+    return E2EConfig.from_environment()
+
+
+@pytest.fixture(scope="session")
+def e2e_client(e2e_config: E2EConfig) -> httpx.Client:
+    _require_auth(e2e_config)
+    client = httpx.Client(timeout=e2e_config.timeout, follow_redirects=True)
+    if e2e_config.token:
+        token = e2e_config.token
+    else:
+        response = client.post(
+            e2e_config.url("auth/token"),
+            data={"username": e2e_config.username, "password": e2e_config.password},
+        )
+        payload = _assert_status(response)
+        token = payload.get("access_token") if isinstance(payload, dict) else None
+        assert isinstance(token, str) and token, "The token endpoint returned no access_token"
+    client.headers.update({"Authorization": f"Bearer {token}"})
+    yield client
+    client.close()
+
+
+@pytest.fixture(scope="session")
+def catalog(e2e_client: httpx.Client, e2e_config: E2EConfig) -> dict[str, Any]:
+    payload = _assert_status(e2e_client.get(e2e_config.url("analytics/catalog")))
+    assert isinstance(payload, dict)
+    assert payload.get("model_version", 0) >= 1
+    assert set(payload.get("semantic_views", [])) >= set(FILTER_MEMBERS)
+    assert payload.get("fields")
+    assert payload.get("metrics")
+    return payload
+
+
+@pytest.fixture(scope="session")
+def published_charts(
+    e2e_client: httpx.Client, e2e_config: E2EConfig, catalog: dict[str, Any]
+) -> dict[str, dict[str, Any]]:
+    payload = _assert_status(e2e_client.get(e2e_config.url("analytics/charts/published")))
+    assert isinstance(payload, list)
+    charts = {item.get("slug"): item for item in payload if isinstance(item, dict)}
+    missing = sorted(set(DEFAULT_CHART_SLUGS) - charts.keys())
+    assert not missing, f"Published default charts are missing: {missing}"
+    for chart in charts.values():
+        assert chart.get("status") == "published"
+        if e2e_config.expected_role != "admin":
+            assert chart.get("visibility") == "viewer"
+        assert chart.get("model_version") == catalog["model_version"]
+        assert isinstance(chart.get("definition"), dict)
+    return charts
+
+
+def _filter_options(
+    client: httpx.Client,
+    config: E2EConfig,
+    semantic_view: str,
+    member: str,
+) -> dict[str, Any]:
+    payload = {
+        "semantic_view": semantic_view,
+        "member": member,
+        "timezone": config.timezone,
+        "limit": 100,
+    }
+    response = client.post(config.url("analytics/filter-options"), json=payload)
+    result = _assert_status(response)
+    assert result["semantic_view"] == semantic_view
+    assert result["member"] == member
+    assert isinstance(result.get("values"), list)
+    assert "freshness_time" in result
+    return result
+
+
+def _chart_data(
+    client: httpx.Client,
+    config: E2EConfig,
+    chart: dict[str, Any],
+    *,
+    filters: list[dict[str, Any]] | None = None,
+    bounded_time: bool = False,
+    overrides: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = dict(overrides or {})
+    payload.setdefault("timezone", config.timezone)
+    if filters is not None:
+        payload["filters"] = filters
+    if bounded_time and chart["semantic_view"] == "survey_responses":
+        payload.update(
+            {
+                "time_range": [config.from_date, config.to_date],
+                "time_granularity": "day",
+            }
+        )
+    result = _assert_status(
+        client.post(config.url(f"analytics/charts/{chart['id']}/data"), json=payload)
+    )
+    assert isinstance(result, dict)
+    assert result.get("chart", {}).get("slug") == chart["slug"]
+    assert result.get("model_version") == chart.get("model_version")
+    assert isinstance(result.get("rows"), list)
+    assert "freshness_time" in result
+    return result
+
+
+def test_unauthenticated_analytics_requests_are_rejected(e2e_config: E2EConfig) -> None:
+    client = httpx.Client(timeout=e2e_config.timeout, follow_redirects=False)
+    try:
+        for path in ("analytics/catalog", "analytics/charts/published"):
+            response = client.get(e2e_config.url(path))
+            assert response.status_code == 401, (
+                f"{path} should reject unauthenticated access, got "
+                f"{response.status_code}: {response.text[:500]}"
+            )
+            assert response.headers.get("cache-control") == "no-store, private"
+    finally:
+        client.close()
+
+
+def test_catalog_and_published_charts_are_viewer_visible(
+    catalog: dict[str, Any], published_charts: dict[str, dict[str, Any]]
+) -> None:
+    assert len(published_charts) >= len(DEFAULT_CHART_SLUGS)
+    assert catalog["model_version"] > 0
+
+
+@pytest.mark.parametrize(
+    ("semantic_view", "member"),
+    [
+        (semantic_view, member)
+        for semantic_view, members in FILTER_MEMBERS.items()
+        for member in members
+    ],
+    ids=[f"{semantic_view}-{member}" for semantic_view, members in FILTER_MEMBERS.items() for member in members],
+)
+def test_filter_discovery_returns_usable_values(
+    e2e_client: httpx.Client,
+    e2e_config: E2EConfig,
+    semantic_view: str,
+    member: str,
+) -> None:
+    result = _filter_options(e2e_client, e2e_config, semantic_view, member)
+    for item in result["values"]:
+        assert isinstance(item, dict)
+        assert item.get("value") is not None
+        assert isinstance(item.get("count"), (int, float))
+
+
+def test_every_default_chart_loads(
+    e2e_client: httpx.Client,
+    e2e_config: E2EConfig,
+    published_charts: dict[str, dict[str, Any]],
+) -> None:
+    for slug in DEFAULT_CHART_SLUGS:
+        _chart_data(e2e_client, e2e_config, published_charts[slug])
+
+
+def test_filter_and_timezone_scenarios(
+    e2e_client: httpx.Client,
+    e2e_config: E2EConfig,
+    published_charts: dict[str, dict[str, Any]],
+) -> None:
+    response_chart = published_charts["dashboard_store_distribution"]
+    time_chart = published_charts["dashboard_sentiment_distribution"]
+    response_values = {
+        member: _filter_options(e2e_client, e2e_config, "survey_responses", member)["values"]
+        for member in FILTER_MEMBERS["survey_responses"]
+    }
+
+    # No filters and a non-UTC bounded range exercise the default graph and its
+    # local-day/timezone contract even when the database has no survey rows.
+    _chart_data(e2e_client, e2e_config, response_chart)
+    _chart_data(e2e_client, e2e_config, time_chart, bounded_time=True)
+
+    store_key = [item["value"] for item in response_values["store_key"][:2]]
+    if store_key:
+        _chart_data(
+            e2e_client,
+            e2e_config,
+            response_chart,
+            filters=[{"member": "store_key", "operator": "in", "values": store_key}],
+        )
+    store_name = [item["value"] for item in response_values["store_name_english"][:1]]
+    if store_name:
+        _chart_data(
+            e2e_client,
+            e2e_config,
+            response_chart,
+            filters=[
+                {
+                    "member": "store_name_english",
+                    "operator": "equals",
+                    "value": store_name[0],
+                }
+            ],
+        )
+
+    # Numeric ranges and a deliberately impossible value cover the empty-result
+    # path without depending on a particular tenant's data distribution.
+    for member, values in (("cls", [0, 100]), ("topic_sentiment_score", [-1, 1])):
+        _chart_data(
+            e2e_client,
+            e2e_config,
+            response_chart,
+            filters=[{"member": member, "operator": "between", "values": values}],
+        )
+    empty_result = _chart_data(
+        e2e_client,
+        e2e_config,
+        response_chart,
+        filters=[
+            {
+                "member": "store_name_english",
+                "operator": "equals",
+                "value": "__analytics_e2e_no_match__",
+            }
+        ],
+    )
+    assert empty_result["rows"] == []
+
+    topic_chart = published_charts["dashboard_topic_distribution"]
+    topic_values = _filter_options(e2e_client, e2e_config, "survey_topics", "topic")["values"]
+    if topic_values:
+        _chart_data(
+            e2e_client,
+            e2e_config,
+            topic_chart,
+            filters=[{"member": "topic", "operator": "in", "values": [topic_values[0]["value"]]}],
+        )
+
+
+def test_assignment_grains_reject_cross_assignment_filters(
+    e2e_client: httpx.Client,
+    e2e_config: E2EConfig,
+    published_charts: dict[str, dict[str, Any]],
+) -> None:
+    department_chart = published_charts["dashboard_department_distribution"]
+    response = e2e_client.post(
+        e2e_config.url(f"analytics/charts/{department_chart['id']}/data"),
+        json={
+            "timezone": e2e_config.timezone,
+            "filters": [{"member": "topic", "operator": "equals", "value": "Delivery"}],
+        },
+    )
+    assert response.status_code == 422, response.text[:1_000]
+
+
+def test_configured_role_has_expected_chart_management_access(
+    e2e_client: httpx.Client, e2e_config: E2EConfig
+) -> None:
+    response = e2e_client.get(e2e_config.url("admin/analytics/charts"))
+    expected = 200 if e2e_config.expected_role == "admin" else 403
+    assert response.status_code == expected, response.text[:1_000]
+
+
+def test_legacy_comparison_manifest(
+    e2e_client: httpx.Client,
+    e2e_config: E2EConfig,
+    published_charts: dict[str, dict[str, Any]],
+) -> None:
+    manifest_name = os.getenv("ANALYTICS_E2E_COMPARISON_MANIFEST")
+    if not manifest_name:
+        pytest.skip("Set ANALYTICS_E2E_COMPARISON_MANIFEST to run legacy comparisons")
+
+    manifest_path = Path(manifest_name)
+    cases = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert isinstance(cases, list) and cases, "Comparison manifest must be a non-empty list"
+    legacy_base_url = os.getenv("ANALYTICS_E2E_LEGACY_BASE_URL", e2e_config.base_url).rstrip("/")
+    for case in cases:
+        assert isinstance(case, dict)
+        name = case.get("name", case.get("chart_slug", "unnamed case"))
+        chart = published_charts[case["chart_slug"]]
+        legacy = case["legacy"]
+        method = str(legacy.get("method", "GET")).upper()
+        legacy_url = f"{legacy_base_url}/{str(legacy['path']).lstrip('/')}"
+        if method == "GET":
+            legacy_response = e2e_client.get(legacy_url, params=legacy.get("params"))
+        elif method == "POST":
+            legacy_response = e2e_client.post(legacy_url, json=legacy.get("json"))
+        else:
+            pytest.fail(f"{name}: unsupported legacy method {method}")
+        legacy_payload = _assert_status(legacy_response)
+        new_payload = _chart_data(
+            e2e_client,
+            e2e_config,
+            chart,
+            overrides=case.get("chart_payload") or {},
+        )
+        row_key_map = case["row_key_map"]
+        assert isinstance(row_key_map, dict) and row_key_map
+        old_rows = _normalised_rows(
+            legacy_payload,
+            case.get("legacy_rows_path", "data"),
+            row_key_map,
+        )
+        new_rows = _normalised_rows(
+            new_payload,
+            "rows",
+            {new_key: new_key for new_key in row_key_map},
+        )
+        assert new_rows == old_rows, f"{name}: legacy and governed rows differ"

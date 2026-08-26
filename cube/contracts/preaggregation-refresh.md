@@ -21,7 +21,7 @@ Content-Type: application/json
         }
       }
     ],
-    "timezones": ["UTC"],
+    "timezones": ["UTC", "Asia/Hong_Kong"],
     "preAggregations": [
       "survey_responses.daily_core",
       "survey_responses.monthly_core",
@@ -36,6 +36,10 @@ Content-Type: application/json
 
 `dateRange` selects only partitions whose build ranges intersect the supplied
 range. The end date is the start of the month after the last affected month.
+The deployment's `ANALYTICS_CUBE_REFRESH_TIME_ZONES` setting is applied to
+both the scheduled refresh worker and upload-triggered refresh requests. It
+must include every timezone that the dashboard is expected to serve; the
+default is UTC plus `Asia/Hong_Kong`.
 Published chart rollups whose semantic view is affected are appended from the
 active catalog version; this is especially important for exact-dimension
 non-additive rollups.

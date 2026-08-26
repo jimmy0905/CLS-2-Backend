@@ -108,7 +108,7 @@ class CubeClient:
         profile_id: str,
         role: str,
         request_id: str | None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | list[Any]:
         token = create_cube_token(self.api_secret, profile_id, role)
         headers = {"Authorization": f"Bearer {token}"}
         if request_id:
@@ -138,10 +138,10 @@ class CubeClient:
             result = response.json()
         except ValueError as error:
             raise CubeUnavailableError("Cube returned an invalid response") from error
-        if not isinstance(result, dict):
-            raise CubeUnavailableError("Cube returned an invalid response")
-        if result.get("error"):
+        if isinstance(result, dict) and result.get("error"):
             raise _cube_error(result["error"])
+        if not isinstance(result, (dict, list)):
+            raise CubeUnavailableError("Cube returned an invalid response")
         return result
 
     async def execute(
@@ -152,13 +152,16 @@ class CubeClient:
         role: str,
         request_id: str | None = None,
     ) -> dict[str, Any]:
-        return await self._post(
+        result = await self._post(
             "/cubejs-api/v1/load",
             {"query": dict(query)},
             profile_id=profile_id,
             role=role,
             request_id=request_id,
         )
+        if not isinstance(result, dict):
+            raise CubeUnavailableError("Cube returned an invalid query response")
+        return result
 
     async def refresh_pre_aggregations(
         self,
@@ -169,7 +172,7 @@ class CubeClient:
         pre_aggregations: Sequence[str],
         request_id: str | None = None,
         timezone_name: str = "UTC",
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | list[Any]:
         if len(date_range) != 2:
             raise ValueError("Pre-aggregation refresh date range requires two values")
         if not pre_aggregations:
@@ -186,10 +189,13 @@ class CubeClient:
             "preAggregations": list(pre_aggregations),
             "dateRange": list(date_range),
         }
-        return await self._post(
+        result = await self._post(
             "/cubejs-api/v1/pre-aggregations/jobs",
             {"action": "post", "selector": selector},
             profile_id=profile_id,
             role=role,
             request_id=request_id,
         )
+        if not isinstance(result, (dict, list)):
+            raise CubeUnavailableError("Cube returned an invalid refresh response")
+        return result

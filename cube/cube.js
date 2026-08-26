@@ -1,6 +1,7 @@
 const {
   catalogRepository,
   catalogVersion,
+  contextToApiScopes,
   enforceSecurityContext,
 } = require('./lib/catalog-repository');
 
@@ -24,6 +25,7 @@ module.exports = {
   repositoryFactory: catalogRepository,
   schemaVersion: catalogVersion,
   queryRewrite: enforceSecurityContext,
+  contextToApiScopes,
   scheduledRefreshContexts: async () => [
     {
       securityContext: {

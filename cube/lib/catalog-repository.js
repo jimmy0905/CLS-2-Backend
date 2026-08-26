@@ -938,6 +938,15 @@ function queryMembers(query) {
   ].filter(Boolean);
 }
 
+function contextToApiScopes(securityContext, defaultApiScopes) {
+  const tokenRole = securityContext && (
+    securityContext.role
+    || (securityContext.securityContext && securityContext.securityContext.role)
+  );
+  if (tokenRole !== 'refresh_worker') return defaultApiScopes;
+  return [...new Set([...defaultApiScopes, 'jobs'])];
+}
+
 async function enforceSecurityContext(query, { securityContext } = {}) {
   const profile = process.env.ANALYTICS_PROFILE;
   const tokenProfile = securityContext && (
@@ -977,6 +986,7 @@ async function enforceSecurityContext(query, { securityContext } = {}) {
 module.exports = {
   catalogRepository,
   catalogVersion,
+  contextToApiScopes,
   compileDimension,
   compileMeasure,
   compileMeasures,

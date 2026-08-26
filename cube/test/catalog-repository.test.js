@@ -10,6 +10,7 @@ const {
   compileMeasures,
   compileRollup,
   catalogVersion,
+  contextToApiScopes,
   enforceSecurityContext,
   injectCatalog,
   signature,
@@ -66,6 +67,27 @@ test('request signature matches the backend timestamp:profile contract', () => {
     .digest('hex');
 
   assert.equal(signature(secret, timestamp, profile), expected);
+});
+
+test('only refresh workers receive the pre-aggregation jobs API scope', () => {
+  const defaultScopes = ['graphql', 'meta', 'data', 'sql'];
+
+  assert.deepEqual(
+    contextToApiScopes({ profile, role: 'viewer' }, defaultScopes),
+    defaultScopes,
+  );
+  assert.deepEqual(
+    contextToApiScopes({ profile, role: 'admin' }, defaultScopes),
+    defaultScopes,
+  );
+  assert.deepEqual(
+    contextToApiScopes({ profile, role: 'refresh_worker' }, defaultScopes),
+    [...defaultScopes, 'jobs'],
+  );
+  assert.deepEqual(
+    contextToApiScopes({ securityContext: { role: 'refresh_worker' } }, defaultScopes),
+    [...defaultScopes, 'jobs'],
+  );
 });
 
 test('empty bootstrap catalog uses version zero before first publication', () => {

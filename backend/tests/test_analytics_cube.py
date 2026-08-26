@@ -139,7 +139,7 @@ def test_cube_client_requests_targeted_pre_aggregation_refresh() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         captured["url"] = str(request.url)
         captured["payload"] = request.read()
-        return httpx.Response(200, json={"status": "scheduled"})
+        return httpx.Response(200, json=["job-1", "job-2"])
 
     client = CubeClient(
         "http://cube-api:4000",
@@ -154,7 +154,7 @@ def test_cube_client_requests_targeted_pre_aggregation_refresh() -> None:
         )
     )
 
-    assert result == {"status": "scheduled"}
+    assert result == ["job-1", "job-2"]
     assert captured["url"] == (
         "http://cube-api:4000/cubejs-api/v1/pre-aggregations/jobs"
     )
