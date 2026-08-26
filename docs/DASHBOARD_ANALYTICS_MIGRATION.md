@@ -6,6 +6,10 @@ SQL. It is written for the `wtchk_cls` data model, where the canonical response
 sentiment is `surveys.topic_sentiment`. The legacy `surveys.sentiment` field is
 not used.
 
+For the frontend bootstrap sequence—from catalog and field availability through
+filter options and published chart data—see
+[Frontend dashboard analytics workflow](FRONTEND_DASHBOARD_ANALYTICS_WORKFLOW.md).
+
 There is not one request that can replace all dashboard cards: each card asks a
 question at a different row grain. The requests below replace each endpoint
 with the built-in **dashboard metric pack**. A frontend may run the request body

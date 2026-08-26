@@ -4,6 +4,9 @@ This document describes the governed Cube analytics API. It covers the analytics
 
 For an endpoint-by-endpoint replacement guide and ready-to-send bodies for the
 current dashboard cards, see [Dashboard analytics migration](DASHBOARD_ANALYTICS_MIGRATION.md).
+For the frontend call order, availability checks, filter discovery, and chart
+loading loop, see
+[Frontend dashboard analytics workflow](FRONTEND_DASHBOARD_ANALYTICS_WORKFLOW.md).
 
 ## Base URL, access, and common behaviour
 

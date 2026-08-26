@@ -316,6 +316,146 @@ def test_filter_options_return_non_null_governed_values(monkeypatch) -> None:
     assert cube.calls[0][0]["offset"] == 1000
 
 
+def test_frontend_dashboard_analytics_discovery_and_chart_flow(monkeypatch) -> None:
+    """Keep the documented frontend bootstrap-to-chart request chain executable."""
+
+    db = FakeDb()
+    catalog = SemanticCatalog(
+        fields=[
+            CatalogField(
+                slug="store_format",
+                label="Store format",
+                semantic_view="survey_responses",
+                data_type=FieldType.STRING,
+            )
+        ],
+        metrics=[
+            CatalogMetric(
+                slug="response_count",
+                label="Response count",
+                semantic_view="survey_responses",
+                aggregation=Aggregation.COUNT,
+            )
+        ],
+    )
+    chart = {
+        "id": 41,
+        "slug": "dashboard_store_format_distribution",
+        "title": "Responses by store format",
+        "chart_type": "bar",
+        "semantic_view": "survey_responses",
+        "definition": {
+            "dimensions": ["store_format"],
+            "metrics": ["response_count"],
+            "limit": 100,
+        },
+        "visibility": "viewer",
+        "status": "published",
+    }
+    version = SimpleNamespace(
+        id=17,
+        catalog_version=7,
+        catalog_snapshot={"charts": [chart]},
+    )
+    cube = FakeCube(
+        {
+            "data": [
+                {
+                    "survey_responses.store_format": "Mall",
+                    "survey_responses.response_count": "12",
+                }
+            ],
+            "lastRefreshTime": "2026-08-26T08:00:00Z",
+        }
+    )
+
+    monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
+    monkeypatch.setattr(config, "DEPLOYMENT_PROFILE", "wtchk_cls")
+    monkeypatch.setattr(analytics, "_catalog", lambda db, role: catalog)
+    monkeypatch.setattr(analytics, "_active_model_version", lambda db: version)
+    monkeypatch.setattr(analytics, "_cube_client", lambda: cube)
+    monkeypatch.setattr(
+        analytics,
+        "_field_availability",
+        lambda db, catalog, **kwargs: {
+            "model_version": kwargs["catalog_version"],
+            "semantic_view": kwargs["semantic_view"],
+            "total_rows": 12,
+            "fields": [
+                {
+                    "slug": "store_format",
+                    "label": "Store format",
+                    "data_type": "string",
+                    "non_null_count": 12,
+                    "null_count": 0,
+                    "availability_rate": 1.0,
+                    "available": True,
+                }
+            ],
+            "generated_at": "2026-08-26T08:00:00+00:00",
+            "cached": False,
+        },
+    )
+    client = _client(db)
+
+    catalog_response = client.get("/analytics/catalog")
+    assert catalog_response.status_code == 200
+    assert catalog_response.json()["model_version"] == 7
+    assert catalog_response.json()["fields"][0]["slug"] == "store_format"
+
+    availability_response = client.get(
+        "/analytics/catalog/availability",
+        params={"semantic_view": "survey_responses"},
+    )
+    assert availability_response.status_code == 200
+    assert availability_response.json()["fields"][0]["available"] is True
+
+    charts_response = client.get("/analytics/charts/published")
+    assert charts_response.status_code == 200
+    published_chart = charts_response.json()[0]
+    assert published_chart["model_version"] == 7
+
+    options_response = client.post(
+        "/analytics/filter-options",
+        json={
+            "semantic_view": "survey_responses",
+            "member": "store_format",
+            "timezone": "Asia/Hong_Kong",
+            "limit": 100,
+        },
+    )
+    assert options_response.status_code == 200
+    selected_value = options_response.json()["values"][0]["value"]
+    assert selected_value == "Mall"
+
+    data_response = client.post(
+        f"/analytics/charts/{published_chart['id']}/data",
+        json={
+            "filters": [
+                {
+                    "member": "store_format",
+                    "operator": "equals",
+                    "value": selected_value,
+                }
+            ],
+            "timezone": "Asia/Hong_Kong",
+        },
+    )
+    assert data_response.status_code == 200
+    assert data_response.json()["chart"]["slug"] == chart["slug"]
+    assert data_response.json()["rows"] == [
+        {"store_format": "Mall", "response_count": 12}
+    ]
+    assert data_response.json()["model_version"] == 7
+    assert cube.calls[1][0]["filters"] == [
+        {
+            "member": "survey_responses.store_format",
+            "operator": "equals",
+            "values": ["Mall"],
+        }
+    ]
+
+
 def test_feature_gate_is_evaluated_dynamically(monkeypatch) -> None:
     db = FakeDb()
     monkeypatch.setattr(config, "ANALYTICS_ENABLED", False)
