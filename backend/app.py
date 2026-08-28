@@ -41,9 +41,13 @@ from utils.database import (
     check_tables_exist,
     ensure_default_user,
     get_db,
+    usable_user_exists,
     users_table_exists,
 )
-from utils.database_migrations import run_database_migrations
+from utils.database_migrations import (
+    bootstrap_single_metric_analytics_defaults,
+    run_database_migrations,
+)
 from utils.logger import bind_request_id, configure_logging, logger, reset_request_id
 from utils.retention import retention_loop, run_retention
 
@@ -74,12 +78,13 @@ async def lifespan(_: FastAPI):
     migrations_ran = run_database_migrations()
     if migrations_ran:
         if users_table_exists():
-            if not users_table_existed:
+            if not users_table_existed or not usable_user_exists():
                 ensure_default_user()
         else:
             check_tables_exist()
     else:
         check_tables_exist()
+    bootstrap_single_metric_analytics_defaults()
     _reset_processing_upload_tasks()
     _reset_analytics_export_jobs()
 

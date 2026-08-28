@@ -15,7 +15,7 @@ flowchart TD
     A[Dashboard route opens] --> B[GET /analytics/catalog]
     B --> C{Request succeeded?}
     C -- No --> C1[Show authentication, disabled-feature, or retry state]
-    C -- Yes --> D[Keep model_version and group fields and metrics by semantic_view]
+    C -- Yes --> D[Keep model_version and index fields and metric_options by semantic_view]
     D --> V[GET /analytics/query-combinations]
     V --> V1[Render only finite validated query templates]
 
@@ -39,7 +39,7 @@ flowchart TD
     N -- Yes --> O[POST /analytics/charts/chart_id/data]
     N -- No, guided exploration --> V1
     V1 --> P[Apply allowed overrides and POST template to /analytics/query]
-    O --> Q[Read rows, columns, warnings, freshness_time, model_version]
+    O --> Q[Read schema, flat rows, row_count, warnings, freshness_time, model_version]
     P --> Q
     Q --> R[Render chart or KPI]
 
@@ -63,7 +63,7 @@ sequenceDiagram
 
     User->>FE: Open dashboard
     FE->>API: GET /analytics/catalog
-    API-->>FE: model_version, semantic_views, fields, metrics
+    API-->>FE: model_version, semantic_views, fields, metric_options
     FE->>API: GET /analytics/query-combinations
     API-->>FE: finite validated templates and compatible chart types
 
@@ -86,7 +86,7 @@ sequenceDiagram
     FE->>API: POST /analytics/charts/{chart_id}/data
     API->>Cube: Published chart query plus safe overrides
     Cube-->>API: Aggregate result
-    API-->>FE: chart, rows, columns, warnings, freshness_time, model_version
+    API-->>FE: chart, schema, flat rows, row_count, warnings, freshness_time, model_version
     FE-->>User: Render dashboard card
 ```
 
@@ -94,12 +94,12 @@ sequenceDiagram
 
 | Call | Frontend use |
 | --- | --- |
-| `GET /analytics/catalog` | The allowlist of role-visible semantic views, dimensions, metrics, and chart types. Its `combinations` object supplies query limits, per-view member compatibility, grain meaning, and chart shapes. Only send slugs returned by this response. |
-| `GET /analytics/query-combinations?semantic_view=...` | A finite collection of directly executable, active-catalog-validated query templates. Use this for guided exploration; preserve dimensions, metrics, time dimension, and grain, and change only the listed `allowed_overrides`. |
+| `GET /analytics/catalog` | The allowlist of role-visible semantic views, dimensions, executable raw-field/aggregation `metric_options`, and chart types. Its `combinations` object supplies query limits, per-view member compatibility, grain meaning, and chart shapes. Only send pairs returned by this response. |
+| `GET /analytics/query-combinations?semantic_view=...` | A finite collection of directly executable, active-catalog-validated query templates. Use this for guided exploration; preserve dimensions, the one metric/aggregation pair, time dimension, and grain, and change only the listed `allowed_overrides`. |
 | `GET /analytics/catalog/availability?semantic_view=...` | Whether each catalog field has at least one non-null value in that view. Show fields where `available` is `true`; an availability rate below 1 still means the field can be used. |
 | `GET /analytics/charts/published` | The governed dashboard cards visible to the caller. Store both `id` (for the data URL) and `slug` (stable frontend lookup). |
 | `POST /analytics/filter-options` | Non-null dropdown values for one available dimension. Send already selected compatible filters to implement dependent selectors and follow `next_cursor` while `has_more` is true. |
-| `POST /analytics/charts/{chart_id}/data` | Preferred path for a predefined dashboard card. The dimensions and metrics stay governed; the frontend may override filters, time range/granularity, timezone, order, and limit. |
+| `POST /analytics/charts/{chart_id}/data` | Preferred path for a predefined dashboard card. Dimensions and the one metric/aggregation pair stay governed; the frontend may override filters, time range/granularity, timezone, order, and limit. |
 | `POST /analytics/query` | For guided exploration, post a template returned by `GET /analytics/query-combinations`. Reserve free member selection from the catalog for an explicitly advanced ad-hoc explorer. |
 
 Catalog membership and data availability are different: a field may be
@@ -116,23 +116,24 @@ entry.
 The recommended selector order is:
 
 ```text
-What is being counted? -> How should it be grouped? -> What should be measured?
-Semantic View          -> Dimensions                 -> Metrics
+What does one row mean? -> What should be measured? -> How?        -> Group by?
+Semantic View           -> Metric field             -> Aggregation -> Dimensions
 ```
 
 Do not make users guess from the raw semantic-view names. Present the row grain
 as the business choice and store its corresponding `semantic_view` internally:
 
-| User-facing choice | `semantic_view` | One counted row | Default metric |
+| User-facing choice | `semantic_view` | One counted row | Default field + aggregation |
 | --- | --- | --- | --- |
-| Survey responses | `survey_responses` | One response | `response_count` |
-| Topic mentions | `survey_topics` | One topic assignment | `assignment_count` |
-| Department assignments | `survey_departments` | One department assignment | `assignment_count` |
-| Keyword mentions | `survey_keywords` | One keyword assignment | `assignment_count` |
+| Survey responses | `survey_responses` | One response | `id` + `count` |
+| Topic mentions | `survey_topics` | One topic assignment | `assignment_id` + `count` |
+| Department assignments | `survey_departments` | One department assignment | `assignment_id` + `count` |
+| Keyword mentions | `survey_keywords` | One keyword assignment | `assignment_id` + `count` |
 
 Use the labels above for presentation only. At runtime, read `grain`,
-`default_count_metric`, `assignment_dimension`, and the member lists from
-`catalog.combinations.semantic_views`; do not duplicate those compatibility
+`assignment_dimension`, and the dimension list from
+`catalog.combinations.semantic_views`, then read executable pairs from
+`catalog.metric_options[semantic_view]`; do not duplicate those compatibility
 lists in frontend code.
 
 ```mermaid
@@ -143,15 +144,13 @@ flowchart LR
     D --> E[Fetch availability for selected view]
     E --> F[Show available dimensions from the view entry]
     F --> G[User selects 0-3 dimensions]
-    G --> H[Show metrics from the same view entry]
-    H --> I[Preselect default_count_metric]
-    I --> J[User selects 0-5 metrics]
+    G --> H[Show metric_options for the same view]
+    H --> I[Preselect the row-id field plus count]
+    I --> J[User selects exactly one field and aggregation]
     J --> K[Add compatible filters and optional time settings]
-    K --> L{At least one dimension, metric, or time dimension?}
-    L -- No --> G
-    L -- Yes --> M[POST /analytics/query]
+    K --> M[POST /analytics/query]
     M --> N{Response}
-    N -- 200 --> O[Render from columns and rows]
+    N -- 200 --> O[Render from schema and flat rows with value]
     N -- 422 --> P[Show the governed validation error]
     N -- 503 --> Q[Show retry state without changing selections]
 ```
@@ -159,13 +158,14 @@ flowchart LR
 ### 1. Build selector indexes from the catalog
 
 The frontend needs both the per-view compatibility entry and the display
-metadata from the top-level `fields` and `metrics` arrays:
+metadata from the top-level `fields` and `metric_options` values:
 
 ```ts
 type ExplorerState = {
   semanticView?: string;
   dimensions: string[];
-  metrics: string[];
+  metric?: string;
+  aggregation?: "count" | "distinct_count" | "sum" | "average" | "min" | "max" | "median";
   filters: Array<{
     member: string;
     operator: string;
@@ -196,17 +196,20 @@ function groupByView<T extends { semantic_view: string }>(members: T[]) {
 }
 
 const fieldsByView = groupByView(catalog.fields);
-const metricsByView = groupByView(catalog.metrics);
+const metricOptionsByView = new Map(
+  Object.entries(catalog.metric_options),
+);
 ```
 
-`combinations.semantic_views[].dimensions` and `.metrics` are the executable
-allowlists. The top-level arrays provide `label`, `data_type`, `operation`, and
-visibility metadata for rendering controls.
+`combinations.semantic_views[].dimensions` is the dimension allowlist.
+`metric_options[view]` is the executable metric allowlist; each entry contains
+`field`, `aggregation`, `label`, and `result_type`. A field/type combination
+that is theoretically meaningful but absent from this list must not be sent.
 
 ### 2. Handle a Semantic View change
 
 A view change changes the row grain, even when a slug such as
-`topic_sentiment`, `store_name`, or `distinct_survey_count` exists in both
+`topic_sentiment`, `store_name`, or `survey_id` exists in both
 views. Clear all dependent state instead of silently carrying those selections
 into a new meaning:
 
@@ -218,7 +221,8 @@ async function selectSemanticView(semanticView: string) {
   state = {
     semanticView,
     dimensions: [],
-    metrics: rule.default_count_metric ? [rule.default_count_metric] : [],
+    metric: semanticView === "survey_responses" ? "id" : "assignment_id",
+    aggregation: "count",
     filters: [],
     order: [],
     limit: 100,
@@ -270,36 +274,32 @@ or `keyword`) for an assignment view, and `store_name` or `topic_sentiment` for
 common response exploration. Defaults still need to be present in the current
 view's dimension allowlist and availability response.
 
-### 4. Offer only valid Metrics
+### 4. Offer only valid Metric and Aggregation pairs
 
-Metrics are filtered by the selected view, not by the selected dimension. Any
-published metric listed in that view is query-compatible with its dimensions:
+The query takes one raw field and one aggregation, not a governed metric slug.
+Show only options published for the selected view:
 
 ```ts
 function metricOptions() {
   const view = state.semanticView;
   if (!view) return [];
-
-  const allowed = new Set(viewRules.get(view)?.metrics ?? []);
-  return (metricsByView.get(view) ?? []).filter(metric =>
-    allowed.has(metric.slug)
-  );
+  return metricOptionsByView.get(view) ?? [];
 }
 ```
 
-Explain count metrics by their unit so users do not accidentally change the
+Explain count pairs by their unit so users do not accidentally change the
 question:
 
-| Metric | Selector description |
+| Field + aggregation | Selector description |
 | --- | --- |
-| `response_count` | Number of matching survey responses |
-| `responding_store_count` | Number of distinct stores having at least one matching response |
-| `assignment_count` | Number of matching topic, department, or keyword assignments |
-| `distinct_survey_count` | Number of surveys having at least one matching assignment |
+| `id` + `count` in `survey_responses` | Number of matching survey responses |
+| `store_key` + `distinct_count` | Number of distinct stores having at least one matching response |
+| `assignment_id` + `count` | Number of matching topic, department, or keyword assignments |
+| `survey_id` + `distinct_count` | Number of surveys having at least one matching assignment |
 
-For example, `survey_topics + topic + assignment_count` answers "how many topic
-assignments?", while replacing the metric with `distinct_survey_count` answers
-"how many surveys mentioned this topic?".
+For example, `survey_topics + topic + assignment_id/count` answers "how many
+topic assignments?", while selecting `survey_id/distinct_count` answers "how
+many surveys mentioned this topic?".
 
 ### 5. Validate and build the request
 
@@ -316,23 +316,21 @@ function buildQuery() {
   const dimensions = state.dimensions.filter(slug =>
     rule.dimensions.includes(slug)
   );
-  const metrics = state.metrics.filter(slug => rule.metrics.includes(slug));
+  const optionIsValid = (metricOptionsByView.get(view) ?? []).some(option =>
+    option.field === state.metric && option.aggregation === state.aggregation
+  );
   const filterMembersAreValid = state.filters.every(filter =>
     rule.dimensions.includes(filter.member)
   );
 
   if (dimensions.length !== state.dimensions.length ||
-      metrics.length !== state.metrics.length ||
+      !optionIsValid ||
       !filterMembersAreValid) {
     throw new Error("A selection no longer belongs to the selected view");
   }
   if (dimensions.length > catalog.combinations.query.max_dimensions ||
-      metrics.length > catalog.combinations.query.max_metrics ||
       state.filters.length > catalog.combinations.query.max_filters) {
     throw new Error("The query exceeds catalog limits");
-  }
-  if (!dimensions.length && !metrics.length && !state.timeDimension) {
-    throw new Error("Select a dimension, metric, or time dimension");
   }
   if (state.timeDimension) {
     const timeField = (fieldsByView.get(view) ?? []).find(
@@ -352,7 +350,7 @@ function buildQuery() {
 
   const selected = new Set([
     ...dimensions,
-    ...metrics,
+    "value",
     ...(state.timeDimension ? [state.timeDimension] : []),
   ]);
   if (state.order.some(item => !selected.has(item.member))) {
@@ -362,7 +360,8 @@ function buildQuery() {
   return {
     semantic_view: view,
     dimensions,
-    metrics,
+    metric: state.metric,
+    aggregation: state.aggregation,
     filters: state.filters,
     ...(state.timeDimension && { time_dimension: state.timeDimension }),
     ...(state.timeRange && { time_range: state.timeRange }),
@@ -376,41 +375,72 @@ function buildQuery() {
 }
 ```
 
-`order[].member` must be one of the selected dimensions, metrics, or time
-dimension. A `time_dimension` must be a date/time field from the same view;
+`order[].member` must be one of the selected dimensions, the fixed key `value`,
+or the selected time dimension. A `time_dimension` must be a date/time field from the same view;
 `time_range` and `time_granularity` are invalid without it.
 
-### 6. Example: Topic sentiment for each store
+### 6. Choose a chart from the query shape
+
+Use `catalog.combinations.charts` as the runtime source of truth. The current
+strict matrix is:
+
+| Query shape | Compatible chart types |
+| --- | --- |
+| No time, 0 dimensions | `kpi`, `table` |
+| No time, 1 dimension | `bar`, `column`, `pie`, `donut`, `table` |
+| No time, 2 dimensions | `stacked_bar`, `heatmap`, `table` |
+| No time, 3 dimensions | `table` |
+| Granular time, 0–1 ordinary dimension | `line`, `area`, `table` |
+| Granular time, 2–3 ordinary dimensions | `table` |
+
+`line` and `area` require `time_dimension` and `time_granularity`; do not offer
+them for a raw or absent time field. Except for `table` and `kpi`, require
+`schema.metric.type === "number"`. `scatter` and `store_map` are not supported.
+
+Render the common response without metric-specific property lookup:
+
+- `line` / `area`: `schema.time_dimension.key` is the X axis; zero ordinary
+  dimensions gives one series and one ordinary dimension provides the series
+  key.
+- `stacked_bar`: first dimension is the category and second is the series.
+- `heatmap`: the two dimension keys identify the cell; `value` is intensity.
+- `kpi`: read the sole row's `value`.
+- `table`: show `schema.dimensions`, optional `schema.time_dimension`, then
+  `schema.metric`, reading the metric cell from `value`.
+
+### 7. Example: Topic sentiment for each store
 
 The user choices translate as follows:
 
 ```text
 Analyse:  Survey responses          -> survey_responses
 Group by: Store and overall sentiment -> store_key, store_name, topic_sentiment
-Measure:  Number of responses       -> response_count
+Measure:  Number of responses       -> id + count
 ```
 
 ```json
 {
   "semantic_view": "survey_responses",
   "dimensions": ["store_key", "store_name", "topic_sentiment"],
-  "metrics": ["response_count"],
-  "order": [{"member": "response_count", "direction": "desc"}],
+  "metric": "id",
+  "aggregation": "count",
+  "order": [{"member": "value", "direction": "desc"}],
   "limit": 1000
 }
 ```
 
 If the intended question is instead "what is each store's average sentiment
 score?", keep the response view, remove `topic_sentiment`, and select
-`topic_sentiment_score_average` plus `response_count`. Do not switch to a topic
+`topic_sentiment_score` + `average`. A second query using `id` + `count` is
+required if the UI also needs the sample size. Do not switch to a topic
 assignment view, because responses with more topics would then carry more
 weight.
 
 ### Guided mode versus advanced mode
 
 Use `GET /analytics/query-combinations` for the default guided experience. The
-user selects a named business question; its Semantic View, Dimensions, Metrics,
-and compatible chart types are already fixed and validated. Apply only the
+user selects a named business question; its Semantic View, Dimensions, one
+Metric/Aggregation pair, and compatible chart types are already fixed and validated. Apply only the
 returned `allowed_overrides`.
 
 Expose the selector state machine above only as an advanced explorer. This

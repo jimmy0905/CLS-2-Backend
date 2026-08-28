@@ -44,10 +44,10 @@ The only supported semantic views are `survey_responses`, `survey_topics`, `surv
 
 | Semantic view | One row represents | Database source | Canonical response sentiment | Assignment sentiment | Use it for |
 | --- | --- | --- | --- | --- | --- |
-| `survey_responses` | One non-deleted survey response | `surveys`, joined to `stores`, `channels`, and `delivery_services` | `topic_sentiment` = `surveys.topic_sentiment`; score = `surveys.topic_sentiment_score` | None. The legacy `surveys.sentiment` is intentionally not a public semantic field. | Overall response volume, CLS, store/channel analysis, and response-level sentiment. `response_count` counts survey rows; `responding_store_count` counts distinct `store_key` values represented by matching response rows. |
-| `survey_topics` | One topic assigned to a survey | `survey_topics` joined to the survey facts and `topics` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_topics.sentiment` | Topic analysis: group by `topic`, use `assignment_count` for topic assignments, or `distinct_survey_count` for unique surveys. |
-| `survey_departments` | One department assigned to a survey | `survey_departments` joined to the survey facts and `departments` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_departments.sentiment` | Department analysis: group by `department`, then use assignment or distinct-survey counts as appropriate. |
-| `survey_keywords` | One keyword assigned to a survey | `survey_keywords` joined to the survey facts and `keywords` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_keywords.sentiment` | Keyword analysis: group/filter by `keyword`, then use assignment or distinct-survey counts. |
+| `survey_responses` | One non-deleted survey response | `surveys`, joined to `stores`, `channels`, and `delivery_services` | `topic_sentiment` = `surveys.topic_sentiment`; score = `surveys.topic_sentiment_score` | None. The legacy `surveys.sentiment` is intentionally not a public semantic field. | Overall response volume, CLS, store/channel analysis, and response-level sentiment. Use `id` + `count` for response rows, or `store_key` + `distinct_count` for represented stores. |
+| `survey_topics` | One topic assigned to a survey | `survey_topics` joined to the survey facts and `topics` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_topics.sentiment` | Topic analysis: group by `topic`, use `assignment_id` + `count` for assignments, or `survey_id` + `distinct_count` for unique surveys. |
+| `survey_departments` | One department assigned to a survey | `survey_departments` joined to the survey facts and `departments` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_departments.sentiment` | Department analysis: group by `department`, then count `assignment_id` or distinct `survey_id` as appropriate. |
+| `survey_keywords` | One keyword assigned to a survey | `survey_keywords` joined to the survey facts and `keywords` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_keywords.sentiment` | Keyword analysis: group/filter by `keyword`, then count `assignment_id` or distinct `survey_id`. |
 
 In `survey_responses`, always use `topic_sentiment`; `sentiment` is not a valid public member. In assignment views, use `topic_sentiment` for the response-level value and `sentiment` only for that topic/department/keyword assignment row. This keeps the legacy `surveys.sentiment` out of analytics.
 
@@ -57,37 +57,73 @@ Do not combine `survey_topics`, `survey_departments`, and `survey_keywords` in o
 
 ### Shared query concepts
 
-`POST /analytics/query`, chart data, and exports use published member *slugs*, never raw SQL or Cube member names.
+`POST /analytics/query`, chart data, and aggregate exports use published field
+*slugs*, never raw SQL, Cube member names, or governed metric slugs. Every
+aggregate selects one raw field as `metric` and one `aggregation`; the server
+maps that pair to exactly one published governed Cube measure.
 
 | Property | Rule |
 | --- | --- |
 | `semantic_view` | One of the four views above. |
 | `dimensions` | Up to three published dimension slugs for an ad-hoc query. |
-| `metrics` | Up to five published metric slugs for an ad-hoc query. |
+| `metric` | Exactly one published raw field slug from the selected view. |
+| `aggregation` | Exactly one operation: `count`, `distinct_count`, `sum`, `average`, `min`, `max`, or `median`. Only pairs published in `metric_options` are executable. Use `average`, not `avg`. |
 | `filters` | Up to 20 typed filters. Operators are `equals`, `not_equals`, `contains`, `not_contains`, `starts_with`, `ends_with`, comparison operators, `in`, `not_in`, `set`, `not_set`, and `between`, when compatible with the member type. |
 | `time_dimension` | A published date/time dimension. It may be paired with `time_range` and `time_granularity`; do not also include it as an ordinary dimension. |
 | `time_range` | Two ISO-8601 date/datetime values, each at most 64 characters, with start no later than end. |
 | `time_granularity` | Cube-supported granularity such as day, week, month, quarter, or year, when valid for the time member. |
 | `timezone` | Optional IANA timezone (for example, `Asia/Hong_Kong` or `America/New_York`) used for time-range boundaries, time buckets, and timestamp display. UTC is used when omitted. |
-| `order` | A list of `{ "member": "<slug>", "direction": "asc" | "desc" }`. |
-| `limit` | Aggregate queries allow 1–1,000 rows. Published charts can set their own governed limit up to 5,000 where the chart type allows it. |
+| `order` | A list of `{ "member": "<slug-or-value>", "direction": "asc" | "desc" }`. The member must be a selected dimension, the selected time dimension, or the fixed metric key `value`. |
+| `limit` | Aggregate queries allow 1–1,000 rows. |
+
+Allowed operations by source-field type are:
+
+| Field type | Allowed aggregations |
+| --- | --- |
+| String / boolean | `count`, `distinct_count` |
+| Number | `count`, `distinct_count`, `sum`, `average`, `min`, `max`, `median` |
+| Date / time | `count`, `distinct_count`, `min`, `max` |
+
+The type table is a necessary condition, not an allowlist by itself. The exact
+`(field, aggregation)` pair must also appear in the active catalog's
+`metric_options` for the selected semantic view. Missing and ambiguous pairs
+are rejected with `422`.
 
 A successful aggregate response has this shape:
 
 ```json
 {
   "query_id": "8f5c…",
-  "model_version": 4,
+  "model_version": 8,
+  "semantic_view": "survey_responses",
   "timezone": "Asia/Hong_Kong",
-  "columns": [{"name": "region", "label": "Region", "type": "string", "kind": "dimension"}],
-  "rows": [{"region": "North", "response_count": 120}],
-  "confidence": [],
+  "schema": {
+    "dimensions": [
+      {"field": "region", "label": "Region", "type": "string", "key": "region"}
+    ],
+    "time_dimension": null,
+    "metric": {
+      "field": "id",
+      "aggregation": "count",
+      "label": "Response Count",
+      "type": "number",
+      "key": "value"
+    }
+  },
+  "rows": [{"region": "North", "value": 120}],
+  "row_count": 1,
   "warnings": [],
   "freshness_time": "2026-08-25T10:15:00Z"
 }
 ```
 
-Confidence-interval metrics add entries to `confidence` with estimate, lower/upper bounds, level, sample/effective sample size, and method. Weighted metric data-quality failures (negative or non-finite values/weights) appear in `warnings`; they are never silently treated as valid data.
+Rows are always flat. Dimension and time values retain the keys declared in
+`schema`; the sole aggregate is always `value`. When no time dimension was
+selected, `schema.time_dimension` is `null`. `rows` and `warnings` are always
+present, including for an empty result. Weighted, filtered, variance,
+standard-deviation, percentile, and confidence-interval measures may remain in
+governance metadata, but they are not exposed through this simplified query
+contract.
 
 Common errors are `401` for a missing, invalid, deleted, or wrong-profile token; `403` for an insufficient role; `404` when analytics is disabled or a resource is not visible; `422` for invalid governed input or a rejected semantic query; and `503` when Cube or the analytics database dependency is unavailable. Cube/PostgreSQL implementation details are deliberately not exposed in error messages.
 
@@ -97,15 +133,15 @@ Swagger/ReDoc marks required JSON fields from the OpenAPI schema. The following 
 
 | Request model | Required fields | Optional fields / rules | Example |
 | --- | --- | --- | --- |
-| Aggregate query | `semantic_view`; at least one of `dimensions`, `metrics`, or `time_dimension` | `dimensions`, `metrics`, `filters`, time controls, `timezone`, `order`, `limit`. `time_range`/`time_granularity` require `time_dimension`. | `{ "semantic_view": "survey_responses", "dimensions": ["store_format"], "metrics": ["response_count"], "timezone": "Asia/Hong_Kong" }` |
+| Aggregate query | `semantic_view`, `metric`, `aggregation` | `dimensions` (0–3), `filters`, time controls, `timezone`, `order`, `limit`. `time_range`/`time_granularity` require `time_dimension`. The removed `metrics` field is rejected. | `{ "semantic_view": "survey_responses", "dimensions": ["store_format"], "metric": "id", "aggregation": "count", "timezone": "Asia/Hong_Kong" }` |
 | Filter | `member`, `operator` | `value` is required for scalar comparisons; `values` is required for `in`, `not_in`, and `between`; neither is used for `set`/`not_set`. | `{ "member": "topic_sentiment", "operator": "equals", "value": "NEGATIVE" }` |
 | Drilldown | None: defaults select common response fields | `semantic_view` is fixed to `survey_responses`; choose `fields` (1–50), `filters` (0–20), `cursor`, `limit` (1–250), and optional `timezone` for local timestamp filters/display. | `{ "fields": ["survey_id", "respondent_id", "store_key", "reported_at", "comment", "topic_sentiment", "cls"], "limit": 100, "timezone": "Asia/Hong_Kong" }` |
 | Create field | `slug`, `label`, `data_type`, `source_key` | `semantic_view` defaults to `survey_responses`; `source_kind` is fixed to `raw_json`; `description` and `visibility` are optional. | `{ "slug": "overall_score", "label": "Overall score", "data_type": "number", "source_key": "Overall Score" }` |
 | Promote candidate | `data_type` | `visibility`, `label`, `description`. | `{ "data_type": "number", "visibility": "viewer", "label": "Overall score" }` |
 | Create metric | `slug`, `label`, `operation` | `semantic_view` defaults to `survey_responses`; use at most one of `field_id`/`source_member`, and at most one of `weight_field_id`/`weight_member`. A source is required when the operation needs one; CI operations require `confidence_level` (0.8–0.999). | `{ "slug": "negative_response_rate", "label": "Negative response rate", "source_member": "topic_sentiment", "operation": "filtered_rate", "definition": { "filter": { "operator": "equals", "value": "NEGATIVE" } } }` |
-| Create chart | `slug`, `title`, `chart_type`, `semantic_view`, `definition` | `description`, `visibility`; definition members depend on chart type. | `{ "slug": "responses_by_store_format", "title": "Responses by store format", "chart_type": "bar", "semantic_view": "survey_responses", "definition": { "dimensions": ["store_format"], "metrics": ["response_count"] } }` |
-| Chart data override | None | `filters`, `time_range`, `time_granularity`, `timezone`, `order`, `limit` only; it cannot replace the chart’s governed dimensions or metrics. | `{ "time_range": ["2026-01-01", "2026-03-31"], "time_granularity": "month", "timezone": "Asia/Hong_Kong" }` |
-| Filter options | `semantic_view`, `member` | `filters` (up to 18), optional governed `metrics` (up to 4), string-only `search`, optional `timezone`, `limit` (1–1,000), and offset `cursor` (0–1,000,000). The endpoint automatically excludes null values. | `{ "semantic_view": "survey_responses", "member": "store_format", "metrics": ["topic_sentiment_score_average"], "search": "Mall", "timezone": "Asia/Hong_Kong", "cursor": 0 }` |
+| Create chart | `slug`, `title`, `chart_type`, `semantic_view`, `definition` | `description`, `visibility`; every definition has one `metric` + `aggregation`, while dimension/time requirements depend on chart type. | `{ "slug": "responses_by_store_format", "title": "Responses by store format", "chart_type": "bar", "semantic_view": "survey_responses", "definition": { "dimensions": ["store_format"], "metric": "id", "aggregation": "count" } }` |
+| Chart data override | None | `filters`, `time_range`, `time_granularity`, `timezone`, `order`, `limit` only; it cannot replace the chart’s governed dimensions, metric, or aggregation. | `{ "time_range": ["2026-01-01", "2026-03-31"], "time_granularity": "month", "timezone": "Asia/Hong_Kong" }` |
+| Filter options | `semantic_view`, `member` | `filters` (up to 18), string-only `search`, optional `timezone`, `limit` (1–1,000), and offset `cursor` (0–1,000,000). The endpoint automatically excludes null values. `metrics` is not accepted. | `{ "semantic_view": "survey_responses", "member": "store_format", "search": "Mall", "timezone": "Asia/Hong_Kong", "cursor": 0 }` |
 | Record query | `resource` | `filters` (up to 20 typed allowlisted filters), `order` (up to 3 allowlisted fields), `page`, `size`, and optional IANA `timezone`. Survey pages are capped at 100; master-data pages at 1,000. | `{ "resource": "surveys", "filters": [{"member": "topic_sentiment", "operator": "equals", "value": "NEGATIVE"}], "size": 100 }` |
 | Export | `export_format`; exactly one of `query`, `drilldown`, or `record_query` | `export_format` is `csv` or `xlsx`; its selected object follows the relevant query model above. Record exports are live-DB queries and retain configured survey columns. | `{ "export_format": "csv", "record_query": { "resource": "surveys", "size": 100 } }` |
 | Catalog publication | None | `description` is optional release/audit text. | `{ "description": "Quarterly metric release" }` |
@@ -114,7 +150,7 @@ Swagger/ReDoc marks required JSON fields from the OpenAPI schema. The following 
 
 ### `GET /analytics/catalog`
 
-Returns the active immutable catalog the current role is allowed to use. It includes the active model version, semantic views, visible fields, visible metrics, and supported chart types. It does not reveal candidate headers, admin-only fields, raw payload keys, SQL expressions, or draft definitions.
+Returns the active immutable catalog the current role is allowed to use. It includes the active model version, semantic views, visible fields, executable `metric_options`, and supported chart types. It does not reveal candidate headers, admin-only fields, raw payload keys, SQL expressions, governed Cube metric slugs, or draft definitions.
 
 Use this endpoint before building an exploration UI. A client should only send slugs returned here to the query endpoints.
 
@@ -123,10 +159,27 @@ frontend does not need to maintain a separate handwritten compatibility table:
 
 ```json
 {
+  "model_version": 8,
+  "metric_options": {
+    "survey_topics": [
+      {
+        "field": "assignment_id",
+        "aggregation": "count",
+        "label": "Assignment Count",
+        "result_type": "number"
+      },
+      {
+        "field": "survey_id",
+        "aggregation": "distinct_count",
+        "label": "Distinct Survey Count",
+        "result_type": "number"
+      }
+    ]
+  },
   "combinations": {
     "query": {
       "max_dimensions": 3,
-      "max_metrics": 5,
+      "exact_metric_count": 1,
       "max_filters": 20,
       "requires_single_semantic_view": true,
       "members_must_belong_to_semantic_view": true,
@@ -138,9 +191,6 @@ frontend does not need to maintain a separate handwritten compatibility table:
         "semantic_view": "survey_topics",
         "grain": "one survey-to-topic assignment",
         "dimensions": ["assignment_id", "survey_id", "topic", "sentiment"],
-        "metrics": ["assignment_count", "distinct_survey_count"],
-        "default_count_metric": "assignment_count",
-        "distinct_survey_metric": "distinct_survey_count",
         "assignment_dimension": "topic",
         "response_sentiment_dimension": "topic_sentiment",
         "assignment_sentiment_dimension": "sentiment"
@@ -151,23 +201,20 @@ frontend does not need to maintain a separate handwritten compatibility table:
         "chart_type": "pie",
         "min_dimensions": 1,
         "max_dimensions": 1,
-        "min_metrics": 1,
-        "max_metrics": 1,
-        "allows_time_dimension": false,
-        "dimension_count_includes_time_dimension": true,
-        "numeric_metrics_required": true,
-        "requires_at_least_one_member": false,
-        "required_dimensions": []
+        "time_dimension": "forbidden",
+        "requires_time_granularity": false,
+        "numeric_metric_required": true,
+        "exact_metric_count": 1
       }
     ]
   }
 }
 ```
 
-The example arrays are abbreviated. The real response lists every role-visible
-dimension and metric in each semantic view, including published local members.
-The `charts` rules are generated from the same definitions used by server-side
-chart validation.
+The example arrays are abbreviated. `metric_options` is a top-level object
+keyed by semantic view; each option is a unique, role-visible, executable raw
+field/aggregation pair. The `charts` rules are generated from the same
+definitions used by server-side chart validation.
 
 ### `GET /analytics/query-combinations`
 
@@ -204,7 +251,8 @@ Example response item:
   "query": {
     "semantic_view": "survey_responses",
     "dimensions": [],
-    "metrics": ["response_count"],
+    "metric": "id",
+    "aggregation": "count",
     "filters": [],
     "time_dimension": "reported_at",
     "time_granularity": "day",
@@ -233,7 +281,8 @@ For example, `responding_stores_by_region` returns this query:
 {
   "semantic_view": "survey_responses",
   "dimensions": ["region"],
-  "metrics": ["responding_store_count"],
+  "metric": "store_key",
+  "aggregation": "distinct_count",
   "limit": 100
 }
 ```
@@ -302,7 +351,6 @@ Returns values that can populate one frontend filter control. The target `member
 {
   "semantic_view": "survey_responses",
   "member": "store_format",
-  "metrics": ["topic_sentiment_score_average"],
   "filters": [
     {"member": "topic_sentiment", "operator": "equals", "value": "NEGATIVE"}
   ],
@@ -314,7 +362,9 @@ Returns values that can populate one frontend filter control. The target `member
 
 `semantic_view` and `member` are required. `filters` is optional and can express dependent choices (for example, list stores only after choosing a store format). `search` is optional and accepted only for string fields. Use `GET /analytics/catalog/availability` first if the UI should hide dimensions containing no data at all.
 
-`metrics` is optional and accepts at most four unique, published, role-visible metrics owned by the requested semantic view. The view's fixed count metric must not be included because it is returned separately as `count`; unknown, duplicate, cross-view, or inaccessible metrics are rejected with `422`. Every response includes `metric_columns` and every option includes a `metrics` object, even when no optional metrics were requested.
+`filter-options` always returns only the option value and its matching row count.
+It does not accept `metric`, `aggregation`, or the removed `metrics` field, and
+does not return `metric_columns` or per-option metric objects.
 
 For more than 1,000 values, use `next_cursor` from the response as the next request’s `cursor`. Values are ordered by matching-row count descending, then the value ascending for stable paging. `has_more` is true when the page was full; one final request can return an empty page when the total is an exact multiple of `limit`.
 
@@ -326,20 +376,12 @@ For more than 1,000 values, use `next_cursor` from the response as the next requ
   "member": "store_format",
   "label": "Store Format",
   "data_type": "string",
-  "metric_columns": [
-    {
-      "name": "topic_sentiment_score_average",
-      "label": "Topic Sentiment Score Average",
-      "type": "number",
-      "kind": "metric"
-    }
-  ],
   "cursor": 0,
   "next_cursor": 100,
   "has_more": true,
   "values": [
-    {"value": "Mall", "count": 245, "metrics": {"topic_sentiment_score_average": 0.42}},
-    {"value": "Commercial", "count": 81, "metrics": {"topic_sentiment_score_average": 0.18}}
+    {"value": "Mall", "count": 245},
+    {"value": "Commercial", "count": 81}
   ],
   "warnings": [],
   "freshness_time": "2026-08-26T08:00:00Z"
@@ -354,18 +396,25 @@ Runs one governed aggregate query against a single semantic view. The request bo
 {
   "semantic_view": "survey_responses",
   "dimensions": ["store_name_english", "store_format"],
-  "metrics": ["response_count", "cls_average"],
+  "metric": "cls",
+  "aggregation": "average",
   "filters": [{"member": "topic_sentiment", "operator": "equals", "value": "NEGATIVE"}],
   "time_dimension": "reported_at",
   "time_range": ["2024-08-01", "2024-08-31"],
   "time_granularity": "month",
   "timezone": "Asia/Hong_Kong",
-  "order": [{"member": "response_count", "direction": "desc"}],
+  "order": [{"member": "value", "direction": "desc"}],
   "limit": 1000
 }
 ```
 
-The server validates visibility, member types, limits, filter operators, and metric dependencies before sending a short-lived role/profile token to private Cube. It returns the common aggregate response. `422` means the query cannot be expressed by the active catalog; `503` means Cube cannot currently serve it.
+The server validates visibility, member types, limits, filter operators, and
+that the selected `(metric, aggregation)` resolves to exactly one active
+governed measure before sending a short-lived role/profile token to private
+Cube. Missing `metric`/`aggregation`, the removed `metrics` array, more than
+three dimensions, an incompatible aggregation, or an unpublished/ambiguous
+pair produces `422`. It returns the common flat aggregate response; `503` means
+Cube cannot currently serve it.
 
 ### `POST /analytics/records/query`
 
@@ -411,19 +460,36 @@ Lists published charts visible to the caller in the active catalog. Each chart i
 
 ### `POST /analytics/charts/{chart_id}/data`
 
-Runs a published chart by numeric ID. The chart’s dimensions and metrics are fixed by its published definition; callers may only supply safe exploration overrides:
+Runs a published chart by numeric ID. The chart’s dimensions, metric, and aggregation are fixed by its published definition; callers may only supply safe exploration overrides:
 
 ```json
 {
   "filters": [{"member": "store_format", "operator": "in", "values": ["Mall", "Commercial"]}],
   "time_range": ["2024-08-01", "2024-08-31"],
   "time_granularity": "month",
-  "order": [{"member": "response_count", "direction": "desc"}],
+  "order": [{"member": "value", "direction": "desc"}],
   "limit": 100
 }
 ```
 
-The response contains `chart` plus the common aggregate result. Chart-specific shaping is applied: pie/donut results are top 12 categories plus `Other`; scatter uses two metrics and optional category; heatmaps use two dimensions and one metric; store maps cap output at 5,000 points. `404` is returned for a non-existent or non-visible chart.
+The response contains `chart` plus the same `schema`, flat `rows`, `row_count`,
+`warnings`, and freshness fields returned by `/analytics/query`. Pie/donut
+results are shaped to the top 12 categories plus `Other`. The supported chart
+matrix is strict:
+
+| Query shape | Compatible chart types |
+| --- | --- |
+| No time, 0 dimensions | `kpi`, `table` |
+| No time, 1 dimension | `bar`, `column`, `pie`, `donut`, `table` |
+| No time, 2 dimensions | `stacked_bar`, `heatmap`, `table` |
+| No time, 3 dimensions | `table` |
+| Granular time, 0–1 ordinary dimension | `line`, `area`, `table` |
+| Granular time, 2–3 ordinary dimensions | `table` |
+
+`line` and `area` require both a time dimension and time granularity. Except
+for `table` and `kpi`, the metric result must be numeric. `scatter` and
+`store_map` are not supported chart types. `404` is returned for a non-existent
+or non-visible chart.
 
 ### `POST /analytics/drilldown`
 
@@ -450,7 +516,8 @@ Creates an asynchronous CSV or XLSX export. The body uses **exactly one** of an 
   "query": {
     "semantic_view": "survey_responses",
     "dimensions": ["region"],
-    "metrics": ["response_count"]
+    "metric": "id",
+    "aggregation": "count"
   }
 }
 ```
@@ -534,7 +601,14 @@ Supported operations include count/distinct/filtered count and rates for all typ
 
 ### Charts
 
-A chart body contains `slug`, `title`, optional `description`, `chart_type`, `semantic_view`, a governed `definition`, and `visibility`. The definition names published dimensions/metrics and may include filters, time settings, ordering, and a bounded limit. Chart validation enforces the member visibility/type rules and chart shape: KPI has one metric; pie/donut one dimension + one metric; scatter two metrics plus optional category; heatmap two dimensions + one metric; and store map requires store identity/location plus one metric and at most 5,000 points.
+A chart body contains `slug`, `title`, optional `description`, `chart_type`,
+`semantic_view`, a governed `definition`, and `visibility`. The definition names
+0–3 dimensions and exactly one raw `metric` field plus `aggregation`; it may
+also include filters, time settings, ordering, and a bounded limit. Validation
+uses the strict chart matrix documented under chart data. In particular,
+`line`/`area` require a granular time dimension, two ordinary dimensions map
+only to `stacked_bar`, `heatmap`, or `table`, and three ordinary dimensions map
+only to `table`. `scatter` and `store_map` are no longer accepted.
 
 | Endpoint | Detailed behaviour |
 | --- | --- |

@@ -66,6 +66,12 @@ def _catalog() -> SemanticCatalog:
     return SemanticCatalog(
         fields=[
             CatalogField(
+                slug="id",
+                label="Response ID",
+                semantic_view="survey_responses",
+                data_type=FieldType.NUMBER,
+            ),
+            CatalogField(
                 slug="store_name",
                 label="Store",
                 semantic_view="survey_responses",
@@ -78,6 +84,7 @@ def _catalog() -> SemanticCatalog:
                 label="Responses",
                 semantic_view="survey_responses",
                 aggregation=Aggregation.COUNT,
+                source_field="id",
             ),
         ],
     )
@@ -153,7 +160,20 @@ def test_openapi_describes_every_analytics_endpoint() -> None:
             assert operation["description"]
 
     models = schema["components"]["schemas"]
-    assert models["QuerySpec"]["required"] == ["semantic_view"]
+    assert models["QuerySpec"]["required"] == [
+        "semantic_view",
+        "metric",
+        "aggregation",
+    ]
+    assert models["QueryAggregation"]["enum"] == [
+        "count",
+        "distinct_count",
+        "sum",
+        "average",
+        "min",
+        "max",
+        "median",
+    ]
     for name in (
         "AnalyticsCatalogResponse",
         "CatalogCombinationsOutput",
@@ -201,7 +221,7 @@ def test_catalog_exposes_machine_readable_member_and_chart_combinations(
     db = FakeDb()
     catalog = analytics._catalog_from_records([], [])
     monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
-    monkeypatch.setattr(analytics, "_catalog", lambda db, role: catalog)
+    monkeypatch.setattr(analytics, "_catalog_from_version", lambda version, role: catalog)
     monkeypatch.setattr(analytics, "_active_model_version", lambda db: None)
 
     response = _client(db).get("/analytics/catalog")
@@ -211,7 +231,7 @@ def test_catalog_exposes_machine_readable_member_and_chart_combinations(
     combinations = payload["combinations"]
     assert combinations["query"] == {
         "max_dimensions": 3,
-        "max_metrics": 5,
+        "exact_metric_count": 1,
         "max_filters": 20,
         "requires_single_semantic_view": True,
         "members_must_belong_to_semantic_view": True,
@@ -227,13 +247,10 @@ def test_catalog_exposes_machine_readable_member_and_chart_combinations(
         }
         for semantic_view in payload["semantic_views"]
     }
-    metrics_by_view = {
-        semantic_view: {
-            metric["slug"]
-            for metric in payload["metrics"]
-            if metric["semantic_view"] == semantic_view
-        }
-        for semantic_view in payload["semantic_views"]
+    assert set(payload["metric_options"]) == set(payload["semantic_views"])
+    assert {tuple((item["field"], item["aggregation"])) for item in payload["metric_options"]["survey_responses"]} >= {
+        ("id", "count"),
+        ("cls", "average"),
     }
     view_rules = {
         item["semantic_view"]: item
@@ -242,39 +259,28 @@ def test_catalog_exposes_machine_readable_member_and_chart_combinations(
     assert set(view_rules) == set(payload["semantic_views"])
     for semantic_view, rule in view_rules.items():
         assert set(rule["dimensions"]) == fields_by_view[semantic_view]
-        assert set(rule["metrics"]) == metrics_by_view[semantic_view]
-        assert rule["distinct_survey_metric"] == "distinct_survey_count"
         assert rule["response_sentiment_dimension"] == "topic_sentiment"
 
-    assert view_rules["survey_responses"]["default_count_metric"] == "response_count"
     assert view_rules["survey_responses"]["assignment_dimension"] is None
     assert view_rules["survey_responses"]["assignment_sentiment_dimension"] is None
     assert "topic" not in view_rules["survey_responses"]["dimensions"]
-    assert "assignment_count" not in view_rules["survey_responses"]["metrics"]
 
-    assert view_rules["survey_topics"]["default_count_metric"] == "assignment_count"
     assert view_rules["survey_topics"]["assignment_dimension"] == "topic"
     assert view_rules["survey_topics"]["assignment_sentiment_dimension"] == "sentiment"
     assert "topic" in view_rules["survey_topics"]["dimensions"]
-    assert "response_count" not in view_rules["survey_topics"]["metrics"]
 
     chart_rules = {
         item["chart_type"]: item for item in combinations["charts"]
     }
     assert set(chart_rules) == set(payload["chart_types"])
     assert chart_rules["kpi"]["min_dimensions"] == 0
-    assert chart_rules["kpi"]["max_metrics"] == 1
-    assert chart_rules["line"]["allows_time_dimension"] is True
+    assert chart_rules["kpi"]["exact_metric_count"] == 1
+    assert chart_rules["line"]["time_dimension"] == "required"
     assert chart_rules["pie"]["min_dimensions"] == 1
     assert chart_rules["pie"]["max_dimensions"] == 1
-    assert chart_rules["pie"]["min_metrics"] == 1
-    assert chart_rules["pie"]["max_metrics"] == 1
-    assert set(chart_rules["store_map"]["required_dimensions"]) == {
-        "store_key",
-        "store_name",
-        "latitude",
-        "longitude",
-    }
+    assert chart_rules["pie"]["exact_metric_count"] == 1
+    assert "scatter" not in chart_rules
+    assert "store_map" not in chart_rules
 
 
 def test_query_combinations_return_finite_executable_templates(monkeypatch) -> None:
@@ -331,7 +337,8 @@ def test_query_combinations_return_finite_executable_templates(monkeypatch) -> N
     )
     assert responding_stores["query"]["semantic_view"] == "survey_responses"
     assert responding_stores["query"]["dimensions"] == ["region"]
-    assert responding_stores["query"]["metrics"] == ["responding_store_count"]
+    assert responding_stores["query"]["metric"] == "store_key"
+    assert responding_stores["query"]["aggregation"] == "distinct_count"
 
 
 def test_query_combinations_can_be_filtered_by_semantic_view(monkeypatch) -> None:
@@ -460,6 +467,12 @@ def test_filter_options_return_non_null_governed_values(monkeypatch) -> None:
     catalog = SemanticCatalog(
         fields=[
             CatalogField(
+                slug="id",
+                label="Response ID",
+                semantic_view="survey_responses",
+                data_type=FieldType.NUMBER,
+            ),
+            CatalogField(
                 slug="store_format",
                 label="Store format",
                 semantic_view="survey_responses",
@@ -478,6 +491,7 @@ def test_filter_options_return_non_null_governed_values(monkeypatch) -> None:
                 label="Response count",
                 semantic_view="survey_responses",
                 aggregation=Aggregation.COUNT,
+                source_field="id",
             )
         ],
     )
@@ -516,8 +530,8 @@ def test_filter_options_return_non_null_governed_values(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert response.json()["values"] == [{"value": "Mall", "count": 12, "metrics": {}}]
-    assert response.json()["metric_columns"] == []
+    assert response.json()["values"] == [{"value": "Mall", "count": 12}]
+    assert "metric_columns" not in response.json()
     assert response.json()["cursor"] == 1000
     assert response.json()["next_cursor"] == 1001
     assert response.json()["has_more"] is True
@@ -551,6 +565,12 @@ def test_frontend_dashboard_analytics_discovery_and_chart_flow(monkeypatch) -> N
     catalog = SemanticCatalog(
         fields=[
             CatalogField(
+                slug="id",
+                label="Response ID",
+                semantic_view="survey_responses",
+                data_type=FieldType.NUMBER,
+            ),
+            CatalogField(
                 slug="store_format",
                 label="Store format",
                 semantic_view="survey_responses",
@@ -563,6 +583,7 @@ def test_frontend_dashboard_analytics_discovery_and_chart_flow(monkeypatch) -> N
                 label="Response count",
                 semantic_view="survey_responses",
                 aggregation=Aggregation.COUNT,
+                source_field="id",
             )
         ],
     )
@@ -574,7 +595,8 @@ def test_frontend_dashboard_analytics_discovery_and_chart_flow(monkeypatch) -> N
         "semantic_view": "survey_responses",
         "definition": {
             "dimensions": ["store_format"],
-            "metrics": ["response_count"],
+            "metric": "id",
+            "aggregation": "count",
             "limit": 100,
         },
         "visibility": "viewer",
@@ -599,7 +621,7 @@ def test_frontend_dashboard_analytics_discovery_and_chart_flow(monkeypatch) -> N
 
     monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
     monkeypatch.setattr(config, "DEPLOYMENT_PROFILE", "wtchk_cls")
-    monkeypatch.setattr(analytics, "_catalog", lambda db, role: catalog)
+    monkeypatch.setattr(analytics, "_catalog_from_version", lambda version, role: catalog)
     monkeypatch.setattr(analytics, "_active_model_version", lambda db: version)
     monkeypatch.setattr(analytics, "_cube_client", lambda: cube)
     monkeypatch.setattr(
@@ -629,7 +651,10 @@ def test_frontend_dashboard_analytics_discovery_and_chart_flow(monkeypatch) -> N
     catalog_response = client.get("/analytics/catalog")
     assert catalog_response.status_code == 200
     assert catalog_response.json()["model_version"] == 7
-    assert catalog_response.json()["fields"][0]["slug"] == "store_format"
+    assert {item["slug"] for item in catalog_response.json()["fields"]} == {
+        "id",
+        "store_format",
+    }
 
     availability_response = client.get(
         "/analytics/catalog/availability",
@@ -672,7 +697,7 @@ def test_frontend_dashboard_analytics_discovery_and_chart_flow(monkeypatch) -> N
     assert data_response.status_code == 200
     assert data_response.json()["chart"]["slug"] == chart["slug"]
     assert data_response.json()["rows"] == [
-        {"store_format": "Mall", "response_count": 12}
+        {"store_format": "Mall", "value": 12}
     ]
     assert data_response.json()["model_version"] == 7
     assert cube.calls[1][0]["filters"] == [
@@ -694,6 +719,37 @@ def test_feature_gate_is_evaluated_dynamically(monkeypatch) -> None:
     assert response.json()["detail"] == "Analytics is not enabled for this profile"
 
 
+def test_aggregate_endpoints_reject_legacy_or_missing_metric_contract(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
+    client = _client(FakeDb())
+
+    legacy = client.post(
+        "/analytics/query",
+        json={
+            "semantic_view": "survey_responses",
+            "metrics": ["response_count"],
+        },
+    )
+    missing = client.post(
+        "/analytics/query",
+        json={"semantic_view": "survey_responses"},
+    )
+    filter_options = client.post(
+        "/analytics/filter-options",
+        json={
+            "semantic_view": "survey_responses",
+            "member": "store_format",
+            "metrics": ["response_count"],
+        },
+    )
+
+    assert legacy.status_code == 422
+    assert missing.status_code == 422
+    assert filter_options.status_code == 422
+
+
 def test_query_compiles_catalog_members_and_returns_chart_ready_rows(monkeypatch) -> None:
     db = FakeDb()
     cube = FakeCube(
@@ -709,7 +765,7 @@ def test_query_compiles_catalog_members_and_returns_chart_ready_rows(monkeypatch
     )
     monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
     monkeypatch.setattr(config, "DEPLOYMENT_PROFILE", "wtchk_cls")
-    monkeypatch.setattr(analytics, "_catalog", lambda db, role: _catalog())
+    monkeypatch.setattr(analytics, "_catalog_from_version", lambda version, role: _catalog())
     monkeypatch.setattr(analytics, "_active_model_version", lambda db: None)
     monkeypatch.setattr(analytics, "_cube_client", lambda: cube)
 
@@ -718,7 +774,8 @@ def test_query_compiles_catalog_members_and_returns_chart_ready_rows(monkeypatch
         json={
             "semantic_view": "survey_responses",
             "dimensions": ["store_name"],
-            "metrics": ["response_count"],
+            "metric": "id",
+            "aggregation": "count",
             "limit": 100,
         },
     )
@@ -727,12 +784,27 @@ def test_query_compiles_catalog_members_and_returns_chart_ready_rows(monkeypatch
     assert response.headers["cache-control"] == "no-store, private"
     body = response.json()
     assert body["model_version"] == 0
-    assert body["rows"] == [{"store_name": "Central", "response_count": 2}]
-    assert body["columns"] == [
-        {"name": "store_name", "label": "Store", "type": "string", "kind": "dimension"},
-        {"name": "response_count", "label": "Responses", "type": "number", "kind": "metric"},
-    ]
-    assert body["confidence"] == []
+    assert body["semantic_view"] == "survey_responses"
+    assert body["rows"] == [{"store_name": "Central", "value": 2}]
+    assert body["row_count"] == 1
+    assert body["schema"] == {
+        "dimensions": [
+            {
+                "field": "store_name",
+                "label": "Store",
+                "type": "string",
+                "key": "store_name",
+            }
+        ],
+        "time_dimension": None,
+        "metric": {
+            "field": "id",
+            "aggregation": "count",
+            "label": "Responses",
+            "type": "number",
+            "key": "value",
+        },
+    }
     assert body["freshness_time"] == "2026-08-25T12:00:00Z"
     assert cube.calls[0][0] == {
         "dimensions": ["survey_responses.store_name"],
@@ -741,6 +813,41 @@ def test_query_compiles_catalog_members_and_returns_chart_ready_rows(monkeypatch
     }
     assert cube.calls[0][1]["profile_id"] == "wtchk_cls"
     assert db.commits >= 2
+
+
+def test_query_rejects_catalog_drift_during_cube_execution(monkeypatch) -> None:
+    db = FakeDb()
+    original = SimpleNamespace(id=17, catalog_version=7, catalog_snapshot={})
+    replacement = SimpleNamespace(id=18, catalog_version=8, catalog_snapshot={})
+    versions = iter((original, replacement))
+    cube = FakeCube(
+        {
+            "data": [{"survey_responses.response_count": "2"}],
+            "lastRefreshTime": "2026-08-25T12:00:00Z",
+        }
+    )
+    monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
+    monkeypatch.setattr(config, "DEPLOYMENT_PROFILE", "wtchk_cls")
+    monkeypatch.setattr(analytics, "_active_model_version", lambda db: next(versions))
+    monkeypatch.setattr(analytics, "_catalog_from_version", lambda version, role: _catalog())
+    monkeypatch.setattr(analytics, "_cube_client", lambda: cube)
+
+    response = _client(db).post(
+        "/analytics/query",
+        json={
+            "semantic_view": "survey_responses",
+            "metric": "id",
+            "aggregation": "count",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == {
+        "code": "analytics_catalog_changed",
+        "message": "Analytics catalog changed; retry the query",
+    }
+    assert db.added[-1].status == "failed"
+    assert db.added[-1].model_version_id == original.id
 
 
 def test_response_sentiment_query_with_hong_kong_timezone_reaches_cube(
@@ -772,7 +879,8 @@ def test_response_sentiment_query_with_hong_kong_timezone_reaches_cube(
         json={
             "semantic_view": "survey_responses",
             "dimensions": ["topic_sentiment"],
-            "metrics": ["response_count"],
+            "metric": "id",
+            "aggregation": "count",
             "timezone": "Asia/Hong_Kong",
             "limit": 100,
         },
@@ -780,7 +888,7 @@ def test_response_sentiment_query_with_hong_kong_timezone_reaches_cube(
 
     assert response.status_code == 200
     assert response.json()["rows"] == [
-        {"topic_sentiment": "POSITIVE", "response_count": 6}
+        {"topic_sentiment": "POSITIVE", "value": 6}
     ]
     assert cube.calls[0][0] == {
         "dimensions": ["survey_responses.topic_sentiment"],
@@ -806,7 +914,8 @@ def test_cube_unavailable_is_isolated_to_an_analytics_503(monkeypatch) -> None:
         "/analytics/query",
         json={
             "semantic_view": "survey_responses",
-            "metrics": ["response_count"],
+            "metric": "id",
+            "aggregation": "count",
         },
     )
 
@@ -830,7 +939,11 @@ def test_cube_query_errors_do_not_expose_generated_sql(monkeypatch) -> None:
 
     response = _client(db).post(
         "/analytics/query",
-        json={"semantic_view": "survey_responses", "metrics": ["response_count"]},
+        json={
+            "semantic_view": "survey_responses",
+            "metric": "id",
+            "aggregation": "count",
+        },
     )
 
     assert response.status_code == 422
@@ -931,13 +1044,21 @@ def test_chart_rollups_are_stable_structured_and_mark_non_additive() -> None:
             "semantic_view": "survey_responses",
             "definition": {
                 "dimensions": ["store_name"],
-                "metrics": ["median_score"],
+                "metric": "score",
+                "aggregation": "median",
                 "time_dimension": "reported_at",
                 "time_granularity": "month",
             },
         }
     ]
-    metrics = [{"slug": "median_score", "operation": "median"}]
+    metrics = [
+        {
+            "slug": "median_score",
+            "semanticView": "survey_responses",
+            "sourceField": "score",
+            "operation": "median",
+        }
+    ]
 
     first = analytics._chart_rollups(charts, metrics)
 
@@ -964,11 +1085,12 @@ def test_chart_rollups_are_stable_structured_and_mark_non_additive() -> None:
                 "semantic_view": "survey_responses",
                 "definition": {
                     "dimensions": ["store_name"],
-                    "metrics": ["response_count"],
+                    "metric": "id",
+                    "aggregation": "count",
                 },
             }
         ],
-        [{"slug": "response_count", "operation": "count"}],
+        [],
     )
     assert untimed[0]["timeDimension"] is None
     assert "partitionGranularity" not in untimed[0]
@@ -1110,17 +1232,19 @@ def test_temporal_min_metric_returns_temporal_column_metadata() -> None:
         ],
     )
     query = analytics.QuerySpec(
-        semantic_view="survey_responses", metrics=["first_visit"]
+        semantic_view="survey_responses",
+        metric="visited_at",
+        aggregation="min",
     )
 
-    assert analytics._column_metadata(query, catalog) == [
-        {
-            "name": "first_visit",
-            "label": "First visit",
-            "type": "date",
-            "kind": "metric",
-        }
-    ]
+    schema = analytics._query_schema(query, catalog, "viewer")
+    assert schema["metric"] == {
+        "field": "visited_at",
+        "aggregation": "min",
+        "label": "First visit",
+        "type": "date",
+        "key": "value",
+    }
 
 
 def test_admin_can_define_governed_metrics_over_fixed_core_members(monkeypatch) -> None:
@@ -1152,6 +1276,7 @@ def test_admin_can_define_governed_metrics_over_fixed_core_members(monkeypatch) 
 def test_field_archive_dependency_scan_covers_chart_filters_time_and_order() -> None:
     definition = {
         "dimensions": ["store_name"],
+        "metric": "raw_score",
         "time_dimension": "reported_at",
         "filters": [
             {"member": "topic_sentiment", "operator": "equals", "value": "ok"}
@@ -1173,19 +1298,20 @@ def test_pie_contract_forces_top_twelve_and_uses_governed_other_value() -> None:
         "semantic_view": "survey_responses",
         "definition": {
             "dimensions": ["store_name"],
-            "metrics": ["response_count"],
+            "metric": "id",
+            "aggregation": "count",
             "limit": 1_000,
         },
     }
     query, cube_query = analytics._chart_query(chart, None, _catalog(), "viewer")
 
     assert query.limit == 13
-    assert query.order[0].member == "response_count"
+    assert query.order[0].member == "value"
     assert query.order[0].direction == "desc"
     assert cube_query["limit"] == 13
     response = {
         "rows": [
-            {"store_name": f"Store {index}", "response_count": 20 - index}
+            {"store_name": f"Store {index}", "value": 20 - index}
             for index in range(12)
         ]
     }
@@ -1194,20 +1320,17 @@ def test_pie_contract_forces_top_twelve_and_uses_governed_other_value() -> None:
         response,
         other_value=7,
         other_response={
-            "confidence": [{"metric": "response_count", "row_index": 0}],
-            "warnings": [{"code": "tail_warning", "row_index": 0}],
+            "warnings": ["tail query warning"],
         },
     )
     assert len(shaped["rows"]) == 13
-    assert shaped["rows"][-1] == {"store_name": "Other", "response_count": 7}
-    assert shaped["confidence"][-1]["row_index"] == 12
-    assert shaped["confidence"][-1]["category"] == "Other"
-    assert shaped["warnings"][-1]["row_index"] == 12
+    assert shaped["rows"][-1] == {"store_name": "Other", "value": 7}
+    assert shaped["warnings"][-1] == "tail query warning"
 
     zero_tail = analytics._shape_chart_rows(chart, response, other_value=0)
     assert zero_tail["rows"][-1] == {
         "store_name": "Other",
-        "response_count": 0,
+        "value": 0,
     }
 
 
@@ -1236,11 +1359,12 @@ def test_chart_runtime_rejects_temporal_metric_in_numeric_plot() -> None:
         "semantic_view": "survey_responses",
         "definition": {
             "dimensions": ["reported_at"],
-            "metrics": ["latest_response"],
+            "metric": "reported_at",
+            "aggregation": "max",
         },
     }
 
-    with pytest.raises(AnalyticsValidationError, match="numeric metrics"):
+    with pytest.raises(AnalyticsValidationError, match="numeric metric"):
         analytics._chart_query(chart, None, temporal_catalog, "viewer")
 
 

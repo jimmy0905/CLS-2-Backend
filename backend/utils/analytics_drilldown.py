@@ -17,10 +17,9 @@ from utils.analytics import (
     CatalogField,
     FieldType,
     FilterSpec,
-    QuerySpec,
     SemanticCatalog,
     validate_identifier,
-    validate_query,
+    validate_query_fields,
 )
 from utils.utc import as_timezone, resolve_timezone
 
@@ -259,22 +258,21 @@ def build_drilldown_statement(
 ) -> Select:
     fields: dict[str, CatalogField] = {}
     for slug in spec.fields:
-        validate_query(
-            QuerySpec(semantic_view=spec.semantic_view, dimensions=[slug], limit=1),
-            catalog,
-            role,
+        validate_query_fields(
+            semantic_view=spec.semantic_view,
+            dimensions=[slug],
+            filters=[],
+            catalog=catalog,
+            role=role,
         )
         fields[slug] = catalog.field(slug, spec.semantic_view)
     if spec.filters:
-        validate_query(
-            QuerySpec(
-                semantic_view=spec.semantic_view,
-                dimensions=[spec.fields[0]],
-                filters=spec.filters,
-                limit=1,
-            ),
-            catalog,
-            role,
+        validate_query_fields(
+            semantic_view=spec.semantic_view,
+            dimensions=[spec.fields[0]],
+            filters=spec.filters,
+            catalog=catalog,
+            role=role,
         )
 
     selected = [_expression(field, raw_fields).label(slug) for slug, field in fields.items()]

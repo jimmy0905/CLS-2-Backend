@@ -1,12 +1,26 @@
 # Legacy endpoint to Cube query book
 
-This document maps every legacy dashboard read endpoint to a governed analytics
-request. The requests are sent to `POST /analytics/query`; they use published
-semantic-view and member slugs, never raw SQL or Cube member names.
+This document preserves the pre-0012 mapping of legacy dashboard endpoints for
+historical parity work. The old examples containing `metrics: []` deliberately
+show the retired multi-metric contract and are **not executable**. For current,
+ready-to-send single-metric bodies, use
+[Dashboard analytics migration](DASHBOARD_ANALYTICS_MIGRATION.md).
 
-The examples are valid request bodies. Add the active dashboard filters to the
-`filters` array as described below. All requests require the normal application
-access token.
+The current `POST /analytics/query` contract requires 0–3 `dimensions`, one raw
+`metric` field, and one `aggregation`; the aggregate is returned under `value`.
+For example:
+
+```json
+{
+  "semantic_view": "survey_responses",
+  "dimensions": ["topic_sentiment"],
+  "metric": "id",
+  "aggregation": "count",
+  "order": [{"member": "value", "direction": "desc"}]
+}
+```
+
+All current requests require the normal application access token.
 
 ```text
 POST http://localhost:8000/wtchk/api/analytics/query
@@ -56,7 +70,7 @@ model.
 
 Each query below is the default data contract for the graph named here. The
 default chart objects are seeded by Alembic revision
-`0011_default_analytics_charts`. The frontend should load the published
+`0012_single_metric_charts`. The frontend should load the published
 chart definition from
 `GET /analytics/charts/published` and call
 `POST /analytics/charts/{chart_id}/data`; the raw `POST /analytics/query` body
@@ -103,7 +117,12 @@ The `total_count_for_option` and zero-fill requests documented below are graph
 support data. They should not be rendered as additional series unless the
 product explicitly wants a comparison or tooltip for the selected option.
 
-## Dashboard endpoint replacements
+## Historical pre-0012 request examples
+
+The examples in this section are retained solely to explain how the legacy
+multi-series responses were calculated. Split them into the current
+single-metric requests documented in `DASHBOARD_ANALYTICS_MIGRATION.md`; sending
+these `metrics` arrays now returns `422`.
 
 ### `GET /dashboard/sentiment-distribution`
 
@@ -317,7 +336,7 @@ Default graph: bar chart.
 The `assignment_count` value is the old total count for an unfiltered topic
 query. For a selected topic filter, calculate the old
 `total_count_for_option` with `POST /analytics/filter-options` using
-`semantic_view: "survey_topics"`, `member: "topic"`, `metrics: []`, and every
+`semantic_view: "survey_topics"`, `member: "topic"`, and every
 other active filter, but omit the topic filter itself. Fetch all topic master
 values with the record query in the appendix and zero-fill groups absent from
 the Cube result.
@@ -444,11 +463,22 @@ The governed API returns a common aggregate envelope:
 ```json
 {
   "query_id": "…",
-  "model_version": 4,
+  "model_version": 8,
+  "semantic_view": "survey_responses",
   "timezone": "UTC",
-  "columns": [],
-  "rows": [],
-  "confidence": [],
+  "schema": {
+    "dimensions": [],
+    "time_dimension": null,
+    "metric": {
+      "field": "id",
+      "aggregation": "count",
+      "label": "Response Count",
+      "type": "number",
+      "key": "value"
+    }
+  },
+  "rows": [{"value": 120}],
+  "row_count": 1,
   "warnings": [],
   "freshness_time": "…"
 }

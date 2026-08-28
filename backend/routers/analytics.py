@@ -43,13 +43,15 @@ from utils.analytics import (
     FilterSpec,
     MAX_DIMENSIONS,
     MAX_FILTERS,
-    MAX_METRICS,
     OrderSpec,
+    QueryAggregation,
     QuerySpec,
     SemanticCatalog,
     Visibility,
     chart_combination_rules,
     compile_cube_query,
+    metric_options,
+    resolve_query_metric,
     validate_chart_definition,
     validate_identifier,
     validate_metric,
@@ -89,7 +91,7 @@ _CHART_TYPES = tuple(
 # frontend and integration clients without exposing Cube member names or SQL.
 _ENDPOINT_DESCRIPTIONS = {
     "viewer_catalog": "Return the active immutable catalog visible to the current role. "
-    "It includes published fields and metrics plus machine-readable semantic-view, "
+    "It includes published fields and simple metric options plus machine-readable semantic-view, "
     "query-limit, and chart-shape combination rules. Draft definitions, source keys, "
     "and raw payload fields are never exposed.",
     "viewer_availability": "Report field-level non-null counts and availability rates "
@@ -204,11 +206,11 @@ _ASSIGNMENT_AVAILABILITY_ALIASES = {
     "sentiment": "assignment_sentiment",
     "department": "department_name",
 }
-_FILTER_OPTION_COUNT_METRICS = {
-    "survey_responses": "response_count",
-    "survey_topics": "assignment_count",
-    "survey_departments": "assignment_count",
-    "survey_keywords": "assignment_count",
+_FILTER_OPTION_COUNT_FIELDS = {
+    "survey_responses": "id",
+    "survey_topics": "assignment_id",
+    "survey_departments": "assignment_id",
+    "survey_keywords": "assignment_id",
 }
 _SEMANTIC_VIEW_GRAINS = {
     "survey_responses": "one non-deleted survey response",
@@ -239,7 +241,8 @@ _QUERY_COMBINATION_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "description": "Count non-deleted survey responses.",
         "query": {
             "semantic_view": "survey_responses",
-            "metrics": ["response_count"],
+            "metric": "id",
+            "aggregation": "count",
             "limit": 100,
         },
         "allowed_overrides": _COMMON_QUERY_OVERRIDES,
@@ -251,7 +254,8 @@ _QUERY_COMBINATION_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "query": {
             "semantic_view": "survey_responses",
             "dimensions": ["topic_sentiment"],
-            "metrics": ["response_count"],
+            "metric": "id",
+            "aggregation": "count",
             "limit": 100,
         },
         "allowed_overrides": _COMMON_QUERY_OVERRIDES,
@@ -263,7 +267,8 @@ _QUERY_COMBINATION_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "query": {
             "semantic_view": "survey_responses",
             "dimensions": ["store_format"],
-            "metrics": ["response_count"],
+            "metric": "id",
+            "aggregation": "count",
             "limit": 100,
         },
         "allowed_overrides": _COMMON_QUERY_OVERRIDES,
@@ -274,7 +279,8 @@ _QUERY_COMBINATION_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "description": "Count distinct stores having at least one matching response.",
         "query": {
             "semantic_view": "survey_responses",
-            "metrics": ["responding_store_count"],
+            "metric": "store_key",
+            "aggregation": "distinct_count",
             "limit": 100,
         },
         "allowed_overrides": _COMMON_QUERY_OVERRIDES,
@@ -286,7 +292,8 @@ _QUERY_COMBINATION_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "query": {
             "semantic_view": "survey_responses",
             "dimensions": ["region"],
-            "metrics": ["responding_store_count"],
+            "metric": "store_key",
+            "aggregation": "distinct_count",
             "limit": 100,
         },
         "allowed_overrides": _COMMON_QUERY_OVERRIDES,
@@ -298,7 +305,8 @@ _QUERY_COMBINATION_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "query": {
             "semantic_view": "survey_responses",
             "dimensions": ["store_format"],
-            "metrics": ["responding_store_count"],
+            "metric": "store_key",
+            "aggregation": "distinct_count",
             "limit": 100,
         },
         "allowed_overrides": _COMMON_QUERY_OVERRIDES,
@@ -310,7 +318,8 @@ _QUERY_COMBINATION_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "query": {
             "semantic_view": "survey_responses",
             "dimensions": ["channel_name"],
-            "metrics": ["response_count"],
+            "metric": "id",
+            "aggregation": "count",
             "limit": 100,
         },
         "allowed_overrides": _COMMON_QUERY_OVERRIDES,
@@ -322,7 +331,8 @@ _QUERY_COMBINATION_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "query": {
             "semantic_view": "survey_responses",
             "dimensions": [],
-            "metrics": ["response_count"],
+            "metric": "id",
+            "aggregation": "count",
             "time_dimension": "reported_at",
             "time_granularity": "day",
             "limit": 100,
@@ -336,7 +346,8 @@ _QUERY_COMBINATION_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "query": {
             "semantic_view": "survey_responses",
             "dimensions": ["topic_sentiment"],
-            "metrics": ["response_count"],
+            "metric": "id",
+            "aggregation": "count",
             "time_dimension": "reported_at",
             "time_granularity": "day",
             "limit": 100,
@@ -350,7 +361,8 @@ _QUERY_COMBINATION_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "query": {
             "semantic_view": "survey_responses",
             "dimensions": ["store_format"],
-            "metrics": ["cls_average"],
+            "metric": "cls",
+            "aggregation": "average",
             "limit": 100,
         },
         "allowed_overrides": _COMMON_QUERY_OVERRIDES,
@@ -370,7 +382,8 @@ _QUERY_COMBINATION_DEFINITIONS: tuple[dict[str, Any], ...] = (
                 "query": {
                     "semantic_view": semantic_view,
                     "dimensions": [dimension],
-                    "metrics": ["assignment_count"],
+                    "metric": "assignment_id",
+                    "aggregation": "count",
                     "limit": 100,
                 },
                 "allowed_overrides": _COMMON_QUERY_OVERRIDES,
@@ -382,7 +395,8 @@ _QUERY_COMBINATION_DEFINITIONS: tuple[dict[str, Any], ...] = (
                 "query": {
                     "semantic_view": semantic_view,
                     "dimensions": ["sentiment"],
-                    "metrics": ["assignment_count"],
+                    "metric": "assignment_id",
+                    "aggregation": "count",
                     "limit": 100,
                 },
                 "allowed_overrides": _COMMON_QUERY_OVERRIDES,
@@ -396,7 +410,8 @@ _QUERY_COMBINATION_DEFINITIONS: tuple[dict[str, Any], ...] = (
                 "query": {
                     "semantic_view": semantic_view,
                     "dimensions": [dimension],
-                    "metrics": ["distinct_survey_count"],
+                    "metric": "survey_id",
+                    "aggregation": "distinct_count",
                     "limit": 100,
                 },
                 "allowed_overrides": _COMMON_QUERY_OVERRIDES,
@@ -408,7 +423,8 @@ _QUERY_COMBINATION_DEFINITIONS: tuple[dict[str, Any], ...] = (
                 "query": {
                     "semantic_view": semantic_view,
                     "dimensions": [],
-                    "metrics": ["assignment_count"],
+                    "metric": "assignment_id",
+                    "aggregation": "count",
                     "time_dimension": "reported_at",
                     "time_granularity": "day",
                     "limit": 100,
@@ -536,7 +552,7 @@ def _core_metric(
 
 
 _CORE_METRICS: tuple[CatalogMetric, ...] = (
-    _core_metric("response_count", Aggregation.COUNT),
+    _core_metric("response_count", Aggregation.COUNT, "id"),
     _core_metric("distinct_survey_count", Aggregation.DISTINCT_COUNT, "id"),
     _core_metric(
         "responding_store_count",
@@ -580,7 +596,9 @@ _CORE_METRICS: tuple[CatalogMetric, ...] = (
 for _view in ("survey_topics", "survey_departments", "survey_keywords"):
     _prefix = _view.removeprefix("survey_").removesuffix("s")
     _CORE_METRICS += (
-        _core_metric("assignment_count", Aggregation.COUNT, semantic_view=_view),
+        _core_metric(
+            "assignment_count", Aggregation.COUNT, "assignment_id", semantic_view=_view
+        ),
         _core_metric(
             "distinct_survey_count",
             Aggregation.DISTINCT_COUNT,
@@ -618,17 +636,16 @@ class CatalogFieldOutput(_StrictOutput):
     visibility: Visibility
 
 
-class CatalogMetricOutput(_StrictOutput):
-    slug: str
+class MetricOptionOutput(_StrictOutput):
+    field: str
+    aggregation: QueryAggregation
     label: str
-    semantic_view: str
-    operation: Aggregation
-    visibility: Visibility
+    result_type: FieldType
 
 
 class QueryCombinationRulesOutput(_StrictOutput):
     max_dimensions: int
-    max_metrics: int
+    exact_metric_count: Literal[1]
     max_filters: int
     requires_single_semantic_view: bool
     members_must_belong_to_semantic_view: bool
@@ -640,9 +657,6 @@ class SemanticViewCombinationOutput(_StrictOutput):
     semantic_view: str
     grain: str
     dimensions: tuple[str, ...]
-    metrics: tuple[str, ...]
-    default_count_metric: str | None
-    distinct_survey_metric: str | None
     assignment_dimension: str | None
     response_sentiment_dimension: str
     assignment_sentiment_dimension: str | None
@@ -652,13 +666,10 @@ class ChartCombinationOutput(_StrictOutput):
     chart_type: str
     min_dimensions: int
     max_dimensions: int
-    min_metrics: int
-    max_metrics: int
-    allows_time_dimension: bool
-    dimension_count_includes_time_dimension: bool
-    numeric_metrics_required: bool
-    requires_at_least_one_member: bool
-    required_dimensions: tuple[str, ...]
+    time_dimension: Literal["required", "optional", "forbidden"]
+    requires_time_granularity: bool
+    numeric_metric_required: bool
+    exact_metric_count: Literal[1]
 
 
 class CatalogCombinationsOutput(_StrictOutput):
@@ -671,7 +682,7 @@ class AnalyticsCatalogResponse(_StrictOutput):
     model_version: int
     semantic_views: tuple[str, ...]
     fields: tuple[CatalogFieldOutput, ...]
-    metrics: tuple[CatalogMetricOutput, ...]
+    metric_options: dict[str, tuple[MetricOptionOutput, ...]]
     chart_types: tuple[str, ...]
     combinations: CatalogCombinationsOutput
 
@@ -868,7 +879,8 @@ class ChartDefinitionInput(_StrictInput):
             "examples": [
                 {
                     "dimensions": ["store_format"],
-                    "metrics": ["response_count"],
+                    "metric": "id",
+                    "aggregation": "count",
                     "filters": [
                         {
                             "member": "topic_sentiment",
@@ -880,15 +892,16 @@ class ChartDefinitionInput(_StrictInput):
                     "time_range": ["2024-08-01", "2024-08-31"],
                     "time_granularity": "month",
                     "timezone": "Asia/Hong_Kong",
-                    "order": [{"member": "response_count", "direction": "desc"}],
+                    "order": [{"member": "value", "direction": "desc"}],
                     "limit": 100,
                 }
             ]
         },
     )
 
-    dimensions: tuple[str, ...] = Field(default=(), max_length=4)
-    metrics: tuple[str, ...] = Field(default=(), max_length=5)
+    dimensions: tuple[str, ...] = Field(default=(), max_length=MAX_DIMENSIONS)
+    metric: str
+    aggregation: QueryAggregation
     filters: tuple[FilterSpec, ...] = Field(default=(), max_length=20)
     time_dimension: str | None = None
     time_range: tuple[str, str] | None = None
@@ -899,7 +912,7 @@ class ChartDefinitionInput(_StrictInput):
     order: tuple[OrderSpec, ...] = Field(default=(), max_length=8)
     limit: int = Field(default=1_000, ge=1, le=5_000)
 
-    @field_validator("dimensions", "metrics")
+    @field_validator("dimensions")
     @classmethod
     def _members(cls, values: tuple[str, ...]) -> tuple[str, ...]:
         for value in values:
@@ -907,6 +920,16 @@ class ChartDefinitionInput(_StrictInput):
         if len(values) != len(set(values)):
             raise ValueError("Chart members must not be duplicated")
         return values
+
+    @field_validator("metric")
+    @classmethod
+    def _metric(cls, value: str) -> str:
+        return validate_identifier(value)
+
+    @field_validator("aggregation")
+    @classmethod
+    def _aggregation(cls, value: QueryAggregation) -> QueryAggregation:
+        return value
 
     @field_validator("time_dimension")
     @classmethod
@@ -922,8 +945,12 @@ class ChartDefinitionInput(_StrictInput):
 
     @model_validator(mode="after")
     def _time_contract(self) -> "ChartDefinitionInput":
+        if "value" in self.dimensions or self.time_dimension == "value":
+            raise ValueError("value is the reserved output key for the selected metric")
         if (self.time_range or self.time_granularity) and not self.time_dimension:
             raise ValueError("time range and granularity require a time dimension")
+        if self.time_dimension in self.dimensions:
+            raise ValueError("time dimension must not also be an ordinary dimension")
         return self
 
 
@@ -939,8 +966,9 @@ class ChartInput(_StrictInput):
                     "semantic_view": "survey_responses",
                     "definition": {
                         "dimensions": ["store_format"],
-                        "metrics": ["response_count"],
-                        "order": [{"member": "response_count", "direction": "desc"}],
+                        "metric": "id",
+                        "aggregation": "count",
+                        "order": [{"member": "value", "direction": "desc"}],
                     },
                     "visibility": "viewer",
                 }
@@ -961,9 +989,7 @@ class ChartInput(_StrictInput):
         "area",
         "pie",
         "donut",
-        "scatter",
         "heatmap",
-        "store_map",
     ]
     semantic_view: Literal[
         "survey_responses",
@@ -1027,7 +1053,6 @@ class FilterOptionsInput(_StrictInput):
                 {
                     "semantic_view": "survey_responses",
                     "member": "store_format",
-                    "metrics": ["topic_sentiment_score_average"],
                     "filters": [
                         {
                             "member": "topic_sentiment",
@@ -1051,22 +1076,12 @@ class FilterOptionsInput(_StrictInput):
         "survey_keywords",
     ]
     member: str
-    metrics: tuple[str, ...] = Field(default=(), max_length=4)
     # Reserve room for the endpoint's non-null filter and optional search.
     filters: tuple[FilterSpec, ...] = Field(default=(), max_length=18)
     search: str | None = Field(default=None, max_length=100)
     timezone: str | None = None
     limit: int = Field(default=100, ge=1, le=1_000)
     cursor: int | None = Field(default=None, ge=0, le=1_000_000)
-
-    @field_validator("metrics")
-    @classmethod
-    def _metrics(cls, values: tuple[str, ...]) -> tuple[str, ...]:
-        for value in values:
-            validate_identifier(value)
-        if len(values) != len(set(values)):
-            raise ValueError("Filter option metrics must not be duplicated")
-        return values
 
     @field_validator("member")
     @classmethod
@@ -1205,7 +1220,8 @@ class ExportInput(_StrictInput):
                     "query": {
                         "semantic_view": "survey_responses",
                         "dimensions": ["store_format"],
-                        "metrics": ["response_count"],
+                        "metric": "id",
+                        "aggregation": "count",
                     },
                 },
                 {
@@ -1293,12 +1309,13 @@ def _extract_cube_catalog(version: AnalyticsModelVersion | None) -> dict[str, An
     return result
 
 
-def _catalog(db: Session, role: str) -> SemanticCatalog:
-    """Return the active core-plus-local catalog visible to the given role."""
-
+def _catalog_from_version(
+    version: AnalyticsModelVersion | None, role: str
+) -> SemanticCatalog:
+    """Build the core-plus-local catalog from one immutable model version."""
     if role not in {"viewer", "admin"}:
         raise AnalyticsValidationError("Unknown analytics role")
-    payload = _extract_cube_catalog(_active_model_version(db))
+    payload = _extract_cube_catalog(version)
     local_fields: list[CatalogField] = []
     for item in payload.get("fields", []):
         if role != "admin" and item.get("visibility") != "viewer":
@@ -1346,12 +1363,18 @@ def _catalog(db: Session, role: str) -> SemanticCatalog:
     )
 
 
-def _raw_field_sources(
-    db: Session, role: str
+def _catalog(db: Session, role: str) -> SemanticCatalog:
+    """Return the active core-plus-local catalog visible to the given role."""
+
+    return _catalog_from_version(_active_model_version(db), role)
+
+
+def _raw_field_sources_from_version(
+    version: AnalyticsModelVersion | None, role: str
 ) -> dict[str, tuple[str, FieldType]]:
     if role not in {"viewer", "admin"}:
         raise AnalyticsValidationError("Unknown analytics role")
-    payload = _extract_cube_catalog(_active_model_version(db))
+    payload = _extract_cube_catalog(version)
     result: dict[str, tuple[str, FieldType]] = {}
     for field in payload.get("fields", []):
         if not isinstance(field, dict) or field.get("sourceKind") != "raw_json":
@@ -1366,6 +1389,12 @@ def _raw_field_sources(
             FieldType(field.get("dataType")),
         )
     return result
+
+
+def _raw_field_sources(
+    db: Session, role: str
+) -> dict[str, tuple[str, FieldType]]:
+    return _raw_field_sources_from_version(_active_model_version(db), role)
 
 
 def _availability_expression(
@@ -1402,6 +1431,7 @@ def _field_availability(
     role: str,
     semantic_view: str,
     catalog_version: int,
+    model_version: AnalyticsModelVersion | None = None,
 ) -> dict[str, Any]:
     """Return cached, role-scoped non-null statistics for governed fields.
 
@@ -1434,7 +1464,7 @@ def _field_availability(
     if cached is not None and now - cached[0] < _FIELD_AVAILABILITY_CACHE_TTL:
         return {**cached[1], "cached": True}
 
-    raw_fields = _raw_field_sources(db, role)
+    raw_fields = _raw_field_sources_from_version(model_version, role)
     parameters: dict[str, Any] = {}
     select_items = ["COUNT(*) AS total_rows"]
     for index, field in enumerate(fields):
@@ -1508,39 +1538,61 @@ def _cube_client() -> CubeClient:
     )
 
 
-def _column_metadata(query: QuerySpec, catalog: SemanticCatalog) -> list[dict[str, str]]:
-    result: list[dict[str, str]] = []
-    dimension_slugs = list(query.dimensions)
-    if query.time_dimension and query.time_dimension not in dimension_slugs:
-        dimension_slugs.append(query.time_dimension)
-    for slug in dimension_slugs:
-        field = catalog.field(slug, query.semantic_view)
-        result.append(
-            {
-                "name": slug,
-                "label": field.label,
-                "type": field.data_type.value,
-                "kind": "dimension",
-            }
-        )
-    for slug in query.metrics:
-        metric = catalog.metric(slug, query.semantic_view)
-        result_type = "number"
-        if metric.aggregation in {Aggregation.MIN, Aggregation.MAX} and metric.source_field:
-            source_type = catalog.field(
-                metric.source_field, query.semantic_view
-            ).data_type
-            if source_type in {FieldType.DATE, FieldType.TIME}:
-                result_type = source_type.value
-        result.append(
-            {
-                "name": slug,
-                "label": metric.label,
-                "type": result_type,
-                "kind": "metric",
-            }
-        )
-    return result
+def _query_schema(
+    query: QuerySpec, catalog: SemanticCatalog, role: str
+) -> dict[str, Any]:
+    dimensions = [
+        {
+            "field": slug,
+            "label": catalog.field(slug, query.semantic_view).label,
+            "type": catalog.field(slug, query.semantic_view).data_type.value,
+            "key": slug,
+        }
+        for slug in query.dimensions
+    ]
+    time_dimension = None
+    if query.time_dimension:
+        field = catalog.field(query.time_dimension, query.semantic_view)
+        time_dimension = {
+            "field": query.time_dimension,
+            "label": field.label,
+            "type": field.data_type.value,
+            "granularity": query.time_granularity,
+            "key": query.time_dimension,
+        }
+    metric_field = catalog.field(query.metric, query.semantic_view)
+    governed_metric = resolve_query_metric(query, catalog, role)
+    result_type = "number"
+    if query.aggregation in {Aggregation.MIN, Aggregation.MAX} and metric_field.data_type in {
+        FieldType.DATE,
+        FieldType.TIME,
+    }:
+        result_type = metric_field.data_type.value
+    return {
+        "dimensions": dimensions,
+        "time_dimension": time_dimension,
+        "metric": {
+            "field": query.metric,
+            "aggregation": query.aggregation.value,
+            "label": governed_metric.label,
+            "type": result_type,
+            "key": "value",
+        },
+    }
+
+
+def _column_metadata(schema: dict[str, Any]) -> list[dict[str, str]]:
+    columns = [
+        {"name": item["key"], "type": item["type"]}
+        for item in schema["dimensions"]
+    ]
+    if schema["time_dimension"] is not None:
+        item = schema["time_dimension"]
+        columns.append({"name": item["key"], "type": item["type"]})
+    columns.append(
+        {"name": schema["metric"]["key"], "type": schema["metric"]["type"]}
+    )
+    return columns
 
 
 def _local_member_name(key: str, semantic_view: str) -> str:
@@ -1594,29 +1646,55 @@ def _warning_list(value: Any) -> list[str]:
     return []
 
 
+class _AnalyticsCatalogChangedError(RuntimeError):
+    """The active immutable catalog changed while Cube was executing."""
+
+
+def _version_id(version: AnalyticsModelVersion | None) -> int | None:
+    return version.id if version is not None else None
+
+
 async def _execute_query(
     query: QuerySpec,
     db: Session,
     current_user: User,
     *,
     cube_query_override: dict[str, Any] | None = None,
+    pinned_version: AnalyticsModelVersion | None = None,
+    pinned_catalog: SemanticCatalog | None = None,
 ) -> dict[str, Any]:
     """Validate, execute, log, and format a governed Cube query."""
 
     role = _role(current_user)
     try:
-        catalog = _catalog(db, role)
+        if pinned_catalog is None:
+            version = _active_model_version(db)
+            catalog = _catalog_from_version(version, role)
+        else:
+            version = pinned_version
+            catalog = pinned_catalog
+            if _version_id(_active_model_version(db)) != _version_id(version):
+                raise _AnalyticsCatalogChangedError
         cube_query = cube_query_override or compile_cube_query(query, catalog, role)
-        cube_query = augment_cube_query_with_supports(cube_query, query, catalog)
+        cube_query = augment_cube_query_with_supports(cube_query, query, catalog, role)
+    except _AnalyticsCatalogChangedError as error:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "analytics_catalog_changed",
+                "message": "Analytics catalog changed; retry the query",
+            },
+        ) from error
     except (AnalyticsValidationError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
-    version = _active_model_version(db)
+    model_version_id = _version_id(version)
+    model_version = version.catalog_version if version else 0
     query_id = str(uuid.uuid4())
     query_log = AnalyticsQueryLog(
         id=query_id,
         requested_by_id=current_user.id,
-        model_version_id=version.id if version else None,
+        model_version_id=model_version_id,
         semantic_view=query.semantic_view,
         request=query.model_dump(mode="json"),
         cube_query=cube_query,
@@ -1632,9 +1710,25 @@ async def _execute_query(
             role=role,
             request_id=query_id,
         )
-        formatted_result = format_query_result(result, query, catalog)
-        columns = _column_metadata(query, catalog)
+        if _version_id(_active_model_version(db)) != model_version_id:
+            raise _AnalyticsCatalogChangedError
+        formatted_result = format_query_result(result, query, catalog, role)
+        schema = _query_schema(query, catalog, role)
+        columns = _column_metadata(schema)
         rows = _format_rows(formatted_result["rows"], query, columns)
+    except _AnalyticsCatalogChangedError as error:
+        query_log.status = "failed"
+        query_log.error_message = "Analytics catalog changed during query execution"
+        query_log.completed_at = utc_now()
+        query_log.duration_ms = round((time.monotonic() - started) * 1_000)
+        db.commit()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "analytics_catalog_changed",
+                "message": "Analytics catalog changed; retry the query",
+            },
+        ) from error
     except CubeQueryError as error:
         query_log.status = "failed"
         query_log.error_message = str(error)[:1_000]
@@ -1677,11 +1771,12 @@ async def _execute_query(
     db.commit()
     return {
         "query_id": query_id,
-        "model_version": version.catalog_version if version else 0,
+        "model_version": model_version,
+        "semantic_view": query.semantic_view,
         "timezone": query.timezone or "UTC",
-        "columns": columns,
+        "schema": schema,
         "rows": rows,
-        "confidence": formatted_result["confidence"],
+        "row_count": len(rows),
         "warnings": [
             *formatted_result["warnings"],
             *_warning_list(result.get("warnings") or result.get("warning")),
@@ -1694,25 +1789,14 @@ def _semantic_view_combination(
     catalog: SemanticCatalog, semantic_view: str
 ) -> SemanticViewCombinationOutput:
     dimensions = tuple(
-        field.slug for field in catalog.fields if field.semantic_view == semantic_view
+        field.slug
+        for field in catalog.fields
+        if field.semantic_view == semantic_view and field.slug != "value"
     )
-    metrics = tuple(
-        metric.slug
-        for metric in catalog.metrics
-        if metric.semantic_view == semantic_view
-    )
-    default_count_metric = _FILTER_OPTION_COUNT_METRICS[semantic_view]
     return SemanticViewCombinationOutput(
         semantic_view=semantic_view,
         grain=_SEMANTIC_VIEW_GRAINS[semantic_view],
         dimensions=dimensions,
-        metrics=metrics,
-        default_count_metric=(
-            default_count_metric if default_count_metric in metrics else None
-        ),
-        distinct_survey_metric=(
-            "distinct_survey_count" if "distinct_survey_count" in metrics else None
-        ),
         assignment_dimension=_ASSIGNMENT_DIMENSIONS[semantic_view],
         response_sentiment_dimension="topic_sentiment",
         assignment_sentiment_dimension=(
@@ -1722,7 +1806,7 @@ def _semantic_view_combination(
 
 
 def _catalog_response(
-    catalog: SemanticCatalog, model_version: int
+    catalog: SemanticCatalog, model_version: int, role: str = "viewer"
 ) -> AnalyticsCatalogResponse:
     fields = tuple(
         CatalogFieldOutput(
@@ -1734,37 +1818,36 @@ def _catalog_response(
         )
         for field in catalog.fields
     )
-    metrics = tuple(
-        CatalogMetricOutput(
-            slug=metric.slug,
-            label=metric.label,
-            semantic_view=metric.semantic_view,
-            operation=metric.aggregation,
-            visibility=metric.visibility,
+    options = {
+        semantic_view: tuple(
+            MetricOptionOutput(
+                field=option.field,
+                aggregation=option.aggregation,
+                label=option.label,
+                result_type=option.result_type,
+            )
+            for option in metric_options(catalog, semantic_view, role)
         )
-        for metric in catalog.metrics
-    )
+        for semantic_view in sorted(catalog.views)
+    }
     semantic_view_combinations = tuple(
         _semantic_view_combination(catalog, semantic_view)
         for semantic_view in sorted(catalog.views)
     )
     chart_rules = tuple(
-        ChartCombinationOutput(
-            **rule,
-            dimension_count_includes_time_dimension=True,
-        )
+        ChartCombinationOutput(**rule)
         for rule in chart_combination_rules()
     )
     return AnalyticsCatalogResponse(
         model_version=model_version,
         semantic_views=tuple(sorted(catalog.views)),
         fields=fields,
-        metrics=metrics,
+        metric_options=options,
         chart_types=_CHART_TYPES,
         combinations=CatalogCombinationsOutput(
             query=QueryCombinationRulesOutput(
                 max_dimensions=MAX_DIMENSIONS,
-                max_metrics=MAX_METRICS,
+                exact_metric_count=1,
                 max_filters=MAX_FILTERS,
                 requires_single_semantic_view=True,
                 members_must_belong_to_semantic_view=True,
@@ -1801,10 +1884,12 @@ def _query_combinations_response(
                 validate_chart_definition(
                     chart_type,
                     query.dimensions,
-                    query.metrics,
+                    query.metric,
+                    query.aggregation,
                     catalog,
                     semantic_view=query.semantic_view,
                     time_dimension=query.time_dimension,
+                    time_granularity=query.time_granularity,
                     role=role,
                 )
             except AnalyticsValidationError:
@@ -1870,14 +1955,15 @@ def _chart_query(
     values = definition.model_dump(mode="json")
     values.update(update)
     dimensions = tuple(values["dimensions"])
-    metrics = tuple(values["metrics"])
     validate_chart_definition(
         chart["chart_type"],
         dimensions,
-        metrics,
+        values["metric"],
+        values["aggregation"],
         catalog,
         semantic_view=chart["semantic_view"],
         time_dimension=values.get("time_dimension"),
+        time_granularity=values.get("time_granularity"),
         role=role,
     )
 
@@ -1886,33 +1972,15 @@ def _chart_query(
     if chart["chart_type"] in {"pie", "donut"}:
         # The chart contract is always metric-desc top 12; an additional
         # governed aggregate query computes the remaining categories.
-        values["order"] = ({"member": metrics[0], "direction": "desc"},)
+        values["order"] = ({"member": "value", "direction": "desc"},)
         # Fetch one sentinel group so exactly twelve categories can be
         # distinguished from a real tail that must be represented as Other.
         query_limit = 13
-    if chart["chart_type"] != "store_map":
-        query = QuerySpec(
-            semantic_view=chart["semantic_view"],
-            dimensions=dimensions,
-            metrics=metrics,
-            filters=values["filters"],
-            time_dimension=values.get("time_dimension"),
-            time_range=values.get("time_range"),
-            timezone=values.get("timezone"),
-            time_granularity=values.get("time_granularity"),
-            order=values["order"],
-            limit=query_limit,
-        )
-        return query, compile_cube_query(query, catalog, role)
-
-    # Store maps have four fixed location dimensions, while free exploration is
-    # intentionally limited to three. Validate the fourth member independently.
-    first_three = dimensions[:3]
-    fourth = dimensions[3]
     query = QuerySpec(
         semantic_view=chart["semantic_view"],
-        dimensions=first_three,
-        metrics=metrics,
+        dimensions=dimensions,
+        metric=values["metric"],
+        aggregation=values["aggregation"],
         filters=values["filters"],
         time_dimension=values.get("time_dimension"),
         time_range=values.get("time_range"),
@@ -1921,22 +1989,7 @@ def _chart_query(
         order=values["order"],
         limit=query_limit,
     )
-    compile_cube_query(
-        QuerySpec(
-            semantic_view=chart["semantic_view"], dimensions=(fourth,), limit=1
-        ),
-        catalog,
-        role,
-    )
-    cube_query = compile_cube_query(query, catalog, role)
-    cube_query["dimensions"].append(f"{chart['semantic_view']}.{fourth}")
-    cube_query["limit"] = min(requested_limit, 5_000)
-    # model_copy deliberately carries the already validated fourth map member
-    # through result formatting without relaxing QuerySpec for ad-hoc requests.
-    query = query.model_copy(
-        update={"dimensions": dimensions, "limit": cube_query["limit"]}
-    )
-    return query, cube_query
+    return query, compile_cube_query(query, catalog, role)
 
 
 def _shape_chart_rows(
@@ -1949,11 +2002,10 @@ def _shape_chart_rows(
         return response
     definition = chart.get("definition") or {}
     dimensions = list(definition.get("dimensions") or [])
-    metrics = list(definition.get("metrics") or [])
     rows = response.get("rows") or []
-    if len(dimensions) != 1 or len(metrics) != 1:
+    if len(dimensions) != 1 or not definition.get("metric"):
         return response
-    dimension, metric = dimensions[0], metrics[0]
+    dimension = dimensions[0]
     shaped = rows[:12]
     has_other = isinstance(other_value, (int, float)) and not isinstance(
         other_value, bool
@@ -1966,23 +2018,14 @@ def _shape_chart_rows(
         shaped.append(
             {
                 dimension: "Other",
-                metric: int(other_total) if other_total.is_integer() else other_total,
+                "value": int(other_total) if other_total.is_integer() else other_total,
             }
         )
-        other_index = len(shaped) - 1
         if other_response:
-            for key in ("confidence", "warnings"):
-                metadata = other_response.get(key)
-                if not isinstance(metadata, list):
-                    continue
-                response.setdefault(key, []).extend(
-                    {
-                        **item,
-                        "row_index": other_index,
-                        "category": "Other",
-                    }
-                    for item in metadata
-                    if isinstance(item, dict)
+            metadata = other_response.get("warnings")
+            if isinstance(metadata, list):
+                response.setdefault("warnings", []).extend(
+                    str(item)[:1_000] for item in metadata[:20]
                 )
     response["rows"] = shaped
     return response
@@ -2321,11 +2364,25 @@ def _chart_rollups(
 
     if not isinstance(charts, list) or not isinstance(metrics, list):
         return []
-    operation_by_metric = {
-        item.get("slug"): item.get("operation")
-        for item in metrics
-        if isinstance(item, dict)
-    }
+    metric_by_option: dict[tuple[Any, Any, Any], list[str]] = {}
+    for metric in _CORE_METRICS:
+        if metric.source_field is None:
+            continue
+        key = (
+            metric.semantic_view,
+            metric.source_field,
+            metric.aggregation.value,
+        )
+        metric_by_option.setdefault(key, []).append(metric.slug)
+    for item in metrics:
+        if not isinstance(item, dict):
+            continue
+        key = (
+            item.get("semanticView"),
+            item.get("sourceField"),
+            item.get("operation"),
+        )
+        metric_by_option.setdefault(key, []).append(str(item.get("slug")))
     additive = {
         Aggregation.COUNT.value,
         Aggregation.FILTERED_COUNT.value,
@@ -2342,21 +2399,22 @@ def _chart_rollups(
         if not isinstance(definition, dict):
             continue
         dimensions = definition.get("dimensions") or []
-        measures = definition.get("metrics") or []
+        metric_field = definition.get("metric")
+        aggregation = definition.get("aggregation")
         if (
             not isinstance(dimensions, list)
-            or not isinstance(measures, list)
-            or not measures
+            or not isinstance(metric_field, str)
+            or not isinstance(aggregation, str)
             or len(dimensions) > 3
-            or len(measures) > 5
         ):
-            # Store maps use four dimensions and intentionally fall back to the
-            # database unless a narrower map aggregation is defined.
             continue
         try:
             view = validate_identifier(str(chart["semantic_view"]))
             safe_dimensions = [validate_identifier(str(item)) for item in dimensions]
-            safe_measures = [validate_identifier(str(item)) for item in measures]
+            candidates = metric_by_option.get((view, metric_field, aggregation), [])
+            if len(candidates) != 1:
+                continue
+            safe_measures = [validate_identifier(candidates[0])]
         except (KeyError, AnalyticsValidationError):
             continue
         time_dimension = definition.get("time_dimension")
@@ -2402,8 +2460,7 @@ def _chart_rollups(
             "timeDimension": time_dimension,
             "granularity": granularity,
             "nonAdditive": any(
-                operation_by_metric.get(metric) not in additive
-                for metric in safe_measures
+                aggregation not in additive for _metric in safe_measures
             ),
         }
         if granularity is not None:
@@ -2458,14 +2515,14 @@ async def get_catalog(
 ) -> AnalyticsCatalogResponse:
     role = _role(current_user)
     try:
-        catalog = _catalog(db, role)
+        version = _active_model_version(db)
+        catalog = _catalog_from_version(version, role)
     except (AnalyticsValidationError, ValueError) as error:
         raise HTTPException(
             status_code=503,
             detail="Analytics catalog is invalid",
         ) from error
-    version = _active_model_version(db)
-    return _catalog_response(catalog, version.catalog_version if version else 0)
+    return _catalog_response(catalog, version.catalog_version if version else 0, role)
 
 
 @viewer_router.get(
@@ -2488,8 +2545,8 @@ async def get_query_combinations(
 ) -> QueryCombinationsResponse:
     role = _role(current_user)
     try:
-        catalog = _catalog(db, role)
         version = _active_model_version(db)
+        catalog = _catalog_from_version(version, role)
         return _query_combinations_response(
             catalog,
             version.catalog_version if version else 0,
@@ -2520,14 +2577,15 @@ async def get_catalog_availability(
 ) -> dict[str, Any]:
     role = _role(current_user)
     try:
-        catalog = _catalog(db, role)
         version = _active_model_version(db)
+        catalog = _catalog_from_version(version, role)
         return _field_availability(
             db,
             catalog,
             role=role,
             semantic_view=semantic_view,
             catalog_version=version.catalog_version if version else 0,
+            model_version=version,
         )
     except (AnalyticsValidationError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
@@ -2555,17 +2613,10 @@ async def get_filter_options(
 
     role = _role(current_user)
     try:
-        catalog = _catalog(db, role)
+        version = _active_model_version(db)
+        catalog = _catalog_from_version(version, role)
         field = catalog.field(payload.member, payload.semantic_view)
-        count_metric = _FILTER_OPTION_COUNT_METRICS[payload.semantic_view]
-        optional_metrics: list[str] = []
-        for metric_slug in payload.metrics:
-            if metric_slug == count_metric:
-                raise AnalyticsValidationError(
-                    "The fixed filter option count metric must not be requested"
-                )
-            catalog.metric(metric_slug, payload.semantic_view)
-            optional_metrics.append(metric_slug)
+        count_field = _FILTER_OPTION_COUNT_FIELDS[payload.semantic_view]
         filters: tuple[FilterSpec, ...] = (
             *payload.filters,
             FilterSpec(member=payload.member, operator="set"),
@@ -2584,11 +2635,12 @@ async def get_filter_options(
         query = QuerySpec(
             semantic_view=payload.semantic_view,
             dimensions=(payload.member,),
-            metrics=(count_metric, *optional_metrics),
+            metric=count_field,
+            aggregation=Aggregation.COUNT,
             filters=filters,
             timezone=payload.timezone,
             order=(
-                OrderSpec(member=count_metric, direction="desc"),
+                OrderSpec(member="value", direction="desc"),
                 OrderSpec(member=payload.member, direction="asc"),
             ),
             limit=payload.limit,
@@ -2599,16 +2651,17 @@ async def get_filter_options(
         raise HTTPException(status_code=422, detail=str(error)) from error
 
     result = await _execute_query(
-        query, db, current_user, cube_query_override=cube_query
+        query,
+        db,
+        current_user,
+        cube_query_override=cube_query,
+        pinned_version=version,
+        pinned_catalog=catalog,
     )
     values = [
         {
             "value": row.get(payload.member),
-            "count": row.get(count_metric, 0),
-            "metrics": {
-                metric_slug: row.get(metric_slug)
-                for metric_slug in payload.metrics
-            },
+            "count": row.get("value", 0),
         }
         for row in result["rows"]
         if row.get(payload.member) is not None
@@ -2623,18 +2676,6 @@ async def get_filter_options(
         "member": payload.member,
         "label": field.label,
         "data_type": field.data_type.value,
-        "metric_columns": [
-            column
-            for column in _column_metadata(
-                QuerySpec(
-                    semantic_view=payload.semantic_view,
-                    dimensions=(payload.member,),
-                    metrics=tuple(payload.metrics),
-                ),
-                catalog,
-            )
-            if column["kind"] == "metric"
-        ],
         "values": values,
         "cursor": cursor,
         "next_cursor": cursor + len(values) if has_more else None,
@@ -2713,10 +2754,11 @@ async def get_published_chart_data(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     role = _role(current_user)
+    version = _active_model_version(db)
     chart = next(
         (
             item
-            for item in _snapshot_charts(_active_model_version(db), role)
+            for item in _snapshot_charts(version, role)
             if item.get("id") == chart_id
         ),
         None,
@@ -2724,12 +2766,17 @@ async def get_published_chart_data(
     if chart is None:
         raise HTTPException(status_code=404, detail="Published chart not found")
     try:
-        catalog = _catalog(db, role)
+        catalog = _catalog_from_version(version, role)
         query, cube_query = _chart_query(chart, payload, catalog, role)
     except (AnalyticsValidationError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     response = await _execute_query(
-        query, db, current_user, cube_query_override=cube_query
+        query,
+        db,
+        current_user,
+        cube_query_override=cube_query,
+        pinned_version=version,
+        pinned_catalog=catalog,
     )
     response["chart"] = chart
     other_value: Any = None
@@ -2737,7 +2784,6 @@ async def get_published_chart_data(
     if chart["chart_type"] in {"pie", "donut"} and len(response.get("rows") or []) > 12:
         definition = chart.get("definition") or {}
         dimension = definition["dimensions"][0]
-        metric = definition["metrics"][0]
         top_values = tuple(
             row.get(dimension)
             for row in response["rows"][:12]
@@ -2783,9 +2829,11 @@ async def get_published_chart_data(
                 db,
                 current_user,
                 cube_query_override=remainder_cube_query,
+                pinned_version=version,
+                pinned_catalog=catalog,
             )
             if remainder.get("rows"):
-                other_value = remainder["rows"][0].get(metric)
+                other_value = remainder["rows"][0].get("value")
                 other_response = remainder
     return _shape_chart_rows(chart, response, other_value, other_response)
 
@@ -2865,6 +2913,9 @@ def _chart_dimension_dependencies(definition: dict[str, Any]) -> set[str]:
     time_dimension = definition.get("time_dimension")
     if isinstance(time_dimension, str):
         result.add(time_dimension)
+    metric = definition.get("metric")
+    if isinstance(metric, str):
+        result.add(metric)
     for key in ("filters", "order"):
         for item in definition.get(key, []) or []:
             if isinstance(item, dict) and isinstance(item.get("member"), str):
@@ -3204,8 +3255,16 @@ async def archive_metric(
         .filter(AnalyticsChart.status == "published")
         .all()
     )
+    source = (
+        db.query(AnalyticsField).filter(AnalyticsField.id == metric.field_id).first()
+        if metric.field_id is not None
+        else None
+    )
+    source_slug = source.slug if source is not None else metric.source_member
     if any(
-        metric.slug in set((chart.definition or {}).get("metrics", []))
+        chart.semantic_view == metric.semantic_view
+        and (chart.definition or {}).get("metric") == source_slug
+        and (chart.definition or {}).get("aggregation") == metric.operation
         for chart in charts
     ):
         raise HTTPException(
@@ -3556,15 +3615,26 @@ def drilldown_analytics(
     role = _role(current_user)
     query_id = str(uuid.uuid4())
     started = time.monotonic()
+    version = _active_model_version(db)
     try:
-        catalog = _catalog(db, role)
+        catalog = _catalog_from_version(version, role)
         result = execute_drilldown(
             db,
             payload,
             catalog,
             role=role,
-            raw_fields=_raw_field_sources(db, role),
+            raw_fields=_raw_field_sources_from_version(version, role),
         )
+        if _version_id(_active_model_version(db)) != _version_id(version):
+            raise _AnalyticsCatalogChangedError
+    except _AnalyticsCatalogChangedError as error:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "analytics_catalog_changed",
+                "message": "Analytics catalog changed; retry the drilldown",
+            },
+        ) from error
     except (AnalyticsValidationError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except SQLAlchemyError as error:
@@ -3579,7 +3649,6 @@ def drilldown_analytics(
     finally:
         _DRILLDOWN_SEMAPHORE.release()
 
-    version = _active_model_version(db)
     db.add(
         AnalyticsQueryLog(
             id=query_id,
@@ -3655,13 +3724,14 @@ async def create_analytics_export(
     semantic_view: str
     request_payload: dict[str, Any]
     try:
-        catalog = _catalog(db, role)
+        catalog = _catalog_from_version(version, role)
         if payload.query is not None:
             semantic_view = payload.query.semantic_view
             cube_query = augment_cube_query_with_supports(
                 compile_cube_query(payload.query, catalog, role),
                 payload.query,
                 catalog,
+                role,
             )
             request_payload = {
                 "mode": "query",
@@ -3676,7 +3746,7 @@ async def create_analytics_export(
                     payload.drilldown,
                     catalog,
                     role=role,
-                    raw_fields=_raw_field_sources(db, role),
+                    raw_fields=_raw_field_sources_from_version(version, role),
                 )
                 request_payload = {
                     "mode": "drilldown",

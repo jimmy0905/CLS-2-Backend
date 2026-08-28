@@ -35,7 +35,12 @@ def test_router_exposes_drilldown_and_export_lifecycle() -> None:
 
 
 def test_export_requires_exactly_one_governed_request_kind() -> None:
-    query = QuerySpec(semantic_view="survey_responses", dimensions=["store_name"])
+    query = QuerySpec(
+        semantic_view="survey_responses",
+        dimensions=["store_name"],
+        metric="id",
+        aggregation="count",
+    )
     drilldown = DrilldownSpec(fields=["id"])
 
     assert ExportInput(export_format="csv", query=query).query == query

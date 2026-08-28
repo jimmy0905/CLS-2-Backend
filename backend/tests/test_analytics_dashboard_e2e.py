@@ -290,7 +290,7 @@ def catalog(e2e_client: httpx.Client, e2e_config: E2EConfig) -> dict[str, Any]:
     assert payload.get("model_version", 0) >= 1
     assert set(payload.get("semantic_views", [])) >= set(FILTER_MEMBERS)
     assert payload.get("fields")
-    assert payload.get("metrics")
+    assert set(payload.get("metric_options", {})) >= set(FILTER_MEMBERS)
     return payload
 
 
@@ -364,6 +364,10 @@ def _chart_data(
     assert result.get("chart", {}).get("slug") == chart["slug"]
     assert result.get("model_version") == chart.get("model_version")
     assert isinstance(result.get("rows"), list)
+    assert result.get("row_count") == len(result["rows"])
+    assert isinstance(result.get("schema"), dict)
+    assert result["schema"]["metric"]["key"] == "value"
+    assert isinstance(result.get("warnings"), list)
     assert "freshness_time" in result
     return result
 

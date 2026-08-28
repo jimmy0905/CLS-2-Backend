@@ -91,6 +91,28 @@ def users_table_exists() -> bool:
         db.close()
 
 
+def usable_user_exists() -> bool:
+    """Return whether analytics records can reference a non-deleted user."""
+
+    db = SessionLocal()
+    try:
+        return bool(
+            db.execute(
+                text(
+                    """
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM users
+                        WHERE COALESCE(is_deleted, false) = false
+                    )
+                    """
+                )
+            ).scalar()
+        )
+    finally:
+        db.close()
+
+
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables created")

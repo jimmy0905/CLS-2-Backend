@@ -18,7 +18,6 @@ from utils.utc import resolve_timezone
 
 
 MAX_DIMENSIONS = 3
-MAX_METRICS = 5
 MAX_FILTERS = 20
 MAX_AGGREGATE_ROWS = 1_000
 
@@ -77,6 +76,16 @@ class Aggregation(str, Enum):
     )
 
 
+class QueryAggregation(str, Enum):
+    COUNT = "count"
+    DISTINCT_COUNT = "distinct_count"
+    SUM = "sum"
+    AVERAGE = "average"
+    MIN = "min"
+    MAX = "max"
+    MEDIAN = "median"
+
+
 _ALL_TYPE_AGGREGATIONS = frozenset(
     {
         Aggregation.COUNT,
@@ -124,6 +133,18 @@ _WEIGHTED_AGGREGATIONS = frozenset(
     }
 )
 
+SIMPLE_AGGREGATIONS = frozenset(
+    {
+        Aggregation.COUNT,
+        Aggregation.DISTINCT_COUNT,
+        Aggregation.SUM,
+        Aggregation.AVERAGE,
+        Aggregation.MIN,
+        Aggregation.MAX,
+        Aggregation.MEDIAN,
+    }
+)
+
 
 def validate_identifier(value: str) -> str:
     """Validate the deliberately narrow identifier grammar used by the catalog."""
@@ -147,6 +168,28 @@ def allowed_aggregations(field_type: FieldType | str) -> frozenset[Aggregation]:
     elif field_type in {FieldType.DATE, FieldType.TIME}:
         allowed.update({Aggregation.MIN, Aggregation.MAX})
     return frozenset(allowed)
+
+
+def allowed_query_aggregations(
+    field_type: FieldType | str,
+) -> frozenset[Aggregation]:
+    """Return the intentionally small aggregate-query surface for a raw field."""
+
+    field_type = FieldType(field_type)
+    result = {Aggregation.COUNT, Aggregation.DISTINCT_COUNT}
+    if field_type is FieldType.NUMBER:
+        result.update(
+            {
+                Aggregation.SUM,
+                Aggregation.AVERAGE,
+                Aggregation.MIN,
+                Aggregation.MAX,
+                Aggregation.MEDIAN,
+            }
+        )
+    elif field_type in {FieldType.DATE, FieldType.TIME}:
+        result.update({Aggregation.MIN, Aggregation.MAX})
+    return frozenset(result)
 
 
 class _CatalogModel(BaseModel):
@@ -283,6 +326,112 @@ class SemanticCatalog(BaseModel):
         return matches[0]
 
 
+class MetricOption(BaseModel):
+    """One unambiguous public raw-field/aggregation mapping."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    field: str
+    aggregation: QueryAggregation
+    label: str
+    result_type: FieldType
+    cube_metric: str = Field(exclude=True)
+
+
+def _metric_result_type(
+    field: CatalogField, aggregation: Aggregation
+) -> FieldType:
+    if aggregation in {Aggregation.MIN, Aggregation.MAX} and field.data_type in {
+        FieldType.DATE,
+        FieldType.TIME,
+    }:
+        return field.data_type
+    return FieldType.NUMBER
+
+
+def _simple_metric_candidates(
+    catalog: SemanticCatalog,
+    semantic_view: str,
+    field: CatalogField,
+    aggregation: Aggregation,
+    role: str,
+) -> list[CatalogMetric]:
+    return [
+        metric
+        for metric in catalog.metrics
+        if metric.semantic_view == semantic_view
+        and metric.source_field == field.slug
+        and metric.aggregation is aggregation
+        and metric.aggregation in SIMPLE_AGGREGATIONS
+        and _visible(metric, role)
+    ]
+
+
+def resolve_query_metric(
+    query: "QuerySpec",
+    catalog: SemanticCatalog,
+    role: str = "viewer",
+) -> CatalogMetric:
+    """Resolve a public raw-field/aggregation pair to one governed Cube measure."""
+
+    field = catalog.field(query.metric, query.semantic_view)
+    _ensure_query_member(field, query.semantic_view, role)
+    aggregation = Aggregation(query.aggregation.value)
+    if aggregation not in allowed_query_aggregations(field.data_type):
+        raise AnalyticsValidationError(
+            f"Aggregation {query.aggregation.value} is not valid for {field.data_type.value}"
+        )
+    matches = _simple_metric_candidates(
+        catalog, query.semantic_view, field, aggregation, role
+    )
+    if not matches:
+        raise AnalyticsValidationError(
+            f"Metric option {query.metric}/{query.aggregation.value} is not published"
+        )
+    if len(matches) != 1:
+        raise AnalyticsValidationError(
+            f"Metric option {query.metric}/{query.aggregation.value} is ambiguous"
+        )
+    validate_metric(matches[0], catalog)
+    return matches[0]
+
+
+def metric_options(
+    catalog: SemanticCatalog,
+    semantic_view: str,
+    role: str = "viewer",
+) -> tuple[MetricOption, ...]:
+    """List only unique, visible simple metric mappings for one semantic view."""
+
+    if role not in {"viewer", "admin"}:
+        raise AnalyticsValidationError("Unknown analytics role")
+    options: list[MetricOption] = []
+    for field in catalog.fields:
+        if field.semantic_view != semantic_view or not _visible(field, role):
+            continue
+        for aggregation in sorted(
+            allowed_query_aggregations(field.data_type), key=lambda item: item.value
+        ):
+            matches = _simple_metric_candidates(
+                catalog, semantic_view, field, aggregation, role
+            )
+            if len(matches) != 1:
+                continue
+            try:
+                validate_metric(matches[0], catalog)
+            except AnalyticsValidationError:
+                continue
+            options.append(
+                MetricOption(
+                    field=field.slug,
+                    aggregation=QueryAggregation(aggregation.value),
+                    label=matches[0].label,
+                    result_type=_metric_result_type(field, aggregation),
+                    cube_metric=matches[0].slug,
+                )
+            )
+    return tuple(sorted(options, key=lambda item: (item.field, item.aggregation.value)))
+
 FilterOperator = Literal[
     "equals",
     "not_equals",
@@ -337,7 +486,7 @@ class OrderSpec(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
         frozen=True,
-        json_schema_extra={"examples": [{"member": "response_count", "direction": "desc"}]},
+        json_schema_extra={"examples": [{"member": "value", "direction": "desc"}]},
     )
 
     member: str
@@ -358,7 +507,8 @@ class QuerySpec(BaseModel):
                 {
                     "semantic_view": "survey_responses",
                     "dimensions": ["store_name_english", "store_format"],
-                    "metrics": ["response_count", "cls_average"],
+                    "metric": "cls",
+                    "aggregation": "average",
                     "filters": [
                         {
                             "member": "topic_sentiment",
@@ -370,7 +520,7 @@ class QuerySpec(BaseModel):
                     "time_range": ["2024-08-01", "2024-08-31"],
                     "time_granularity": "month",
                     "timezone": "Asia/Hong_Kong",
-                    "order": [{"member": "response_count", "direction": "desc"}],
+                    "order": [{"member": "value", "direction": "desc"}],
                     "limit": 1000,
                 }
             ]
@@ -386,7 +536,8 @@ class QuerySpec(BaseModel):
         )
     )
     dimensions: tuple[str, ...] = Field(default=(), max_length=MAX_DIMENSIONS)
-    metrics: tuple[str, ...] = Field(default=(), max_length=MAX_METRICS)
+    metric: str
+    aggregation: QueryAggregation
     filters: tuple[FilterSpec, ...] = Field(default=(), max_length=MAX_FILTERS)
     time_dimension: str | None = None
     time_range: tuple[str, str] | None = None
@@ -408,7 +559,7 @@ class QuerySpec(BaseModel):
     def _view_identifier(cls, value: str) -> str:
         return validate_identifier(value)
 
-    @field_validator("dimensions", "metrics")
+    @field_validator("dimensions")
     @classmethod
     def _member_identifiers(cls, values: tuple[str, ...]) -> tuple[str, ...]:
         for value in values:
@@ -416,6 +567,16 @@ class QuerySpec(BaseModel):
         if len(set(values)) != len(values):
             raise ValueError("query members must not be duplicated")
         return values
+
+    @field_validator("metric")
+    @classmethod
+    def _metric_identifier(cls, value: str) -> str:
+        return validate_identifier(value)
+
+    @field_validator("aggregation")
+    @classmethod
+    def _simple_aggregation(cls, value: QueryAggregation) -> QueryAggregation:
+        return value
 
     @field_validator("time_dimension")
     @classmethod
@@ -453,14 +614,13 @@ class QuerySpec(BaseModel):
 
     @model_validator(mode="after")
     def _time_contract(self) -> "QuerySpec":
+        if "value" in self.dimensions or self.time_dimension == "value":
+            raise ValueError("value is the reserved output key for the selected metric")
         if (self.time_range is not None or self.time_granularity is not None) and not self.time_dimension:
             raise ValueError("time range and granularity require a time dimension")
-        if (
-            self.time_granularity is not None
-            and self.time_dimension in self.dimensions
-        ):
+        if self.time_dimension in self.dimensions:
             raise ValueError(
-                "a granular time dimension must not also be selected as a raw dimension"
+                "a time dimension must not also be selected as a raw dimension"
             )
         return self
 
@@ -534,6 +694,10 @@ def _validate_filter(filter_spec: FilterSpec, field: CatalogField) -> None:
             )
         return
     if filter_spec.operator in multiple_values:
+        if filter_spec.value is not None:
+            raise AnalyticsValidationError(
+                f"Filter {filter_spec.operator} does not accept value"
+            )
         values = filter_spec.values
         expected = 2 if filter_spec.operator == "between" else None
         if not values or len(values) > 100 or (expected and len(values) != expected):
@@ -652,42 +816,54 @@ def validate_metric(metric: CatalogMetric, catalog: SemanticCatalog) -> CatalogM
     return metric
 
 
+def validate_query_fields(
+    *,
+    semantic_view: str,
+    dimensions: tuple[str, ...] | list[str],
+    filters: tuple[FilterSpec, ...] | list[FilterSpec],
+    catalog: SemanticCatalog,
+    role: str = "viewer",
+    time_dimension: str | None = None,
+) -> None:
+    """Validate dimensions and filters for aggregate queries and drilldowns."""
+
+    if role not in {"viewer", "admin"}:
+        raise AnalyticsValidationError("Unknown analytics role")
+    if semantic_view not in catalog.views:
+        raise AnalyticsValidationError("Unknown semantic view")
+    for slug in dimensions:
+        field = catalog.field(slug, semantic_view)
+        _ensure_query_member(field, semantic_view, role)
+    if time_dimension:
+        time_field = catalog.field(time_dimension, semantic_view)
+        _ensure_query_member(time_field, semantic_view, role)
+        if time_field.data_type not in {FieldType.DATE, FieldType.TIME}:
+            raise AnalyticsValidationError("Time dimension must be a date or time field")
+    for filter_spec in filters:
+        field = catalog.field(filter_spec.member, semantic_view)
+        _ensure_query_member(field, semantic_view, role)
+        _validate_filter(filter_spec, field)
+
+
 def validate_query(
     query: QuerySpec | dict[str, Any],
     catalog: SemanticCatalog,
     role: str = "viewer",
 ) -> QuerySpec:
     query = query if isinstance(query, QuerySpec) else QuerySpec.model_validate(query)
-    if role not in {"viewer", "admin"}:
-        raise AnalyticsValidationError("Unknown analytics role")
-    if query.semantic_view not in catalog.views:
-        raise AnalyticsValidationError("Unknown semantic view")
-    if not query.dimensions and not query.metrics and not query.time_dimension:
-        raise AnalyticsValidationError("Query must select at least one member")
+    validate_query_fields(
+        semantic_view=query.semantic_view,
+        dimensions=query.dimensions,
+        filters=query.filters,
+        catalog=catalog,
+        role=role,
+        time_dimension=query.time_dimension,
+    )
+    resolve_query_metric(query, catalog, role)
 
-    selected: set[str] = set()
-    for slug in query.dimensions:
-        field = catalog.field(slug, query.semantic_view)
-        _ensure_query_member(field, query.semantic_view, role)
-        selected.add(slug)
-    for slug in query.metrics:
-        metric = catalog.metric(slug, query.semantic_view)
-        _ensure_query_member(metric, query.semantic_view, role)
-        validate_metric(metric, catalog)
-        selected.add(slug)
-
+    selected = {*query.dimensions, "value"}
     if query.time_dimension:
-        time_field = catalog.field(query.time_dimension, query.semantic_view)
-        _ensure_query_member(time_field, query.semantic_view, role)
-        if time_field.data_type not in {FieldType.DATE, FieldType.TIME}:
-            raise AnalyticsValidationError("Time dimension must be a date or time field")
         selected.add(query.time_dimension)
-
-    for filter_spec in query.filters:
-        field = catalog.field(filter_spec.member, query.semantic_view)
-        _ensure_query_member(field, query.semantic_view, role)
-        _validate_filter(filter_spec, field)
-
     for order in query.order:
         if order.member not in selected:
             raise AnalyticsValidationError("Ordering is limited to selected members")
@@ -749,9 +925,10 @@ def compile_cube_query(
 
     query = validate_query(query, catalog, role)
     prefix = f"{query.semantic_view}."
+    metric = resolve_query_metric(query, catalog, role)
     result: dict[str, Any] = {
         "dimensions": [prefix + slug for slug in query.dimensions],
-        "measures": [prefix + slug for slug in query.metrics],
+        "measures": [prefix + metric.slug],
     }
 
     filters: list[dict[str, Any]] = []
@@ -764,16 +941,20 @@ def compile_cube_query(
                     {
                         "member": prefix + item.member,
                         "operator": "gte",
-                    "values": [
-                        _cube_value(item.values[0], field.data_type, query.timezone)
-                    ],
+                        "values": [
+                            _cube_value(
+                                item.values[0], field.data_type, query.timezone
+                            )
+                        ],
                     },
                     {
                         "member": prefix + item.member,
                         "operator": "lte",
-                    "values": [
-                        _cube_value(item.values[1], field.data_type, query.timezone)
-                    ],
+                        "values": [
+                            _cube_value(
+                                item.values[1], field.data_type, query.timezone
+                            )
+                        ],
                     },
                 ]
             )
@@ -804,7 +985,8 @@ def compile_cube_query(
         result["timezone"] = query.timezone
     if query.order:
         result["order"] = {
-            prefix + order.member: order.direction for order in query.order
+            (prefix + metric.slug if order.member == "value" else prefix + order.member): order.direction
+            for order in query.order
         }
     result["limit"] = query.limit
     return result
@@ -815,115 +997,56 @@ CHART_COMBINATION_RULES: tuple[dict[str, Any], ...] = (
         "chart_type": "kpi",
         "min_dimensions": 0,
         "max_dimensions": 0,
-        "min_metrics": 1,
-        "max_metrics": 1,
-        "allows_time_dimension": False,
-        "numeric_metrics_required": False,
-        "requires_at_least_one_member": False,
-        "required_dimensions": (),
+        "time_dimension": "forbidden",
+        "requires_time_granularity": False,
+        "numeric_metric_required": False,
+        "exact_metric_count": 1,
     },
     {
         "chart_type": "table",
         "min_dimensions": 0,
         "max_dimensions": MAX_DIMENSIONS,
-        "min_metrics": 0,
-        "max_metrics": MAX_METRICS,
-        "allows_time_dimension": False,
-        "numeric_metrics_required": False,
-        "requires_at_least_one_member": True,
-        "required_dimensions": (),
+        "time_dimension": "optional",
+        "requires_time_granularity": False,
+        "numeric_metric_required": False,
+        "exact_metric_count": 1,
     },
-    *(
-        {
-            "chart_type": chart_type,
-            "min_dimensions": 1,
-            "max_dimensions": MAX_DIMENSIONS,
-            "min_metrics": 1,
-            "max_metrics": MAX_METRICS,
-            "allows_time_dimension": False,
-            "numeric_metrics_required": True,
-            "requires_at_least_one_member": False,
-            "required_dimensions": (),
-        }
-        for chart_type in ("bar", "column")
-    ),
-    {
-        "chart_type": "stacked_bar",
-        "min_dimensions": 2,
-        "max_dimensions": 2,
-        "min_metrics": 1,
-        "max_metrics": MAX_METRICS,
-        "allows_time_dimension": False,
-        "numeric_metrics_required": True,
-        "requires_at_least_one_member": False,
-        "required_dimensions": (),
-    },
-    *(
-        {
-            "chart_type": chart_type,
-            "min_dimensions": 1,
-            "max_dimensions": MAX_DIMENSIONS,
-            "min_metrics": 1,
-            "max_metrics": MAX_METRICS,
-            "allows_time_dimension": True,
-            "numeric_metrics_required": True,
-            "requires_at_least_one_member": False,
-            "required_dimensions": (),
-        }
-        for chart_type in ("line", "area")
-    ),
     *(
         {
             "chart_type": chart_type,
             "min_dimensions": 1,
             "max_dimensions": 1,
-            "min_metrics": 1,
-            "max_metrics": 1,
-            "allows_time_dimension": False,
-            "numeric_metrics_required": True,
-            "requires_at_least_one_member": False,
-            "required_dimensions": (),
+            "time_dimension": "forbidden",
+            "requires_time_granularity": False,
+            "numeric_metric_required": True,
+            "exact_metric_count": 1,
         }
-        for chart_type in ("pie", "donut")
+        for chart_type in ("bar", "column", "pie", "donut")
     ),
-    {
-        "chart_type": "scatter",
-        "min_dimensions": 0,
-        "max_dimensions": 1,
-        "min_metrics": 2,
-        "max_metrics": 2,
-        "allows_time_dimension": False,
-        "numeric_metrics_required": True,
-        "requires_at_least_one_member": False,
-        "required_dimensions": (),
-    },
-    {
-        "chart_type": "heatmap",
-        "min_dimensions": 2,
-        "max_dimensions": 2,
-        "min_metrics": 1,
-        "max_metrics": 1,
-        "allows_time_dimension": False,
-        "numeric_metrics_required": True,
-        "requires_at_least_one_member": False,
-        "required_dimensions": (),
-    },
-    {
-        "chart_type": "store_map",
-        "min_dimensions": 4,
-        "max_dimensions": 4,
-        "min_metrics": 1,
-        "max_metrics": 1,
-        "allows_time_dimension": False,
-        "numeric_metrics_required": True,
-        "requires_at_least_one_member": False,
-        "required_dimensions": (
-            "store_key",
-            "store_name",
-            "latitude",
-            "longitude",
-        ),
-    },
+    *(
+        {
+            "chart_type": chart_type,
+            "min_dimensions": 2,
+            "max_dimensions": 2,
+            "time_dimension": "forbidden",
+            "requires_time_granularity": False,
+            "numeric_metric_required": True,
+            "exact_metric_count": 1,
+        }
+        for chart_type in ("stacked_bar", "heatmap")
+    ),
+    *(
+        {
+            "chart_type": chart_type,
+            "min_dimensions": 0,
+            "max_dimensions": 1,
+            "time_dimension": "required",
+            "requires_time_granularity": True,
+            "numeric_metric_required": True,
+            "exact_metric_count": 1,
+        }
+        for chart_type in ("line", "area")
+    ),
 )
 _CHART_RULES_BY_TYPE = {
     rule["chart_type"]: rule for rule in CHART_COMBINATION_RULES
@@ -933,23 +1056,19 @@ _CHART_RULES_BY_TYPE = {
 def chart_combination_rules() -> tuple[dict[str, Any], ...]:
     """Return defensive copies of the chart contract used by validation."""
 
-    return tuple(
-        {
-            **rule,
-            "required_dimensions": tuple(rule["required_dimensions"]),
-        }
-        for rule in CHART_COMBINATION_RULES
-    )
+    return tuple(dict(rule) for rule in CHART_COMBINATION_RULES)
 
 
 def validate_chart_definition(
     chart_type: str,
     dimensions: list[str] | tuple[str, ...],
-    metrics: list[str] | tuple[str, ...],
+    metric: str,
+    aggregation: QueryAggregation | Aggregation | str,
     catalog: SemanticCatalog | None = None,
     *,
     semantic_view: str | None = None,
     time_dimension: str | None = None,
+    time_granularity: str | None = None,
     role: str = "viewer",
 ) -> None:
     """Validate chart arity before a definition can be published."""
@@ -957,30 +1076,23 @@ def validate_chart_definition(
     rule = _CHART_RULES_BY_TYPE.get(chart_type)
     if rule is None:
         raise AnalyticsValidationError("Unsupported chart type")
-    for member in (*dimensions, *metrics):
+    for member in (*dimensions, metric):
         validate_identifier(member)
+    aggregation = Aggregation(aggregation)
+    if aggregation not in SIMPLE_AGGREGATIONS:
+        raise AnalyticsValidationError("Unsupported simple-query aggregation")
     if time_dimension is not None:
         validate_identifier(time_dimension)
         if time_dimension in dimensions:
             raise AnalyticsValidationError(
                 "Granular time dimensions must not be duplicated as ordinary dimensions"
             )
-        if not rule["allows_time_dimension"]:
-            raise AnalyticsValidationError(
-                "Time dimensions are supported only by line and area charts"
-            )
-    dimension_count = len(dimensions) + (1 if time_dimension is not None else 0)
-    metric_count = len(metrics)
-
-    valid = (
-        rule["min_dimensions"] <= dimension_count <= rule["max_dimensions"]
-        and rule["min_metrics"] <= metric_count <= rule["max_metrics"]
-    )
-    if rule["requires_at_least_one_member"]:
-        valid = valid and dimension_count + metric_count > 0
-    required_dimensions = tuple(rule["required_dimensions"])
-    if required_dimensions:
-        valid = valid and set(dimensions) == set(required_dimensions)
+    time_mode = rule["time_dimension"]
+    valid = rule["min_dimensions"] <= len(dimensions) <= rule["max_dimensions"]
+    valid = valid and not (time_mode == "forbidden" and time_dimension is not None)
+    valid = valid and not (time_mode == "required" and time_dimension is None)
+    if rule["requires_time_granularity"]:
+        valid = valid and time_granularity is not None
     if not valid:
         raise AnalyticsValidationError(
             f"Chart type {chart_type} requires a compatible dimension/metric shape"
@@ -996,24 +1108,22 @@ def validate_chart_definition(
         for slug in dimensions:
             member = catalog.field(slug, semantic_view)
             _ensure_query_member(member, semantic_view, role)
-        for slug in metrics:
-            member = catalog.metric(slug, semantic_view)
-            _ensure_query_member(member, semantic_view, role)
-            validate_metric(member, catalog)
-            if rule["numeric_metrics_required"]:
-                source = (
-                    catalog.field(member.source_field, semantic_view)
-                    if member.source_field is not None
-                    else None
-                )
-                if (
-                    source is not None
-                    and source.data_type in {FieldType.DATE, FieldType.TIME}
-                    and member.aggregation in {Aggregation.MIN, Aggregation.MAX}
-                ):
-                    raise AnalyticsValidationError(
-                        f"Chart type {chart_type} requires numeric metrics"
-                    )
+        query = QuerySpec(
+            semantic_view=semantic_view,
+            dimensions=dimensions,
+            metric=metric,
+            aggregation=aggregation,
+            time_dimension=time_dimension,
+            time_granularity=time_granularity,
+        )
+        validate_query(query, catalog, role)
+        field = catalog.field(metric, semantic_view)
+        if rule["numeric_metric_required"] and _metric_result_type(
+            field, aggregation
+        ) is not FieldType.NUMBER:
+            raise AnalyticsValidationError(
+                f"Chart type {chart_type} requires a numeric metric"
+            )
         if time_dimension is not None:
             time_field = catalog.field(time_dimension, semantic_view)
             _ensure_query_member(time_field, semantic_view, role)

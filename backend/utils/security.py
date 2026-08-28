@@ -231,4 +231,12 @@ async def create_or_update_user_from_azure(
         db.commit()
         db.refresh(user)
 
+    # A migrate-before-first-user installation cannot seed user-owned analytics
+    # defaults inside Alembic.  Complete that tightly scoped empty-catalog path
+    # as soon as SSO has provided the first usable owner (and retry safely on
+    # later logins if an earlier attempt was interrupted).
+    from utils.database_migrations import bootstrap_single_metric_analytics_defaults
+
+    bootstrap_single_metric_analytics_defaults()
+
     return user

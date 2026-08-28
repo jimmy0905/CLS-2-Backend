@@ -12,7 +12,7 @@ filter options and published chart data—see
 
 There is not one request that can replace all dashboard cards: each card asks a
 question at a different row grain. The requests below replace each endpoint
-with the built-in **dashboard metric pack**. A frontend may run the request body
+with the built-in single-metric catalog. A frontend may run the request body
 verbatim after adding its current common filters.
 
 Base URL in the local profile:
@@ -28,21 +28,28 @@ Authorization: Bearer <access-token>
 Content-Type: application/json
 ```
 
-## 1. Built-in dashboard metric pack
+## 1. Single-metric dashboard contract
 
-The built-in catalog already provides `response_count`, `responding_store_count`, `cls_average`,
-`topic_sentiment_score_average`, the four response-level
-`topic_sentiment_*_count` metrics, `assignment_count`, `distinct_survey_count`,
-and the topic/department/keyword `*_assignment_*_count` metrics. The standard
-dashboard metric pack is built in and requires no per-BU publication.
+Every aggregate request selects exactly one raw `metric` field and one
+`aggregation`; the removed `metrics: []` field is rejected. Common pairs are
+`id/count` for responses, `assignment_id/count` for assignment rows,
+`survey_id/distinct_count` for unique surveys, `cls/average`, and
+`topic_sentiment_score/average`. Use only pairs advertised by
+`GET /analytics/catalog` under `metric_options`.
 
-`responding_store_count` is `countDistinct(store_key)` over matching response
+`store_key/distinct_count` counts distinct stores over matching response
 rows. It counts stores represented in the current response filters and date
 range; it intentionally does not count stores with zero matching responses.
 
+Filtered, weighted, variance, standard-deviation, percentile, and confidence-
+interval governed metrics may remain in admin/Cube metadata, but are not public
+query options. Sentiment distributions now group by the relevant sentiment
+Dimension and use a normal row count, rather than selecting several filtered
+metrics in one request.
+
 ### Response-level sentiment counts
 
-The response-level metrics are built in: `topic_sentiment_positive_count`,
+The response-level governed metrics `topic_sentiment_positive_count`,
 `topic_sentiment_negative_count`, `topic_sentiment_neutral_count`, and
 `topic_sentiment_mixed_count`. They require no setup. The example below is
 kept as a reference for creating comparable BU-specific filtered metrics.
@@ -61,7 +68,8 @@ curl -X POST 'http://localhost:8000/wtchk/api/admin/analytics/metrics' \
   }'
 ```
 
-The built-in response metrics are:
+These names are retained in governance metadata, not accepted as public query
+`metric` fields. Their historical definitions are:
 
 | Slug | Filter value |
 | --- | --- |
@@ -109,9 +117,9 @@ curl -X POST 'http://localhost:8000/wtchk/api/admin/analytics/catalog/publish' \
   -d '{"description":"Dashboard semantic metric pack"}'
 ```
 
-Use `GET /analytics/catalog` to verify that built-in metrics are available after
-the deployment. Metrics can also be created in the admin UI; the request body
-above shows the exact API contract.
+Use `GET /analytics/catalog` to verify the executable `metric_options` after the
+deployment. Metrics can still be governed in the admin UI, but only unique
+simple source-field/aggregation pairs enter the public query contract.
 
 ## 2. Common filter translation
 
@@ -155,19 +163,14 @@ groups returned; it is not a survey-row limit.
 
 ### `GET /dashboard/sentiment-distribution`
 
-One row per reported day, based on `surveys.topic_sentiment` and
-`surveys.topic_sentiment_score`:
+One row per reported day and sentiment, based on `surveys.topic_sentiment`:
 
 ```json
 {
   "semantic_view": "survey_responses",
-  "metrics": [
-    "topic_sentiment_positive_count",
-    "topic_sentiment_negative_count",
-    "topic_sentiment_neutral_count",
-    "topic_sentiment_mixed_count",
-    "topic_sentiment_score_average"
-  ],
+  "dimensions": ["topic_sentiment"],
+  "metric": "id",
+  "aggregation": "count",
   "time_dimension": "reported_at",
   "time_granularity": "day",
   "time_range": ["2024-08-01T00:00:00Z", "2024-09-01T00:00:00Z"],
@@ -185,18 +188,13 @@ aggregate every matching response during that day.
 ```json
 {
   "semantic_view": "survey_responses",
-  "dimensions": ["store_key", "store_name_english", "store_name_local"],
-  "metrics": [
-    "topic_sentiment_positive_count",
-    "topic_sentiment_negative_count",
-    "topic_sentiment_neutral_count",
-    "topic_sentiment_mixed_count",
-    "topic_sentiment_score_average"
-  ],
+  "dimensions": ["store_name_english", "topic_sentiment"],
+  "metric": "id",
+  "aggregation": "count",
   "filters": [
     {"member": "reported_at", "operator": "between", "values": ["2024-08-01T00:00:00Z", "2024-09-01T00:00:00Z"]}
   ],
-  "order": [{"member": "topic_sentiment_negative_count", "direction": "desc"}],
+  "order": [{"member": "value", "direction": "desc"}],
   "limit": 1000
 }
 ```
@@ -215,15 +213,10 @@ single dimension. For the existing `column=store_format` case:
 ```json
 {
   "semantic_view": "survey_responses",
-  "dimensions": ["store_format"],
-  "metrics": [
-    "topic_sentiment_positive_count",
-    "topic_sentiment_negative_count",
-    "topic_sentiment_neutral_count",
-    "topic_sentiment_mixed_count",
-    "topic_sentiment_score_average"
-  ],
-  "order": [{"member": "topic_sentiment_negative_count", "direction": "desc"}],
+  "dimensions": ["store_format", "topic_sentiment"],
+  "metric": "id",
+  "aggregation": "count",
+  "order": [{"member": "value", "direction": "desc"}],
   "limit": 1000
 }
 ```
@@ -238,52 +231,54 @@ by `GET /analytics/catalog`.
 ```json
 {
   "semantic_view": "survey_responses",
-  "dimensions": ["channel_name", "delivery_service_name"],
-  "metrics": [
-    "topic_sentiment_positive_count",
-    "topic_sentiment_negative_count",
-    "topic_sentiment_neutral_count",
-    "topic_sentiment_mixed_count",
-    "topic_sentiment_score_average"
-  ],
-  "order": [{"member": "topic_sentiment_negative_count", "direction": "desc"}],
+  "dimensions": ["channel_name", "delivery_service_name", "topic_sentiment"],
+  "metric": "id",
+  "aggregation": "count",
+  "order": [{"member": "value", "direction": "desc"}],
   "limit": 1000
 }
 ```
 
 ### `GET /dashboard/topic-sentiment-score`
 
-Run the main KPI request:
+Run the sentiment-count request:
 
 ```json
 {
   "semantic_view": "survey_responses",
-  "metrics": [
-    "topic_sentiment_positive_count",
-    "topic_sentiment_negative_count",
-    "topic_sentiment_neutral_count",
-    "topic_sentiment_mixed_count",
-    "topic_sentiment_score_average"
-  ],
+  "dimensions": ["topic_sentiment"],
+  "metric": "id",
+  "aggregation": "count",
+  "limit": 10
+}
+```
+
+Run a second request for the overall average:
+
+```json
+{
+  "semantic_view": "survey_responses",
+  "metric": "topic_sentiment_score",
+  "aggregation": "average",
   "limit": 1
 }
 ```
 
-It returns the first four dashboard counts plus the overall average score.
-For `average_mix_topic_score`, run a second request with the same common
-filters plus this filter and only the built-in average metric:
+For `average_mix_topic_score`, run a third request with the same common filters
+plus this filter:
 
 ```json
 {
   "semantic_view": "survey_responses",
-  "metrics": ["topic_sentiment_score_average"],
+  "metric": "topic_sentiment_score",
+  "aggregation": "average",
   "filters": [{"member": "topic_sentiment", "operator": "equals", "value": "MIXED"}],
   "limit": 1
 }
 ```
 
-This separate request is intentional: the governed metric language has a
-filtered count/rate but does not expose arbitrary executable filtered averages.
+These separate requests are intentional: every aggregate has exactly one
+metric field and aggregation.
 
 ### `GET /dashboard/topic-distribution`
 
@@ -293,14 +288,10 @@ Use the topic-assignment grain. These counts reflect
 ```json
 {
   "semantic_view": "survey_topics",
-  "dimensions": ["topic"],
-  "metrics": [
-    "assignment_count",
-    "topic_assignment_positive_count",
-    "topic_assignment_negative_count",
-    "topic_assignment_neutral_count"
-  ],
-  "order": [{"member": "assignment_count", "direction": "desc"}],
+  "dimensions": ["topic", "sentiment"],
+  "metric": "assignment_id",
+  "aggregation": "count",
+  "order": [{"member": "value", "direction": "desc"}],
   "limit": 1000
 }
 ```
@@ -313,14 +304,10 @@ Use the department-assignment grain. These counts reflect
 ```json
 {
   "semantic_view": "survey_departments",
-  "dimensions": ["department"],
-  "metrics": [
-    "assignment_count",
-    "department_assignment_positive_count",
-    "department_assignment_negative_count",
-    "department_assignment_neutral_count"
-  ],
-  "order": [{"member": "assignment_count", "direction": "desc"}],
+  "dimensions": ["department", "sentiment"],
+  "metric": "assignment_id",
+  "aggregation": "count",
+  "order": [{"member": "value", "direction": "desc"}],
   "limit": 1000
 }
 ```
@@ -332,39 +319,38 @@ Use the keyword-assignment grain. `limit: 10` replaces `k=10`:
 ```json
 {
   "semantic_view": "survey_keywords",
-  "dimensions": ["keyword"],
-  "metrics": [
-    "assignment_count",
-    "keyword_assignment_positive_count",
-    "keyword_assignment_negative_count",
-    "keyword_assignment_neutral_count"
-  ],
-  "order": [{"member": "assignment_count", "direction": "desc"}],
+  "dimensions": ["keyword", "sentiment"],
+  "metric": "assignment_id",
+  "aggregation": "count",
+  "order": [{"member": "value", "direction": "desc"}],
   "limit": 10
 }
 ```
 
 ### `GET /dashboard/data-coverage`
 
-The built-in `first_reported_at` and `last_reported_at` metrics require no
-publication. Query them directly:
+Run two KPI queries; the first uses `reported_at/min`:
 
 ```json
 {
   "semantic_view": "survey_responses",
-  "metrics": ["first_reported_at", "last_reported_at"],
+  "metric": "reported_at",
+  "aggregation": "min",
   "limit": 1
 }
 ```
 
+The second uses the same body with `"aggregation": "max"`.
+
 ### `GET /dashboard/last-updated-date`
 
-The built-in `last_updated_at` metric requires no publication. Query it directly:
+Query the latest active update directly:
 
 ```json
 {
   "semantic_view": "survey_responses",
-  "metrics": ["last_updated_at"],
+  "metric": "updated_at",
+  "aggregation": "max",
   "limit": 1
 }
 ```

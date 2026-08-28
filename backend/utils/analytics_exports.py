@@ -242,13 +242,14 @@ async def _execute_export_job(job_id: str) -> None:
             request.get("role"),
             db.query(User).filter(User.id == job.requested_by_id).first(),
         )
-        from routers.analytics import _active_model_version
+        from routers.analytics import _active_model_version, _catalog_from_version
 
         active_version = _active_model_version(db)
         ensure_export_model_version(
             job.model_version_id,
             active_version.id if active_version is not None else None,
         )
+        catalog = _catalog_from_version(active_version, role)
         if mode not in {"query", "drilldown", "record_query"}:
             raise ValueError("Export job contains an invalid governed query")
         if mode == "query" and not isinstance(cube_query, dict):
@@ -263,7 +264,6 @@ async def _execute_export_job(job_id: str) -> None:
         db.commit()
 
         if mode == "query":
-            from routers.analytics import _catalog
             from utils.analytics import QuerySpec, compile_cube_query
             from utils.analytics_results import (
                 augment_cube_query_with_supports,
@@ -271,13 +271,13 @@ async def _execute_export_job(job_id: str) -> None:
             )
 
             semantic_query = QuerySpec.model_validate(request.get("semantic_query"))
-            catalog = _catalog(db, role)
             # Recompile at execution time so a revoked/changed member cannot be
             # smuggled through a previously persisted Cube payload.
             cube_query = augment_cube_query_with_supports(
                 compile_cube_query(semantic_query, catalog, role),
                 semantic_query,
                 catalog,
+                role,
             )
             result = await CubeClient(
                 ANALYTICS_CUBE_API_URL,
@@ -289,7 +289,7 @@ async def _execute_export_job(job_id: str) -> None:
                 role=role,
                 request_id=job.id,
             )
-            rows = format_query_result(result, semantic_query, catalog)["rows"]
+            rows = format_query_result(result, semantic_query, catalog, role)["rows"]
         elif mode == "drilldown":
             rows = await asyncio.to_thread(
                 _collect_drilldown_rows,
@@ -303,6 +303,12 @@ async def _execute_export_job(job_id: str) -> None:
                 request["record_query"],
                 ANALYTICS_EXPORT_MAX_ROWS,
             )
+        db.expire_all()
+        latest_version = _active_model_version(db)
+        ensure_export_model_version(
+            job.model_version_id,
+            latest_version.id if latest_version is not None else None,
+        )
         output_path = build_export_path(
             ANALYTICS_EXPORT_DIR, job.id, job.export_format
         )
@@ -312,6 +318,12 @@ async def _execute_export_job(job_id: str) -> None:
             job.export_format,
             output_path,
             max_rows=ANALYTICS_EXPORT_MAX_ROWS,
+        )
+        db.expire_all()
+        latest_version = _active_model_version(db)
+        ensure_export_model_version(
+            job.model_version_id,
+            latest_version.id if latest_version is not None else None,
         )
 
         job.status = "completed"
