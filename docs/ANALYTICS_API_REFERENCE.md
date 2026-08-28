@@ -7,6 +7,9 @@ current dashboard cards, see [Dashboard analytics migration](DASHBOARD_ANALYTICS
 For the frontend call order, availability checks, filter discovery, and chart
 loading loop, see
 [Frontend dashboard analytics workflow](FRONTEND_DASHBOARD_ANALYTICS_WORKFLOW.md).
+For a Chinese user manual covering valid and misleading Semantic View,
+Dimension, and Metric combinations with a ten-survey worked example, see
+[Semantic View、Dimension 與 Metric 使用手冊](user-manual/SEMANTIC_VIEW_DIMENSION_METRICS_GUIDE.md).
 
 ## Base URL, access, and common behaviour
 
