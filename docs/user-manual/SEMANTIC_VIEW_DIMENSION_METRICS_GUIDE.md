@@ -1,5 +1,10 @@
 # Semantic View、Dimension 與 Metric 使用手冊
 
+> 本手冊已按 goal-first contract 更新。`metric` 現在是業務目標，不是
+> `id`、`assignment_id` 或 `survey_id` 等資料欄位。完整 API contract 與
+> keyword `A` 範例請參閱
+> [Goal-first analytics query contract](../ANALYTICS_GOAL_FIRST_CONTRACT.md)。
+
 本手冊說明 CLSense governed analytics 中 `semantic_view`、Dimension 和
 Metric 的組合規則。它同時區分三種情況：
 
@@ -243,8 +248,8 @@ assignment_id, response_id, sentiment, keyword_id, keyword
 | number | `count`, `distinct_count`, `sum`, `average`, `min`, `max`, `median` |
 | date / time | `count`, `distinct_count`, `min`, `max` |
 
-此外，該 `(metric field, aggregation)` 必須出現在目前 catalog 的
-`metric_options[semantic_view]`。型別合法但未發布，或同一 pair 對應多個
+此外，該 `(logical metric target, aggregation)` 必須出現在目前 catalog 的
+`metric_targets[semantic_view]`。型別合法但未發布，或同一 pair 對應多個
 governed measure，都會回傳 `422`。
 
 以下組合合法，因為所有成員都屬於 `survey_responses`：
@@ -253,7 +258,7 @@ governed measure，都會回傳 `422`。
 {
   "semantic_view": "survey_responses",
   "dimensions": ["store_format", "topic_sentiment"],
-  "metric": "id",
+  "metric": "survey",
   "aggregation": "count"
 }
 ```
@@ -264,7 +269,7 @@ governed measure，都會回傳 `422`。
 {
   "semantic_view": "survey_topics",
   "dimensions": ["topic", "department"],
-  "metric": "assignment_id",
+  "metric": "topic_assignment",
   "aggregation": "count"
 }
 ```
@@ -344,7 +349,7 @@ Keyword Assignments    = 14
 {
   "semantic_view": "survey_responses",
   "dimensions": ["topic_sentiment"],
-  "metric": "id",
+  "metric": "survey",
   "aggregation": "count"
 }
 ```
@@ -364,7 +369,7 @@ Keyword Assignments    = 14
 {
   "semantic_view": "survey_responses",
   "dimensions": ["store_format"],
-  "metric": "id",
+  "metric": "survey",
   "aggregation": "count"
 }
 ```
@@ -384,7 +389,7 @@ Keyword Assignments    = 14
 {
   "semantic_view": "survey_responses",
   "dimensions": ["store_format", "topic_sentiment"],
-  "metric": "id",
+  "metric": "survey",
   "aggregation": "count"
 }
 ```
@@ -457,14 +462,14 @@ Mall 只有 7，因為 S7 有兩個 Topics，但只有一個 Keyword。
 
 > 相同 Dimension 不代表相同計數單位；真正決定計數單位的是 Semantic View 和 Metric/Aggregation。
 
-## 7. 不同 Semantic View 使用 `survey_id/distinct_count`
+## 7. 不同 Semantic View 使用 `survey/count`
 
 ```json
 {
   "semantic_view": "survey_topics",
   "dimensions": ["store_format"],
-  "metric": "survey_id",
-  "aggregation": "distinct_count"
+  "metric": "survey",
+  "aggregation": "count"
 }
 ```
 
@@ -474,7 +479,7 @@ Mall 只有 7，因為 S7 有兩個 Topics，但只有一個 Keyword。
 | Street | 3 |
 | Airport | 2 |
 
-它與 `survey_responses` 的 `id/count` 相同，只因例子中的十份 Survey 都有
+它與 `survey_responses` 的 `survey/count` 相同，只因例子中的十份 Survey 都有
 至少一個 Topic。
 
 假設 S8 沒有任何 Keyword：
@@ -560,7 +565,7 @@ late  = NEGATIVE
 {
   "semantic_view": "survey_topics",
   "dimensions": ["topic_sentiment"],
-  "metric": "assignment_id",
+  "metric": "topic_assignment",
   "aggregation": "count"
 }
 ```
@@ -571,7 +576,7 @@ late  = NEGATIVE
 {
   "semantic_view": "survey_topics",
   "dimensions": ["sentiment"],
-  "metric": "assignment_id",
+  "metric": "topic_assignment",
   "aggregation": "count"
 }
 ```
@@ -611,13 +616,13 @@ survey_responses + cls + id/count
 | `survey_topics + topic + id/count` | `422` | Topic view 沒有 `id` metric option |
 | `survey_responses + store_format + assignment_id/count` | `422` | Response view 沒有 `assignment_id` |
 | `survey_responses + cls/avg` | `422` | Aggregation 必須使用完整名稱 `average` |
-| 未出現在 `metric_options` 的 field/aggregation | `422` | 只可使用唯一而且已發布的 pair |
+| 未出現在 `metric_targets` 的 target/aggregation | `422` | 只可使用唯一而且已發布的 pair |
 | 同時查詢 `topic`、`department`、`keyword` | `422` | 系統禁止跨 assignment grain fan-out |
 | `reported_at` 同時放入 `dimensions` 和 `time_dimension` | `422` | 時間欄位不可重複選取 |
 
 ## 12. Assignment Views 為何沒有公開 `cls/average`
 
-Assignment Views 雖然帶有 `cls` Dimension，但目前的 `metric_options`
+Assignment Views 雖然帶有 `cls` Dimension，但目前的 `metric_targets`
 沒有發布 `cls/average` 或 `topic_sentiment_score/average`。
 
 假設：
@@ -673,7 +678,7 @@ Survey-level score 應優先在 `survey_responses` 計算。
 {
   "semantic_view": "survey_responses",
   "dimensions": ["store_format", "region"],
-  "metric": "id",
+  "metric": "survey",
   "aggregation": "count"
 }
 ```
@@ -692,14 +697,14 @@ Table、Stacked Bar 或 Heatmap。
 | Department assignments | `survey_departments` |
 | Keyword assignments | `survey_keywords` |
 
-### 第二步：選擇 Metric Field 與 Aggregation
+### 第二步：選擇 Metric Target 與 Aggregation
 
-| 問題 | Metric Field + Aggregation |
+| 問題 | Metric Target + Aggregation |
 | --- | --- |
-| 出現了多少次？ | `assignment_id` + `count` |
-| 有多少份不同 Survey 涉及它？ | `survey_id` + `distinct_count` |
-| 有多少份 Survey Responses？ | `id` + `count` |
-| Assignment sentiment 數量 | 加入 `sentiment` Dimension，再使用 `assignment_id` + `count` |
+| Topic／Department／Keyword 出現了多少次？ | 對應的 `<entity>_assignment` + `count` |
+| 有多少份不同 Survey 涉及它？ | `survey` + `count` |
+| 有多少份 Survey Responses？ | `survey` + `count` |
+| Assignment sentiment 數量 | 加入 `sentiment` Dimension，再使用對應的 assignment target + `count` |
 
 ### 第三步：選擇分類角度
 
@@ -724,13 +729,14 @@ Catalog response 的 `combinations` 是正式、機器可讀的組合合約：
 
 ```text
 combinations.query          = query 數量及同 View 限制
-metric_options              = 每個 View 可執行的 Field／Aggregation pairs
+metric_targets              = 每個 View 可執行的業務 Target／Aggregation methods
 combinations.semantic_views = 每個 View 的 grain 和 Dimensions
 combinations.charts         = 每種 Chart 的 Dimension／Metric shape
 ```
 
 前端應直接使用這個結構建立選擇器。例如選定 `survey_topics` 後，只顯示
-該項目的 `dimensions` 與 `metric_options[semantic_view]`；不要在前端再維護另一份手寫清單。
+該項目的 `dimensions` 與 `metric_targets[semantic_view]`；選好 target/method
+後再呼叫 `/analytics/query-capabilities`，不要在前端維護另一份手寫清單。
 
 如果產品只希望提供有限、已驗證的查詢，而不是讓使用者自由排列所有
 members，應使用：

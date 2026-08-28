@@ -1,5 +1,8 @@
 # Frontend workflow for dashboard analytics
 
+> Query builders use the logical-target discovery sequence defined in
+> [Goal-first analytics query contract](ANALYTICS_GOAL_FIRST_CONTRACT.md).
+
 This workflow shows how the frontend replaces legacy `GET /dashboard/*`
 requests with the governed `/analytics` API. It begins by discovering which
 dimensions are published and which of them actually contain data, then loads
@@ -15,9 +18,9 @@ flowchart TD
     A[Dashboard route opens] --> B[GET /analytics/catalog]
     B --> C{Request succeeded?}
     C -- No --> C1[Show authentication, disabled-feature, or retry state]
-    C -- Yes --> D[Keep model_version and index fields and metric_options by semantic_view]
-    D --> V[GET /analytics/query-combinations]
-    V --> V1[Render only finite validated query templates]
+    C -- Yes --> D[Keep model_version, fields, and metric_targets by semantic_view]
+    D --> V[User selects one target and one method]
+    V --> V1[POST /analytics/query-capabilities]
 
     D --> E[GET /analytics/catalog/availability?semantic_view=...]
     E --> F{field.available?}
@@ -38,7 +41,7 @@ flowchart TD
     M --> N{Published dashboard card?}
     N -- Yes --> O[POST /analytics/charts/chart_id/data]
     N -- No, guided exploration --> V1
-    V1 --> P[Apply allowed overrides and POST template to /analytics/query]
+    V1 --> P[Choose allowed dimensions and filters, then POST /analytics/query]
     O --> Q[Read schema, flat rows, row_count, warnings, freshness_time, model_version]
     P --> Q
     Q --> R[Render chart or KPI]
@@ -63,9 +66,10 @@ sequenceDiagram
 
     User->>FE: Open dashboard
     FE->>API: GET /analytics/catalog
-    API-->>FE: model_version, semantic_views, fields, metric_options
-    FE->>API: GET /analytics/query-combinations
-    API-->>FE: finite validated templates and compatible chart types
+    API-->>FE: model_version, semantic_views, fields, metric_targets
+    User->>FE: Choose one result target and method
+    FE->>API: POST /analytics/query-capabilities
+    API-->>FE: Allowed dimensions, filters, time dimensions, result type
 
     loop Each semantic view used by the page
         FE->>API: GET /analytics/catalog/availability?semantic_view=view
@@ -94,13 +98,14 @@ sequenceDiagram
 
 | Call | Frontend use |
 | --- | --- |
-| `GET /analytics/catalog` | The allowlist of role-visible semantic views, dimensions, executable raw-field/aggregation `metric_options`, and chart types. Its `combinations` object supplies query limits, per-view member compatibility, grain meaning, and chart shapes. Only send pairs returned by this response. |
+| `GET /analytics/catalog` | The allowlist of role-visible semantic views, dimensions, logical `metric_targets`, and chart types. Its `combinations` object supplies query limits, grain meaning, and chart shapes. Only send target/method pairs returned by this response. |
+| `POST /analytics/query-capabilities` | Validates the selected target/method and returns allowed dimensions, filter members/operators, time dimensions, and result type. Use this response to build the remaining controls. |
 | `GET /analytics/query-combinations?semantic_view=...` | A finite collection of directly executable, active-catalog-validated query templates. Use this for guided exploration; preserve dimensions, the one metric/aggregation pair, time dimension, and grain, and change only the listed `allowed_overrides`. |
 | `GET /analytics/catalog/availability?semantic_view=...` | Whether each catalog field has at least one non-null value in that view. Show fields where `available` is `true`; an availability rate below 1 still means the field can be used. |
 | `GET /analytics/charts/published` | The governed dashboard cards visible to the caller. Store both `id` (for the data URL) and `slug` (stable frontend lookup). |
 | `POST /analytics/filter-options` | Non-null dropdown values for one available dimension. Send already selected compatible filters to implement dependent selectors and follow `next_cursor` while `has_more` is true. |
 | `POST /analytics/charts/{chart_id}/data` | Preferred path for a predefined dashboard card. Dimensions and the one metric/aggregation pair stay governed; the frontend may override filters, time range/granularity, timezone, order, and limit. |
-| `POST /analytics/query` | For guided exploration, post a template returned by `GET /analytics/query-combinations`. Reserve free member selection from the catalog for an explicitly advanced ad-hoc explorer. |
+| `POST /analytics/query` | For guided exploration, post the goal-first query assembled from the catalog and capability response. Curated templates remain available from `GET /analytics/query-combinations`. |
 
 Catalog membership and data availability are different: a field may be
 published in the catalog but have `available: false` for the current BU. The
@@ -116,24 +121,24 @@ entry.
 The recommended selector order is:
 
 ```text
-What does one row mean? -> What should be measured? -> How?        -> Group by?
-Semantic View           -> Metric field             -> Aggregation -> Dimensions
+What does one row mean? -> What should be measured? -> How?        -> Group/filter by?
+Semantic View           -> Logical target           -> Aggregation -> Capabilities
 ```
 
 Do not make users guess from the raw semantic-view names. Present the row grain
 as the business choice and store its corresponding `semantic_view` internally:
 
-| User-facing choice | `semantic_view` | One counted row | Default field + aggregation |
+| User-facing choice | `semantic_view` | One fact row | Default target + aggregation |
 | --- | --- | --- | --- |
-| Survey responses | `survey_responses` | One response | `id` + `count` |
-| Topic mentions | `survey_topics` | One topic assignment | `assignment_id` + `count` |
-| Department assignments | `survey_departments` | One department assignment | `assignment_id` + `count` |
-| Keyword mentions | `survey_keywords` | One keyword assignment | `assignment_id` + `count` |
+| Survey responses | `survey_responses` | One response | `survey` + `count` |
+| Topic mentions | `survey_topics` | One topic assignment | `topic_assignment` + `count` |
+| Department assignments | `survey_departments` | One department assignment | `department_assignment` + `count` |
+| Keyword mentions | `survey_keywords` | One keyword assignment | `keyword_assignment` + `count` |
 
 Use the labels above for presentation only. At runtime, read `grain`,
 `assignment_dimension`, and the dimension list from
 `catalog.combinations.semantic_views`, then read executable pairs from
-`catalog.metric_options[semantic_view]`; do not duplicate those compatibility
+`catalog.metric_targets[semantic_view]`; do not duplicate those compatibility
 lists in frontend code.
 
 ```mermaid
@@ -144,10 +149,10 @@ flowchart LR
     D --> E[Fetch availability for selected view]
     E --> F[Show available dimensions from the view entry]
     F --> G[User selects 0-3 dimensions]
-    G --> H[Show metric_options for the same view]
-    H --> I[Preselect the row-id field plus count]
-    I --> J[User selects exactly one field and aggregation]
-    J --> K[Add compatible filters and optional time settings]
+    G --> H[Show metric_targets for the same view]
+    H --> I[User selects exactly one target and method]
+    I --> J[POST query-capabilities]
+    J --> K[Add allowed dimensions, filters, and optional time]
     K --> M[POST /analytics/query]
     M --> N{Response}
     N -- 200 --> O[Render from schema and flat rows with value]
@@ -157,8 +162,8 @@ flowchart LR
 
 ### 1. Build selector indexes from the catalog
 
-The frontend needs both the per-view compatibility entry and the display
-metadata from the top-level `fields` and `metric_options` values:
+The frontend needs both per-view field metadata and the logical targets from
+the top-level `metric_targets` value:
 
 ```ts
 type ExplorerState = {
@@ -196,15 +201,14 @@ function groupByView<T extends { semantic_view: string }>(members: T[]) {
 }
 
 const fieldsByView = groupByView(catalog.fields);
-const metricOptionsByView = new Map(
-  Object.entries(catalog.metric_options),
+const metricTargetsByView = new Map(
+  Object.entries(catalog.metric_targets),
 );
 ```
 
-`combinations.semantic_views[].dimensions` is the dimension allowlist.
-`metric_options[view]` is the executable metric allowlist; each entry contains
-`field`, `aggregation`, `label`, and `result_type`. A field/type combination
-that is theoretically meaningful but absent from this list must not be sent.
+`metric_targets[view]` is the executable result-goal allowlist. Each entry has
+`metric`, `label`, `entity`, and a nested `aggregations` array. A theoretically
+meaningful operation absent from this list must not be sent.
 
 ### 2. Handle a Semantic View change
 
@@ -221,7 +225,9 @@ async function selectSemanticView(semanticView: string) {
   state = {
     semanticView,
     dimensions: [],
-    metric: semanticView === "survey_responses" ? "id" : "assignment_id",
+    metric: semanticView === "survey_responses"
+      ? "survey"
+      : `${semanticView.replace("survey_", "").replace(/s$/, "")}_assignment`,
     aggregation: "count",
     filters: [],
     order: [],
@@ -242,16 +248,16 @@ because the later metric counts a different kind of row.
 
 ### 3. Offer only valid Dimensions
 
-Intersect the selected view's dimension allowlist with its fields and
-availability result. Disable or hide fields that have no data for the current
-BU:
+After choosing the target and method, call `/analytics/query-capabilities` and
+intersect its `allowed_dimensions` with the availability result. Disable or
+hide fields that have no data for the current BU:
 
 ```ts
 function dimensionOptions() {
   const view = state.semanticView;
   if (!view) return [];
 
-  const allowed = new Set(viewRules.get(view)?.dimensions ?? []);
+  const allowed = new Set(capabilities.allowed_dimensions.map(field => field.slug));
   const available = new Map(
     availability.fields.map(field => [field.slug, field.available]),
   );
@@ -274,32 +280,32 @@ or `keyword`) for an assignment view, and `store_name` or `topic_sentiment` for
 common response exploration. Defaults still need to be present in the current
 view's dimension allowlist and availability response.
 
-### 4. Offer only valid Metric and Aggregation pairs
+### 4. Offer only valid targets and methods
 
-The query takes one raw field and one aggregation, not a governed metric slug.
-Show only options published for the selected view:
+The query takes one logical target and one method. Show only targets published
+for the selected view, then only the chosen target's nested methods:
 
 ```ts
-function metricOptions() {
+function metricTargets() {
   const view = state.semanticView;
   if (!view) return [];
-  return metricOptionsByView.get(view) ?? [];
+  return metricTargetsByView.get(view) ?? [];
 }
 ```
 
-Explain count pairs by their unit so users do not accidentally change the
+Explain targets by their unit so users do not accidentally change the
 question:
 
-| Field + aggregation | Selector description |
+| Target + aggregation | Selector description |
 | --- | --- |
-| `id` + `count` in `survey_responses` | Number of matching survey responses |
-| `store_key` + `distinct_count` | Number of distinct stores having at least one matching response |
-| `assignment_id` + `count` | Number of matching topic, department, or keyword assignments |
-| `survey_id` + `distinct_count` | Number of surveys having at least one matching assignment |
+| `survey` + `count` in `survey_responses` | Number of matching survey responses |
+| `store` + `count` | Number of represented stores having at least one matching response |
+| `<entity>_assignment` + `count` | Number of matching topic, department, or keyword assignments |
+| `survey` + `count` in an assignment view | Number of unique surveys having at least one matching assignment |
 
-For example, `survey_topics + topic + assignment_id/count` answers "how many
-topic assignments?", while selecting `survey_id/distinct_count` answers "how
-many surveys mentioned this topic?".
+For example, `survey_topics + topic + topic_assignment/count` answers "how many
+topic assignments?", while selecting `survey/count` answers "how many surveys
+mentioned this topic?".
 
 ### 5. Validate and build the request
 
@@ -316,11 +322,13 @@ function buildQuery() {
   const dimensions = state.dimensions.filter(slug =>
     rule.dimensions.includes(slug)
   );
-  const optionIsValid = (metricOptionsByView.get(view) ?? []).some(option =>
-    option.field === state.metric && option.aggregation === state.aggregation
+  const optionIsValid = (metricTargetsByView.get(view) ?? []).some(target =>
+    target.metric === state.metric && target.aggregations.some(
+      option => option.method === state.aggregation
+    )
   );
   const filterMembersAreValid = state.filters.every(filter =>
-    rule.dimensions.includes(filter.member)
+    capabilities.filter_members.some(member => member.field === filter.member)
   );
 
   if (dimensions.length !== state.dimensions.length ||
@@ -336,9 +344,9 @@ function buildQuery() {
     const timeField = (fieldsByView.get(view) ?? []).find(
       field => field.slug === state.timeDimension,
     );
-    if (!rule.dimensions.includes(state.timeDimension) ||
-        !timeField ||
-        !["date", "time"].includes(timeField.data_type)) {
+    if (!capabilities.allowed_time_dimensions.some(
+          field => field.slug === state.timeDimension
+        ) || !timeField) {
       throw new Error("Choose a date/time dimension from the selected view");
     }
     if (dimensions.includes(state.timeDimension)) {
@@ -422,7 +430,7 @@ Measure:  Number of responses       -> id + count
 {
   "semantic_view": "survey_responses",
   "dimensions": ["store_key", "store_name", "topic_sentiment"],
-  "metric": "id",
+  "metric": "survey",
   "aggregation": "count",
   "order": [{"member": "value", "direction": "desc"}],
   "limit": 1000

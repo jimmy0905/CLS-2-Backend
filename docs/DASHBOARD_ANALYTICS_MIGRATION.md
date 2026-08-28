@@ -1,5 +1,8 @@
 # Replacing dashboard routes with governed analytics queries
 
+> This query book uses the current logical-target contract described in
+> [Goal-first analytics query contract](ANALYTICS_GOAL_FIRST_CONTRACT.md).
+
 This is the migration query book for the existing `/dashboard/*` API. It uses
 `POST /analytics/query` and the governed semantic catalog rather than direct
 SQL. It is written for the `wtchk_cls` data model, where the canonical response
@@ -30,14 +33,14 @@ Content-Type: application/json
 
 ## 1. Single-metric dashboard contract
 
-Every aggregate request selects exactly one raw `metric` field and one
+Every aggregate request selects exactly one logical `metric` target and one
 `aggregation`; the removed `metrics: []` field is rejected. Common pairs are
-`id/count` for responses, `assignment_id/count` for assignment rows,
-`survey_id/distinct_count` for unique surveys, `cls/average`, and
-`topic_sentiment_score/average`. Use only pairs advertised by
-`GET /analytics/catalog` under `metric_options`.
+`survey/count`, `topic_assignment/count`, `department_assignment/count`,
+`keyword_assignment/count`, `store/count`, `cls/average`, and
+`topic_sentiment_score/average`. Use only methods advertised inside
+`GET /analytics/catalog` under `metric_targets`.
 
-`store_key/distinct_count` counts distinct stores over matching response
+`store/count` counts distinct stores over matching response
 rows. It counts stores represented in the current response filters and date
 range; it intentionally does not count stores with zero matching responses.
 
@@ -117,9 +120,9 @@ curl -X POST 'http://localhost:8000/wtchk/api/admin/analytics/catalog/publish' \
   -d '{"description":"Dashboard semantic metric pack"}'
 ```
 
-Use `GET /analytics/catalog` to verify the executable `metric_options` after the
-deployment. Metrics can still be governed in the admin UI, but only unique
-simple source-field/aggregation pairs enter the public query contract.
+Use `GET /analytics/catalog` to verify the executable `metric_targets` after
+the deployment. Metrics can still be governed in the admin UI, but only unique
+logical target/method mappings enter the public query contract.
 
 ## 2. Common filter translation
 
@@ -169,7 +172,7 @@ One row per reported day and sentiment, based on `surveys.topic_sentiment`:
 {
   "semantic_view": "survey_responses",
   "dimensions": ["topic_sentiment"],
-  "metric": "id",
+  "metric": "survey",
   "aggregation": "count",
   "time_dimension": "reported_at",
   "time_granularity": "day",
@@ -189,7 +192,7 @@ aggregate every matching response during that day.
 {
   "semantic_view": "survey_responses",
   "dimensions": ["store_name_english", "topic_sentiment"],
-  "metric": "id",
+  "metric": "survey",
   "aggregation": "count",
   "filters": [
     {"member": "reported_at", "operator": "between", "values": ["2024-08-01T00:00:00Z", "2024-09-01T00:00:00Z"]}
@@ -214,7 +217,7 @@ single dimension. For the existing `column=store_format` case:
 {
   "semantic_view": "survey_responses",
   "dimensions": ["store_format", "topic_sentiment"],
-  "metric": "id",
+  "metric": "survey",
   "aggregation": "count",
   "order": [{"member": "value", "direction": "desc"}],
   "limit": 1000
@@ -232,7 +235,7 @@ by `GET /analytics/catalog`.
 {
   "semantic_view": "survey_responses",
   "dimensions": ["channel_name", "delivery_service_name", "topic_sentiment"],
-  "metric": "id",
+  "metric": "survey",
   "aggregation": "count",
   "order": [{"member": "value", "direction": "desc"}],
   "limit": 1000
@@ -247,7 +250,7 @@ Run the sentiment-count request:
 {
   "semantic_view": "survey_responses",
   "dimensions": ["topic_sentiment"],
-  "metric": "id",
+  "metric": "survey",
   "aggregation": "count",
   "limit": 10
 }
@@ -289,7 +292,7 @@ Use the topic-assignment grain. These counts reflect
 {
   "semantic_view": "survey_topics",
   "dimensions": ["topic", "sentiment"],
-  "metric": "assignment_id",
+  "metric": "topic_assignment",
   "aggregation": "count",
   "order": [{"member": "value", "direction": "desc"}],
   "limit": 1000
@@ -305,7 +308,7 @@ Use the department-assignment grain. These counts reflect
 {
   "semantic_view": "survey_departments",
   "dimensions": ["department", "sentiment"],
-  "metric": "assignment_id",
+  "metric": "department_assignment",
   "aggregation": "count",
   "order": [{"member": "value", "direction": "desc"}],
   "limit": 1000
@@ -320,7 +323,7 @@ Use the keyword-assignment grain. `limit: 10` replaces `k=10`:
 {
   "semantic_view": "survey_keywords",
   "dimensions": ["keyword", "sentiment"],
-  "metric": "assignment_id",
+  "metric": "keyword_assignment",
   "aggregation": "count",
   "order": [{"member": "value", "direction": "desc"}],
   "limit": 10

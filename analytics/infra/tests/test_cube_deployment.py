@@ -171,17 +171,19 @@ def test_cube_models_keep_assignment_grains_separate_and_use_stable_percentiles(
     response_measures = {
         item["name"]: item for item in response_cube["measures"]
     }
-    assert response_measures["responding_store_count"] == {
-        "name": "responding_store_count",
-        "sql": "store_key",
-        "type": "count_distinct",
+    assert response_measures["responding_store_count"]["sql"] == "store_key"
+    assert response_measures["responding_store_count"]["type"] == "count_distinct"
+    assert response_measures["responding_store_count"]["meta"] == {
+        "query_target": "store",
+        "public_aggregation": "count",
+        "entity": "store",
     }
     response_dimensions = {
         item["name"]: item for item in response_cube["dimensions"]
     }
     for assignment in ("survey_departments", "survey_keywords", "survey_topics"):
         assert "name: assignment_count" in models[assignment]
-        assert "name: distinct_survey_count" in models[assignment]
+        assert "name: survey_count" in models[assignment]
         cube = yaml.safe_load(models[assignment])["cubes"][0]
         dimensions = {item["name"]: item for item in cube["dimensions"]}
         assert dimensions["survey_id"]["type"] == "string"

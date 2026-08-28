@@ -1,5 +1,10 @@
 # Analytics API reference
 
+> The public aggregate API is goal-first. Read
+> [Goal-first analytics query contract](ANALYTICS_GOAL_FIRST_CONTRACT.md) before
+> implementing a query builder; it defines logical metric targets,
+> `/analytics/query-capabilities`, and the current response schema.
+
 This document describes the governed Cube analytics API. It covers the analytics routes only; existing `/dashboard/*`, survey, upload, and authentication routes are unchanged.
 
 For an endpoint-by-endpoint replacement guide and ready-to-send bodies for the
@@ -44,10 +49,10 @@ The only supported semantic views are `survey_responses`, `survey_topics`, `surv
 
 | Semantic view | One row represents | Database source | Canonical response sentiment | Assignment sentiment | Use it for |
 | --- | --- | --- | --- | --- | --- |
-| `survey_responses` | One non-deleted survey response | `surveys`, joined to `stores`, `channels`, and `delivery_services` | `topic_sentiment` = `surveys.topic_sentiment`; score = `surveys.topic_sentiment_score` | None. The legacy `surveys.sentiment` is intentionally not a public semantic field. | Overall response volume, CLS, store/channel analysis, and response-level sentiment. Use `id` + `count` for response rows, or `store_key` + `distinct_count` for represented stores. |
-| `survey_topics` | One topic assigned to a survey | `survey_topics` joined to the survey facts and `topics` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_topics.sentiment` | Topic analysis: group by `topic`, use `assignment_id` + `count` for assignments, or `survey_id` + `distinct_count` for unique surveys. |
-| `survey_departments` | One department assigned to a survey | `survey_departments` joined to the survey facts and `departments` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_departments.sentiment` | Department analysis: group by `department`, then count `assignment_id` or distinct `survey_id` as appropriate. |
-| `survey_keywords` | One keyword assigned to a survey | `survey_keywords` joined to the survey facts and `keywords` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_keywords.sentiment` | Keyword analysis: group/filter by `keyword`, then count `assignment_id` or distinct `survey_id`. |
+| `survey_responses` | One non-deleted survey response | `surveys`, joined to `stores`, `channels`, and `delivery_services` | `topic_sentiment` = `surveys.topic_sentiment`; score = `surveys.topic_sentiment_score` | None. The legacy `surveys.sentiment` is intentionally not a public semantic field. | Overall response volume, CLS, store/channel analysis, and response-level sentiment. Use `survey/count` for surveys or `store/count` for represented stores. |
+| `survey_topics` | One topic assigned to a survey | `survey_topics` joined to the survey facts and `topics` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_topics.sentiment` | Topic analysis: group by `topic`, then use `topic_assignment/count` or `survey/count`. |
+| `survey_departments` | One department assigned to a survey | `survey_departments` joined to the survey facts and `departments` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_departments.sentiment` | Department analysis: group by `department`, then use `department_assignment/count` or `survey/count`. |
+| `survey_keywords` | One keyword assigned to a survey | `survey_keywords` joined to the survey facts and `keywords` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_keywords.sentiment` | Keyword analysis: group/filter by `keyword`, then use `keyword_assignment/count` or `survey/count`. |
 
 In `survey_responses`, always use `topic_sentiment`; `sentiment` is not a valid public member. In assignment views, use `topic_sentiment` for the response-level value and `sentiment` only for that topic/department/keyword assignment row. This keeps the legacy `surveys.sentiment` out of analytics.
 
@@ -59,15 +64,16 @@ Do not combine `survey_topics`, `survey_departments`, and `survey_keywords` in o
 
 `POST /analytics/query`, chart data, and aggregate exports use published field
 *slugs*, never raw SQL, Cube member names, or governed metric slugs. Every
-aggregate selects one raw field as `metric` and one `aggregation`; the server
-maps that pair to exactly one published governed Cube measure.
+aggregate selects one logical business target as `metric` and one
+`aggregation`; the server maps that pair to exactly one published governed
+Cube measure for the selected fact grain.
 
 | Property | Rule |
 | --- | --- |
 | `semantic_view` | One of the four views above. |
 | `dimensions` | Up to three published dimension slugs for an ad-hoc query. |
-| `metric` | Exactly one published raw field slug from the selected view. |
-| `aggregation` | Exactly one operation: `count`, `distinct_count`, `sum`, `average`, `min`, `max`, or `median`. Only pairs published in `metric_options` are executable. Use `average`, not `avg`. |
+| `metric` | Exactly one logical target from `metric_targets` for the selected view. |
+| `aggregation` | Exactly one method published inside the selected target's `aggregations` array. Use `average`, not `avg`. |
 | `filters` | Up to 20 typed filters. Operators are `equals`, `not_equals`, `contains`, `not_contains`, `starts_with`, `ends_with`, comparison operators, `in`, `not_in`, `set`, `not_set`, and `between`, when compatible with the member type. |
 | `time_dimension` | A published date/time dimension. It may be paired with `time_range` and `time_granularity`; do not also include it as an ordinary dimension. |
 | `time_range` | Two ISO-8601 date/datetime values, each at most 64 characters, with start no later than end. |
@@ -84,10 +90,10 @@ Allowed operations by source-field type are:
 | Number | `count`, `distinct_count`, `sum`, `average`, `min`, `max`, `median` |
 | Date / time | `count`, `distinct_count`, `min`, `max` |
 
-The type table is a necessary condition, not an allowlist by itself. The exact
-`(field, aggregation)` pair must also appear in the active catalog's
-`metric_options` for the selected semantic view. Missing and ambiguous pairs
-are rejected with `422`.
+The type table governs which methods may be published, but it is not an
+allowlist by itself. The exact logical `(metric, aggregation)` pair must appear
+in the active catalog's `metric_targets` for the selected semantic view.
+Missing and ambiguous pairs are rejected with `422`.
 
 A successful aggregate response has this shape:
 
@@ -103,7 +109,7 @@ A successful aggregate response has this shape:
     ],
     "time_dimension": null,
     "metric": {
-      "field": "id",
+      "target": "survey",
       "aggregation": "count",
       "label": "Response Count",
       "type": "number",
@@ -133,13 +139,13 @@ Swagger/ReDoc marks required JSON fields from the OpenAPI schema. The following 
 
 | Request model | Required fields | Optional fields / rules | Example |
 | --- | --- | --- | --- |
-| Aggregate query | `semantic_view`, `metric`, `aggregation` | `dimensions` (0–3), `filters`, time controls, `timezone`, `order`, `limit`. `time_range`/`time_granularity` require `time_dimension`. The removed `metrics` field is rejected. | `{ "semantic_view": "survey_responses", "dimensions": ["store_format"], "metric": "id", "aggregation": "count", "timezone": "Asia/Hong_Kong" }` |
+| Aggregate query | `semantic_view`, `metric`, `aggregation` | `dimensions` (0–3), `filters`, time controls, `timezone`, `order`, `limit`. `time_range`/`time_granularity` require `time_dimension`. The removed `metrics` field is rejected. | `{ "semantic_view": "survey_responses", "dimensions": ["store_format"], "metric": "survey", "aggregation": "count", "timezone": "Asia/Hong_Kong" }` |
 | Filter | `member`, `operator` | `value` is required for scalar comparisons; `values` is required for `in`, `not_in`, and `between`; neither is used for `set`/`not_set`. | `{ "member": "topic_sentiment", "operator": "equals", "value": "NEGATIVE" }` |
 | Drilldown | None: defaults select common response fields | `semantic_view` is fixed to `survey_responses`; choose `fields` (1–50), `filters` (0–20), `cursor`, `limit` (1–250), and optional `timezone` for local timestamp filters/display. | `{ "fields": ["survey_id", "respondent_id", "store_key", "reported_at", "comment", "topic_sentiment", "cls"], "limit": 100, "timezone": "Asia/Hong_Kong" }` |
 | Create field | `slug`, `label`, `data_type`, `source_key` | `semantic_view` defaults to `survey_responses`; `source_kind` is fixed to `raw_json`; `description` and `visibility` are optional. | `{ "slug": "overall_score", "label": "Overall score", "data_type": "number", "source_key": "Overall Score" }` |
 | Promote candidate | `data_type` | `visibility`, `label`, `description`. | `{ "data_type": "number", "visibility": "viewer", "label": "Overall score" }` |
 | Create metric | `slug`, `label`, `operation` | `semantic_view` defaults to `survey_responses`; use at most one of `field_id`/`source_member`, and at most one of `weight_field_id`/`weight_member`. A source is required when the operation needs one; CI operations require `confidence_level` (0.8–0.999). | `{ "slug": "negative_response_rate", "label": "Negative response rate", "source_member": "topic_sentiment", "operation": "filtered_rate", "definition": { "filter": { "operator": "equals", "value": "NEGATIVE" } } }` |
-| Create chart | `slug`, `title`, `chart_type`, `semantic_view`, `definition` | `description`, `visibility`; every definition has one `metric` + `aggregation`, while dimension/time requirements depend on chart type. | `{ "slug": "responses_by_store_format", "title": "Responses by store format", "chart_type": "bar", "semantic_view": "survey_responses", "definition": { "dimensions": ["store_format"], "metric": "id", "aggregation": "count" } }` |
+| Create chart | `slug`, `title`, `chart_type`, `semantic_view`, `definition` | `description`, `visibility`; every definition has one `metric` + `aggregation`, while dimension/time requirements depend on chart type. | `{ "slug": "responses_by_store_format", "title": "Responses by store format", "chart_type": "bar", "semantic_view": "survey_responses", "definition": { "dimensions": ["store_format"], "metric": "survey", "aggregation": "count" } }` |
 | Chart data override | None | `filters`, `time_range`, `time_granularity`, `timezone`, `order`, `limit` only; it cannot replace the chart’s governed dimensions, metric, or aggregation. | `{ "time_range": ["2026-01-01", "2026-03-31"], "time_granularity": "month", "timezone": "Asia/Hong_Kong" }` |
 | Filter options | `semantic_view`, `member` | `filters` (up to 18), string-only `search`, optional `timezone`, `limit` (1–1,000), and offset `cursor` (0–1,000,000). The endpoint automatically excludes null values. `metrics` is not accepted. | `{ "semantic_view": "survey_responses", "member": "store_format", "search": "Mall", "timezone": "Asia/Hong_Kong", "cursor": 0 }` |
 | Record query | `resource` | `filters` (up to 20 typed allowlisted filters), `order` (up to 3 allowlisted fields), `page`, `size`, and optional IANA `timezone`. Survey pages are capped at 100; master-data pages at 1,000. | `{ "resource": "surveys", "filters": [{"member": "topic_sentiment", "operator": "equals", "value": "NEGATIVE"}], "size": 100 }` |
@@ -150,7 +156,11 @@ Swagger/ReDoc marks required JSON fields from the OpenAPI schema. The following 
 
 ### `GET /analytics/catalog`
 
-Returns the active immutable catalog the current role is allowed to use. It includes the active model version, semantic views, visible fields, executable `metric_options`, and supported chart types. It does not reveal candidate headers, admin-only fields, raw payload keys, SQL expressions, governed Cube metric slugs, or draft definitions.
+Returns the active immutable catalog the current role is allowed to use. It
+includes the active model version, semantic views, visible fields, executable
+logical `metric_targets`, and supported chart types. It does not reveal
+candidate headers, admin-only fields, raw payload keys, SQL expressions,
+governed Cube metric slugs, or draft definitions.
 
 Use this endpoint before building an exploration UI. A client should only send slugs returned here to the query endpoints.
 
@@ -160,19 +170,23 @@ frontend does not need to maintain a separate handwritten compatibility table:
 ```json
 {
   "model_version": 8,
-  "metric_options": {
+  "metric_targets": {
     "survey_topics": [
       {
-        "field": "assignment_id",
-        "aggregation": "count",
-        "label": "Assignment Count",
-        "result_type": "number"
+        "metric": "topic_assignment",
+        "label": "Topic Assignment",
+        "entity": "topic_assignment",
+        "aggregations": [
+          {"method": "count", "label": "Topic Assignment Count", "result_type": "number"}
+        ]
       },
       {
-        "field": "survey_id",
-        "aggregation": "distinct_count",
-        "label": "Distinct Survey Count",
-        "result_type": "number"
+        "metric": "survey",
+        "label": "Survey",
+        "entity": "survey",
+        "aggregations": [
+          {"method": "count", "label": "Unique Survey Count", "result_type": "number"}
+        ]
       }
     ]
   },
@@ -211,10 +225,28 @@ frontend does not need to maintain a separate handwritten compatibility table:
 }
 ```
 
-The example arrays are abbreviated. `metric_options` is a top-level object
-keyed by semantic view; each option is a unique, role-visible, executable raw
-field/aggregation pair. The `charts` rules are generated from the same
-definitions used by server-side chart validation.
+The example arrays are abbreviated. `metric_targets` is a top-level object
+keyed by semantic view. Each target groups its role-visible executable
+aggregation methods. The `charts` rules are generated from the same definitions
+used by server-side chart validation.
+
+### `POST /analytics/query-capabilities`
+
+After the user chooses one goal and method, call this endpoint before showing
+the remaining selectors:
+
+```json
+{
+  "semantic_view": "survey_keywords",
+  "metric": "survey",
+  "aggregation": "count"
+}
+```
+
+It validates the pair with the same resolver used by query execution and
+returns `allowed_dimensions`, `filter_members` with typed operators,
+`allowed_time_dimensions`, `result_type`, and `warnings`. This is the canonical
+way for a query builder to discover which breakdowns remain meaningful.
 
 ### `GET /analytics/query-combinations`
 
@@ -251,7 +283,7 @@ Example response item:
   "query": {
     "semantic_view": "survey_responses",
     "dimensions": [],
-    "metric": "id",
+    "metric": "survey",
     "aggregation": "count",
     "filters": [],
     "time_dimension": "reported_at",
@@ -281,8 +313,8 @@ For example, `responding_stores_by_region` returns this query:
 {
   "semantic_view": "survey_responses",
   "dimensions": ["region"],
-  "metric": "store_key",
-  "aggregation": "distinct_count",
+  "metric": "store",
+  "aggregation": "count",
   "limit": 100
 }
 ```
@@ -516,7 +548,7 @@ Creates an asynchronous CSV or XLSX export. The body uses **exactly one** of an 
   "query": {
     "semantic_view": "survey_responses",
     "dimensions": ["region"],
-    "metric": "id",
+    "metric": "survey",
     "aggregation": "count"
   }
 }

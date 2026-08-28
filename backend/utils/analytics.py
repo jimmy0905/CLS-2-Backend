@@ -224,22 +224,43 @@ class _CatalogModel(BaseModel):
 
 class CatalogField(_CatalogModel):
     data_type: FieldType
+    scope: Literal["response", "assignment"] = "response"
+    usage: Literal["chart", "table_only"] = "table_only"
+    filterable: bool = True
+    time_dimension: bool = False
     kind: Literal[MemberKind.DIMENSION] = MemberKind.DIMENSION
+
+    @model_validator(mode="after")
+    def _time_dimension_type(self) -> "CatalogField":
+        if self.time_dimension and self.data_type not in {FieldType.DATE, FieldType.TIME}:
+            raise ValueError("time dimensions must use a date or time field")
+        return self
 
 
 class CatalogMetric(_CatalogModel):
     aggregation: Aggregation
     source_field: str | None = None
+    query_target: str | None = None
+    public_aggregation: QueryAggregation | None = None
+    entity: str | None = None
     weight_field: str | None = None
     percentile: float | None = None
     confidence_level: float | None = None
     parameters: dict[str, Any] = Field(default_factory=dict)
     kind: Literal[MemberKind.METRIC] = MemberKind.METRIC
 
-    @field_validator("source_field", "weight_field")
+    @field_validator("source_field", "weight_field", "query_target", "entity")
     @classmethod
     def _safe_optional_identifier(cls, value: str | None) -> str | None:
         return validate_identifier(value) if value is not None else None
+
+    @model_validator(mode="after")
+    def _public_target_contract(self) -> "CatalogMetric":
+        if (self.query_target is None) != (self.public_aggregation is None):
+            raise ValueError(
+                "query_target and public_aggregation must be supplied together"
+            )
+        return self
 
     @field_validator("percentile")
     @classmethod
@@ -326,42 +347,58 @@ class SemanticCatalog(BaseModel):
         return matches[0]
 
 
-class MetricOption(BaseModel):
-    """One unambiguous public raw-field/aggregation mapping."""
+class MetricAggregationOption(BaseModel):
+    """One public method supported by a logical business metric target."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    field: str
-    aggregation: QueryAggregation
+    method: QueryAggregation
     label: str
     result_type: FieldType
     cube_metric: str = Field(exclude=True)
 
 
-def _metric_result_type(
-    field: CatalogField, aggregation: Aggregation
+class MetricTarget(BaseModel):
+    """A business entity or value users can measure in one semantic view."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    metric: str = Field(
+        description=(
+            "Logical business target such as survey, keyword_assignment, store, or cls; "
+            "physical fields and Cube measure names are not accepted"
+        )
+    )
+    label: str
+    entity: str
+    aggregations: tuple[MetricAggregationOption, ...]
+
+
+def metric_result_type(
+    metric: CatalogMetric, catalog: SemanticCatalog
 ) -> FieldType:
-    if aggregation in {Aggregation.MIN, Aggregation.MAX} and field.data_type in {
-        FieldType.DATE,
-        FieldType.TIME,
-    }:
-        return field.data_type
+    if metric.public_aggregation in {QueryAggregation.MIN, QueryAggregation.MAX}:
+        if metric.source_field is None:
+            return FieldType.NUMBER
+        field = catalog.field(metric.source_field, metric.semantic_view)
+        if field.data_type in {FieldType.DATE, FieldType.TIME}:
+            return field.data_type
     return FieldType.NUMBER
 
 
-def _simple_metric_candidates(
+def _metric_target_candidates(
     catalog: SemanticCatalog,
     semantic_view: str,
-    field: CatalogField,
-    aggregation: Aggregation,
+    target: str,
+    aggregation: QueryAggregation,
     role: str,
 ) -> list[CatalogMetric]:
     return [
         metric
         for metric in catalog.metrics
         if metric.semantic_view == semantic_view
-        and metric.source_field == field.slug
-        and metric.aggregation is aggregation
+        and metric.query_target == target
+        and metric.public_aggregation is aggregation
         and metric.aggregation in SIMPLE_AGGREGATIONS
         and _visible(metric, role)
     ]
@@ -372,65 +409,80 @@ def resolve_query_metric(
     catalog: SemanticCatalog,
     role: str = "viewer",
 ) -> CatalogMetric:
-    """Resolve a public raw-field/aggregation pair to one governed Cube measure."""
+    """Resolve a logical metric target/method to one governed Cube measure."""
 
-    field = catalog.field(query.metric, query.semantic_view)
-    _ensure_query_member(field, query.semantic_view, role)
-    aggregation = Aggregation(query.aggregation.value)
-    if aggregation not in allowed_query_aggregations(field.data_type):
-        raise AnalyticsValidationError(
-            f"Aggregation {query.aggregation.value} is not valid for {field.data_type.value}"
-        )
-    matches = _simple_metric_candidates(
-        catalog, query.semantic_view, field, aggregation, role
+    matches = _metric_target_candidates(
+        catalog, query.semantic_view, query.metric, query.aggregation, role
     )
     if not matches:
         raise AnalyticsValidationError(
-            f"Metric option {query.metric}/{query.aggregation.value} is not published"
+            f"Metric target {query.metric}/{query.aggregation.value} is not published"
         )
     if len(matches) != 1:
         raise AnalyticsValidationError(
-            f"Metric option {query.metric}/{query.aggregation.value} is ambiguous"
+            f"Metric target {query.metric}/{query.aggregation.value} is ambiguous"
         )
     validate_metric(matches[0], catalog)
     return matches[0]
 
 
-def metric_options(
+def metric_targets(
     catalog: SemanticCatalog,
     semantic_view: str,
     role: str = "viewer",
-) -> tuple[MetricOption, ...]:
-    """List only unique, visible simple metric mappings for one semantic view."""
+) -> tuple[MetricTarget, ...]:
+    """List unique logical metric targets for one semantic view."""
 
     if role not in {"viewer", "admin"}:
         raise AnalyticsValidationError("Unknown analytics role")
-    options: list[MetricOption] = []
-    for field in catalog.fields:
-        if field.semantic_view != semantic_view or not _visible(field, role):
+    pairs = {
+        (metric.query_target, metric.public_aggregation)
+        for metric in catalog.metrics
+        if metric.semantic_view == semantic_view
+        and metric.query_target is not None
+        and metric.public_aggregation is not None
+        and metric.aggregation in SIMPLE_AGGREGATIONS
+        and _visible(metric, role)
+    }
+    by_target: dict[str, list[MetricAggregationOption]] = {}
+    target_labels: dict[str, str] = {}
+    target_entities: dict[str, str] = {}
+    for target, aggregation in sorted(
+        pairs, key=lambda pair: (str(pair[0]), str(pair[1]))
+    ):
+        assert target is not None and aggregation is not None
+        matches = _metric_target_candidates(
+            catalog, semantic_view, target, aggregation, role
+        )
+        if len(matches) != 1:
             continue
-        for aggregation in sorted(
-            allowed_query_aggregations(field.data_type), key=lambda item: item.value
-        ):
-            matches = _simple_metric_candidates(
-                catalog, semantic_view, field, aggregation, role
+        governed = matches[0]
+        try:
+            validate_metric(governed, catalog)
+        except AnalyticsValidationError:
+            continue
+        entity = governed.entity or target
+        target_labels.setdefault(target, entity.replace("_", " ").title())
+        target_entities.setdefault(target, entity)
+        by_target.setdefault(target, []).append(
+            MetricAggregationOption(
+                method=aggregation,
+                label=governed.label,
+                result_type=metric_result_type(governed, catalog),
+                cube_metric=governed.slug,
             )
-            if len(matches) != 1:
-                continue
-            try:
-                validate_metric(matches[0], catalog)
-            except AnalyticsValidationError:
-                continue
-            options.append(
-                MetricOption(
-                    field=field.slug,
-                    aggregation=QueryAggregation(aggregation.value),
-                    label=matches[0].label,
-                    result_type=_metric_result_type(field, aggregation),
-                    cube_metric=matches[0].slug,
-                )
-            )
-    return tuple(sorted(options, key=lambda item: (item.field, item.aggregation.value)))
+        )
+    return tuple(
+        MetricTarget(
+            metric=target,
+            label=target_labels[target],
+            entity=target_entities[target],
+            aggregations=tuple(
+                sorted(by_target[target], key=lambda item: item.method.value)
+            ),
+        )
+        for target in sorted(by_target)
+    )
 
 FilterOperator = Literal[
     "equals",
@@ -449,6 +501,35 @@ FilterOperator = Literal[
     "not_set",
     "between",
 ]
+
+
+def allowed_filter_operators(field_type: FieldType | str) -> tuple[str, ...]:
+    """Return the public operators accepted by the typed filter validator."""
+
+    field_type = FieldType(field_type)
+    operators = {
+        "equals",
+        "not_equals",
+        "in",
+        "not_in",
+        "set",
+        "not_set",
+    }
+    if field_type is FieldType.STRING:
+        operators.update(
+            {"contains", "not_contains", "starts_with", "ends_with"}
+        )
+    if field_type in {FieldType.NUMBER, FieldType.DATE, FieldType.TIME}:
+        operators.update(
+            {
+                "greater_than",
+                "greater_than_or_equal",
+                "less_than",
+                "less_than_or_equal",
+                "between",
+            }
+        )
+    return tuple(sorted(operators))
 
 
 class FilterSpec(BaseModel):
@@ -536,7 +617,12 @@ class QuerySpec(BaseModel):
         )
     )
     dimensions: tuple[str, ...] = Field(default=(), max_length=MAX_DIMENSIONS)
-    metric: str
+    metric: str = Field(
+        description=(
+            "Logical business target such as survey, keyword_assignment, store, or cls; "
+            "physical fields and Cube measure names are not accepted"
+        )
+    )
     aggregation: QueryAggregation
     filters: tuple[FilterSpec, ...] = Field(default=(), max_length=MAX_FILTERS)
     time_dimension: str | None = None
@@ -839,9 +925,17 @@ def validate_query_fields(
         _ensure_query_member(time_field, semantic_view, role)
         if time_field.data_type not in {FieldType.DATE, FieldType.TIME}:
             raise AnalyticsValidationError("Time dimension must be a date or time field")
+        if not time_field.time_dimension:
+            raise AnalyticsValidationError(
+                "Selected field is not a granular time dimension"
+            )
     for filter_spec in filters:
         field = catalog.field(filter_spec.member, semantic_view)
         _ensure_query_member(field, semantic_view, role)
+        if not field.filterable:
+            raise AnalyticsValidationError(
+                f"Dimension {field.slug} is not available for filtering"
+            )
         _validate_filter(filter_spec, field)
 
 
@@ -1117,18 +1211,32 @@ def validate_chart_definition(
             time_granularity=time_granularity,
         )
         validate_query(query, catalog, role)
-        field = catalog.field(metric, semantic_view)
-        if rule["numeric_metric_required"] and _metric_result_type(
-            field, aggregation
+        governed_metric = resolve_query_metric(query, catalog, role)
+        if rule["numeric_metric_required"] and metric_result_type(
+            governed_metric, catalog
         ) is not FieldType.NUMBER:
             raise AnalyticsValidationError(
                 f"Chart type {chart_type} requires a numeric metric"
             )
+        if chart_type != "table":
+            table_only = [
+                slug
+                for slug in dimensions
+                if catalog.field(slug, semantic_view).usage == "table_only"
+            ]
+            if table_only:
+                raise AnalyticsValidationError(
+                    "Table-only dimensions require chart type table"
+                )
         if time_dimension is not None:
             time_field = catalog.field(time_dimension, semantic_view)
             _ensure_query_member(time_field, semantic_view, role)
             if time_field.data_type not in {FieldType.DATE, FieldType.TIME}:
                 raise AnalyticsValidationError("Time dimension must be a date or time field")
+            if not time_field.time_dimension:
+                raise AnalyticsValidationError(
+                    "Selected field is not a granular time dimension"
+                )
 
 
 def escape_spreadsheet_formula(value: Any) -> Any:

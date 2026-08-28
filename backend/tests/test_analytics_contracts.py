@@ -48,6 +48,7 @@ def catalog() -> SemanticCatalog:
                 label="Reported at",
                 semantic_view="survey_responses",
                 data_type=FieldType.DATE,
+                time_dimension=True,
             ),
             CatalogField(
                 slug="score",
@@ -64,11 +65,14 @@ def catalog() -> SemanticCatalog:
         ],
         metrics=[
             CatalogMetric(
-                slug="response_count",
+                slug="survey_count",
                 label="Responses",
                 semantic_view="survey_responses",
                 aggregation=Aggregation.COUNT,
                 source_field="id",
+                query_target="survey",
+                public_aggregation="count",
+                entity="survey",
             ),
             CatalogMetric(
                 slug="average_score",
@@ -76,6 +80,9 @@ def catalog() -> SemanticCatalog:
                 semantic_view="survey_responses",
                 aggregation=Aggregation.AVERAGE,
                 source_field="score",
+                query_target="score",
+                public_aggregation="average",
+                entity="score",
             ),
         ],
     )

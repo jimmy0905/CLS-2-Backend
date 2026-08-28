@@ -27,7 +27,11 @@
           "dataType": {"enum": ["string", "number", "boolean", "date", "time"]},
           "sourceKind": {"enum": ["core", "raw_json"]},
           "sourceKey": {"type": ["string", "null"], "maxLength": 128},
-          "visibility": {"enum": ["viewer", "admin"]}
+          "visibility": {"enum": ["viewer", "admin"]},
+          "scope": {"enum": ["response", "assignment"]},
+          "usage": {"enum": ["chart", "table_only"]},
+          "filterable": {"type": "boolean"},
+          "timeDimension": {"type": "boolean"}
         }
       }
     },
@@ -59,7 +63,13 @@
           "percentile": {"type": ["number", "null"], "exclusiveMinimum": 0, "exclusiveMaximum": 1},
           "confidenceLevel": {"type": ["number", "null"], "minimum": 0.8, "maximum": 0.999},
           "parameters": {"type": "object"},
-          "visibility": {"enum": ["viewer", "admin"]}
+          "visibility": {"enum": ["viewer", "admin"]},
+          "queryTarget": {"$ref": "#/$defs/nullableIdentifier"},
+          "publicAggregation": {
+            "type": ["string", "null"],
+            "enum": ["count", "distinct_count", "sum", "average", "min", "max", "median", null]
+          },
+          "entity": {"$ref": "#/$defs/nullableIdentifier"}
         }
       }
     },
@@ -111,6 +121,12 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
       "maxLength": 63
+    },
+    "nullableIdentifier": {
+      "anyOf": [
+        {"$ref": "#/$defs/identifier"},
+        {"type": "null"}
+      ]
     },
     "semanticView": {
       "enum": ["survey_responses", "survey_topics", "survey_departments", "survey_keywords"]

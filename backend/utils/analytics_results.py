@@ -6,10 +6,10 @@ from datetime import datetime, time
 from typing import Any
 
 from utils.analytics import (
-    Aggregation,
     FieldType,
     QuerySpec,
     SemanticCatalog,
+    metric_result_type,
     resolve_query_metric,
 )
 from utils.utc import resolve_timezone
@@ -79,14 +79,9 @@ def format_query_result(
     ):
         raise ValueError("Cube analytics response contains invalid data")
 
-    cube_metric = resolve_query_metric(query, catalog, role).slug
-    metric_field = catalog.field(query.metric, query.semantic_view)
-    metric_type = (
-        metric_field.data_type
-        if query.aggregation in {Aggregation.MIN, Aggregation.MAX}
-        and metric_field.data_type in {FieldType.DATE, FieldType.TIME}
-        else FieldType.NUMBER
-    )
+    governed_metric = resolve_query_metric(query, catalog, role)
+    cube_metric = governed_metric.slug
+    metric_type = metric_result_type(governed_metric, catalog)
     selected_dimensions = {*query.dimensions}
     if query.time_dimension:
         selected_dimensions.add(query.time_dimension)

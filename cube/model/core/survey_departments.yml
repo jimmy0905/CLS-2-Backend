@@ -7,10 +7,18 @@ cubes:
     measures:
       - name: assignment_count
         type: count
+        meta:
+          query_target: department_assignment
+          public_aggregation: count
+          entity: department_assignment
 
-      - name: distinct_survey_count
+      - name: survey_count
         sql: distinct_survey_id
         type: count_distinct
+        meta:
+          query_target: survey
+          public_aggregation: count
+          entity: survey
 
       - name: department_assignment_positive_count
         sql: SUM(CASE WHEN {CUBE}.assignment_sentiment = 'POSITIVE' THEN 1 ELSE 0 END)
@@ -255,7 +263,7 @@ cubes:
       - name: daily_assignments
         measures:
           - assignment_count
-          - distinct_survey_count
+          - survey_count
         dimensions:
           - department_id
           - sentiment

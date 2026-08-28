@@ -19,7 +19,7 @@ from utils.analytics import (
     QuerySpec,
     SemanticCatalog,
     compile_cube_query,
-    metric_options,
+    metric_targets,
     validate_chart_definition,
     validate_query,
 )
@@ -30,13 +30,13 @@ MIGRATION_PATH = (
     Path(__file__).resolve().parents[1]
     / "migrations"
     / "versions"
-    / "2026_08_28_0012_migrate_single_metric_analytics_charts.py"
+    / "2026_08_28_0013_migrate_goal_first_analytics.py"
 )
 
 
 def _load_single_metric_migration():
     spec = importlib.util.spec_from_file_location(
-        "migration_0012_single_metric_contract", MIGRATION_PATH
+        "migration_0013_goal_first_contract", MIGRATION_PATH
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -59,24 +59,28 @@ def catalog() -> SemanticCatalog:
                 label="Store Format",
                 semantic_view="survey_responses",
                 data_type=FieldType.STRING,
+                usage="chart",
             ),
             CatalogField(
                 slug="region",
                 label="Region",
                 semantic_view="survey_responses",
                 data_type=FieldType.STRING,
+                usage="chart",
             ),
             CatalogField(
                 slug="channel",
                 label="Channel",
                 semantic_view="survey_responses",
                 data_type=FieldType.STRING,
+                usage="chart",
             ),
             CatalogField(
                 slug="reported_at",
                 label="Reported At",
                 semantic_view="survey_responses",
                 data_type=FieldType.DATE,
+                time_dimension=True,
             ),
             CatalogField(
                 slug="score",
@@ -94,11 +98,14 @@ def catalog() -> SemanticCatalog:
         ],
         metrics=[
             CatalogMetric(
-                slug="response_count",
-                label="Response Count",
+                slug="survey_count",
+                label="Survey Count",
                 semantic_view="survey_responses",
                 aggregation=Aggregation.COUNT,
                 source_field="id",
+                query_target="survey",
+                public_aggregation="count",
+                entity="survey",
             ),
             CatalogMetric(
                 slug="average_score",
@@ -106,6 +113,9 @@ def catalog() -> SemanticCatalog:
                 semantic_view="survey_responses",
                 aggregation=Aggregation.AVERAGE,
                 source_field="score",
+                query_target="score",
+                public_aggregation="average",
+                entity="score",
             ),
             CatalogMetric(
                 slug="latest_reported_at",
@@ -113,6 +123,9 @@ def catalog() -> SemanticCatalog:
                 semantic_view="survey_responses",
                 aggregation=Aggregation.MAX,
                 source_field="reported_at",
+                query_target="reported_at",
+                public_aggregation="max",
+                entity="reported_at",
             ),
             CatalogMetric(
                 slug="score_variance",
@@ -128,12 +141,15 @@ def catalog() -> SemanticCatalog:
                 aggregation=Aggregation.AVERAGE,
                 source_field="secret_score",
                 visibility="admin",
+                query_target="secret_score",
+                public_aggregation="average",
+                entity="secret_score",
             ),
         ],
     )
 
 
-def test_query_requires_one_raw_metric_and_one_simple_aggregation() -> None:
+def test_query_requires_one_logical_metric_and_one_simple_aggregation() -> None:
     query = QuerySpec(
         semantic_view="survey_responses",
         metric="score",
@@ -197,7 +213,7 @@ def test_query_rejects_missing_ambiguous_or_wrong_type_pairs(
             ),
             catalog,
         )
-    with pytest.raises(AnalyticsValidationError, match="not valid for string"):
+    with pytest.raises(AnalyticsValidationError, match="not published"):
         validate_query(
             QuerySpec(
                 semantic_view="survey_responses",
@@ -217,6 +233,9 @@ def test_query_rejects_missing_ambiguous_or_wrong_type_pairs(
                 semantic_view="survey_responses",
                 aggregation=Aggregation.AVERAGE,
                 source_field="score",
+                query_target="score",
+                public_aggregation="average",
+                entity="score",
             ),
         ),
     )
@@ -231,15 +250,59 @@ def test_query_rejects_missing_ambiguous_or_wrong_type_pairs(
         )
 
 
-def test_catalog_metric_options_exclude_complex_hidden_and_ambiguous_pairs(
+def test_catalog_metric_targets_exclude_complex_hidden_and_ambiguous_pairs(
     catalog: SemanticCatalog,
 ) -> None:
-    options = metric_options(catalog, "survey_responses", role="viewer")
-    assert [(item.field, item.aggregation) for item in options] == [
-        ("id", Aggregation.COUNT),
-        ("reported_at", Aggregation.MAX),
-        ("score", Aggregation.AVERAGE),
-    ]
+    targets = metric_targets(catalog, "survey_responses", role="viewer")
+    assert {
+        target.metric: [item.method for item in target.aggregations]
+        for target in targets
+    } == {
+        "reported_at": [Aggregation.MAX],
+        "score": [Aggregation.AVERAGE],
+        "survey": [Aggregation.COUNT],
+    }
+
+
+@pytest.mark.parametrize(
+    "semantic_view,expected_measure",
+    [
+        ("survey_responses", "survey_responses.survey_count"),
+        ("survey_topics", "survey_topics.survey_count"),
+        ("survey_departments", "survey_departments.survey_count"),
+        ("survey_keywords", "survey_keywords.survey_count"),
+    ],
+)
+def test_survey_count_target_resolves_at_each_fact_grain(
+    semantic_view: str, expected_measure: str
+) -> None:
+    from routers.analytics import _catalog_from_records
+
+    public_catalog = _catalog_from_records([], [])
+    compiled = compile_cube_query(
+        QuerySpec(
+            semantic_view=semantic_view,
+            metric="survey",
+            aggregation="count",
+        ),
+        public_catalog,
+    )
+    assert compiled["measures"] == [expected_measure]
+
+
+@pytest.mark.parametrize("raw_metric", ["id", "assignment_id", "survey_id"])
+def test_raw_identifiers_are_not_public_metric_targets(raw_metric: str) -> None:
+    from routers.analytics import _catalog_from_records
+
+    with pytest.raises(AnalyticsValidationError, match="not published"):
+        validate_query(
+            QuerySpec(
+                semantic_view="survey_keywords",
+                metric=raw_metric,
+                aggregation="count",
+            ),
+            _catalog_from_records([], []),
+        )
 
 
 @pytest.mark.parametrize(
@@ -378,8 +441,9 @@ def test_migration_default_charts_resolve_against_public_core_catalog() -> None:
     public_catalog = _catalog_from_records([], [])
     public_options = {
         view: {
-            (option.field, option.aggregation.value)
-            for option in metric_options(public_catalog, view)
+            (target.metric, aggregation.method.value)
+            for target in metric_targets(public_catalog, view)
+            for aggregation in target.aggregations
         }
         for view in public_catalog.views
     }

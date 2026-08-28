@@ -7,6 +7,7 @@ const path = require('path');
 const IDENTIFIER = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 const REFRESH_INTERVAL = /^[1-9][0-9]* (?:seconds?|minutes?|hours?|days?|weeks?)$/;
 const SUPPORTED_FIELD_TYPES = new Set(['string', 'number', 'boolean', 'date', 'time']);
+const PUBLIC_AGGREGATIONS = new Set(['count', 'distinct_count', 'sum', 'average', 'min', 'max', 'median']);
 const SUPPORTED_OPERATIONS = new Set([
   'count',
   'distinct_count',
@@ -151,8 +152,7 @@ const CORE_FIELDS = {
 };
 const CORE_MEASURES = {
   survey_responses: new Set([
-    'response_count',
-    'distinct_survey_count',
+    'survey_count',
     'responding_store_count',
     'cls_sum',
     'cls_average',
@@ -167,10 +167,21 @@ const CORE_MEASURES = {
     'topic_sentiment_neutral_count',
     'topic_sentiment_mixed_count',
   ]),
-  survey_topics: new Set(['assignment_count', 'distinct_survey_count', 'topic_assignment_positive_count', 'topic_assignment_negative_count', 'topic_assignment_neutral_count']),
-  survey_departments: new Set(['assignment_count', 'distinct_survey_count', 'department_assignment_positive_count', 'department_assignment_negative_count', 'department_assignment_neutral_count']),
-  survey_keywords: new Set(['assignment_count', 'distinct_survey_count', 'keyword_assignment_positive_count', 'keyword_assignment_negative_count', 'keyword_assignment_neutral_count']),
+  survey_topics: new Set(['assignment_count', 'survey_count', 'topic_assignment_positive_count', 'topic_assignment_negative_count', 'topic_assignment_neutral_count']),
+  survey_departments: new Set(['assignment_count', 'survey_count', 'department_assignment_positive_count', 'department_assignment_negative_count', 'department_assignment_neutral_count']),
+  survey_keywords: new Set(['assignment_count', 'survey_count', 'keyword_assignment_positive_count', 'keyword_assignment_negative_count', 'keyword_assignment_neutral_count']),
 };
+
+const CHART_DIMENSION_FIELDS = new Set([
+  'topic_sentiment', 'sentiment', 'store_name', 'store_name_english',
+  'store_name_local', 'store_format', 'store_type', 'store_brand', 'region',
+  'area', 'province', 'territory', 'district', 'city', 'channel_name',
+  'delivery_service_name', 'topic', 'department', 'keyword',
+]);
+const ASSIGNMENT_SCOPE_FIELDS = new Set([
+  'assignment_id', 'sentiment', 'topic_id', 'topic', 'department_id',
+  'department', 'keyword_id', 'keyword',
+]);
 
 function coreFieldDescriptor(semanticView, slug) {
   const coreField = CORE_FIELDS[semanticView] && CORE_FIELDS[semanticView][slug];
@@ -183,6 +194,11 @@ function coreFieldDescriptor(semanticView, slug) {
     sourceKind: 'core',
     sourceKey: null,
     visibility: 'viewer',
+    scope: semanticView !== 'survey_responses' && ASSIGNMENT_SCOPE_FIELDS.has(slug)
+      ? 'assignment' : 'response',
+    usage: CHART_DIMENSION_FIELDS.has(slug) ? 'chart' : 'table_only',
+    filterable: true,
+    timeDimension: ['date', 'time'].includes(coreField[1]),
   };
 }
 
@@ -283,6 +299,21 @@ function validateCatalog(catalog, expectedProfile) {
     if (!['core', 'raw_json'].includes(field.sourceKind)) {
       throw new Error(`Invalid field source for ${field.slug}`);
     }
+    if (!['response', 'assignment'].includes(field.scope || 'response')) {
+      throw new Error(`Invalid field scope for ${field.slug}`);
+    }
+    if (!['chart', 'table_only'].includes(field.usage || 'table_only')) {
+      throw new Error(`Invalid field usage for ${field.slug}`);
+    }
+    if (field.filterable !== undefined && typeof field.filterable !== 'boolean') {
+      throw new Error(`Invalid filterable flag for ${field.slug}`);
+    }
+    if (field.timeDimension !== undefined && typeof field.timeDimension !== 'boolean') {
+      throw new Error(`Invalid time dimension flag for ${field.slug}`);
+    }
+    if (field.timeDimension && !['date', 'time'].includes(field.dataType)) {
+      throw new Error(`Time dimension ${field.slug} must use a date or time type`);
+    }
     if (field.sourceKind === 'raw_json') {
       sqlLiteral(field.sourceKey);
       if (CORE_FIELDS[field.semanticView][field.slug]) {
@@ -316,6 +347,14 @@ function validateCatalog(catalog, expectedProfile) {
     }
     if (!['viewer', 'admin'].includes(metric.visibility)) {
       throw new Error(`Invalid metric visibility for ${metric.slug}`);
+    }
+    if (metric.queryTarget != null) assertIdentifier(metric.queryTarget, 'query target');
+    if (metric.entity != null) assertIdentifier(metric.entity, 'metric entity');
+    if ((metric.queryTarget == null) !== (metric.publicAggregation == null)) {
+      throw new Error(`Metric ${metric.slug} must define queryTarget and publicAggregation together`);
+    }
+    if (metric.publicAggregation != null && !PUBLIC_AGGREGATIONS.has(metric.publicAggregation)) {
+      throw new Error(`Invalid public aggregation for ${metric.slug}`);
     }
     if (metric.sourceField) assertIdentifier(metric.sourceField, 'metric source field');
     if (metric.weightField) assertIdentifier(metric.weightField, 'metric weight field');
@@ -628,6 +667,11 @@ function compileDimension(field) {
     `        title: ${yamlScalar(field.label || field.slug)}`,
     `        sql: ${yamlScalar(dimensionExpression(field))}`,
     `        type: ${cubeType}`,
+    '        meta:',
+    `          scope: ${field.scope || 'response'}`,
+    `          usage: ${field.usage || 'table_only'}`,
+    `          filterable: ${field.filterable !== false}`,
+    `          time_dimension: ${field.timeDimension === true}`,
   ].join('\n');
 }
 
@@ -715,7 +759,7 @@ function metricSql(metric, fields) {
   }
 }
 
-function compileMeasureDefinition(name, title, definition) {
+function compileMeasureDefinition(name, title, definition, metric = undefined) {
   const result = [
     `      - name: ${name}`,
     `        title: ${yamlScalar(title)}`,
@@ -723,6 +767,14 @@ function compileMeasureDefinition(name, title, definition) {
   ];
   if (definition.sql) {
     result.push(`        sql: ${yamlScalar(definition.sql)}`);
+  }
+  if (metric && metric.queryTarget && metric.publicAggregation) {
+    result.push(
+      '        meta:',
+      `          query_target: ${metric.queryTarget}`,
+      `          public_aggregation: ${metric.publicAggregation}`,
+      `          entity: ${metric.entity || metric.queryTarget}`,
+    );
   }
   return result.join('\n');
 }
@@ -784,7 +836,12 @@ function compileMeasures(metric, fields) {
     definition: metricSql(metric, fields),
   };
   return [main, ...supportingMeasures(metric, fields)].map((item) => (
-    compileMeasureDefinition(item.name, item.title, item.definition)
+    compileMeasureDefinition(
+      item.name,
+      item.title,
+      item.definition,
+      item.name === metric.slug ? metric : undefined,
+    )
   ));
 }
 

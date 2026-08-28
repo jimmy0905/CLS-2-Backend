@@ -226,6 +226,9 @@ test('published local members are inserted without evaluating metadata as code',
         semanticView: 'survey_responses',
         operation: 'average',
         sourceField: 'score',
+        queryTarget: 'score',
+        publicAggregation: 'average',
+        entity: 'score',
         visibility: 'viewer',
       },
     ],
@@ -235,6 +238,9 @@ test('published local members are inserted without evaluating metadata as code',
   assert.match(result, /name: average_score/);
   assert.match(result, /name: score/);
   assert.match(result, /type: avg/);
+  assert.match(result, /query_target: score/);
+  assert.match(result, /public_aggregation: average/);
+  assert.match(result, /usage: table_only/);
 });
 
 test('metrics resolve fixed core sources and weights without catalog field duplication', () => {
@@ -612,7 +618,7 @@ test('pre-aggregation refresh interval is injected into core and chart rollups',
     rollups: [{
       name: 'chart_42_responses',
       semanticView: 'survey_responses',
-      measures: ['response_count'],
+      measures: ['survey_count'],
       dimensions: ['store_key'],
       timeDimension: null,
       granularity: null,
@@ -631,7 +637,7 @@ test('pre-aggregation refresh interval rejects unsafe Cube schema content', () =
   const rollup = {
     name: 'chart_42_responses',
     semanticView: 'survey_responses',
-    measures: ['response_count'],
+    measures: ['survey_count'],
     dimensions: ['store_key'],
     timeDimension: null,
     granularity: null,
@@ -670,7 +676,7 @@ test('untimed rollups omit partition granularity', () => {
   const compiled = compileRollup({
     name: 'chart_42_untimed',
     semanticView: 'survey_responses',
-    measures: ['response_count'],
+    measures: ['survey_count'],
     dimensions: ['region'],
     timeDimension: null,
     granularity: null,
@@ -688,7 +694,7 @@ test('catalog rejects a timed rollup without a Cube-supported granularity', () =
       {
         name: 'chart_42_weekly',
         semanticView: 'survey_responses',
-        measures: ['response_count'],
+        measures: ['survey_count'],
         dimensions: ['store_key'],
         timeDimension: 'reported_at',
         granularity: null,

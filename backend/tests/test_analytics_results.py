@@ -37,11 +37,14 @@ def catalog() -> SemanticCatalog:
         ],
         metrics=[
             CatalogMetric(
-                slug="response_count",
+                slug="survey_count",
                 label="Responses",
                 semantic_view="survey_responses",
                 aggregation=Aggregation.COUNT,
                 source_field="id",
+                query_target="survey",
+                public_aggregation="count",
+                entity="survey",
             )
         ],
     )
@@ -53,12 +56,12 @@ def test_simple_query_does_not_request_hidden_support_measures(
     spec = QuerySpec(
         semantic_view="survey_responses",
         dimensions=["store_name"],
-        metric="id",
+        metric="survey",
         aggregation="count",
     )
     query = {
         "dimensions": ["survey_responses.store_name"],
-        "measures": ["survey_responses.response_count"],
+        "measures": ["survey_responses.survey_count"],
         "limit": 100,
     }
 
@@ -71,7 +74,7 @@ def test_result_uses_stable_value_key_and_always_returns_warnings(
     spec = QuerySpec(
         semantic_view="survey_responses",
         dimensions=["store_name"],
-        metric="id",
+        metric="survey",
         aggregation="count",
     )
     result = format_query_result(
@@ -79,7 +82,7 @@ def test_result_uses_stable_value_key_and_always_returns_warnings(
             "data": [
                 {
                     "survey_responses.store_name": "Central",
-                    "survey_responses.response_count": "5",
+                    "survey_responses.survey_count": "5",
                     "survey_responses.internal_support": "ignored",
                 }
             ]
@@ -96,7 +99,7 @@ def test_result_uses_stable_value_key_and_always_returns_warnings(
 def test_result_rejects_invalid_cube_rows(catalog: SemanticCatalog) -> None:
     spec = QuerySpec(
         semantic_view="survey_responses",
-        metric="id",
+        metric="survey",
         aggregation="count",
     )
     with pytest.raises(ValueError, match="invalid data"):
@@ -120,6 +123,9 @@ def test_temporal_metric_value_uses_the_requested_timezone() -> None:
                 semantic_view="survey_responses",
                 aggregation=Aggregation.MIN,
                 source_field="reported_at",
+                query_target="reported_at",
+                public_aggregation="min",
+                entity="reported_at",
             )
         ],
     )

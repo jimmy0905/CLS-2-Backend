@@ -290,7 +290,10 @@ def catalog(e2e_client: httpx.Client, e2e_config: E2EConfig) -> dict[str, Any]:
     assert payload.get("model_version", 0) >= 1
     assert set(payload.get("semantic_views", [])) >= set(FILTER_MEMBERS)
     assert payload.get("fields")
-    assert set(payload.get("metric_options", {})) >= set(FILTER_MEMBERS)
+    assert set(payload.get("metric_targets", {})) >= set(FILTER_MEMBERS)
+    for targets in payload["metric_targets"].values():
+        assert targets
+        assert all(target.get("metric") and target.get("aggregations") for target in targets)
     return payload
 
 
@@ -367,6 +370,7 @@ def _chart_data(
     assert result.get("row_count") == len(result["rows"])
     assert isinstance(result.get("schema"), dict)
     assert result["schema"]["metric"]["key"] == "value"
+    assert result["schema"]["metric"]["target"] == chart["definition"]["metric"]
     assert isinstance(result.get("warnings"), list)
     assert "freshness_time" in result
     return result
@@ -392,6 +396,32 @@ def test_catalog_and_published_charts_are_viewer_visible(
 ) -> None:
     assert len(published_charts) >= len(DEFAULT_CHART_SLUGS)
     assert catalog["model_version"] > 0
+
+
+def test_goal_first_capabilities_are_executable(
+    e2e_client: httpx.Client,
+    e2e_config: E2EConfig,
+    catalog: dict[str, Any],
+) -> None:
+    for semantic_view, targets in catalog["metric_targets"].items():
+        target = targets[0]
+        aggregation = target["aggregations"][0]
+        capabilities = _assert_status(
+            e2e_client.post(
+                e2e_config.url("analytics/query-capabilities"),
+                json={
+                    "semantic_view": semantic_view,
+                    "metric": target["metric"],
+                    "aggregation": aggregation["method"],
+                },
+            ),
+            label=f"analytics/query-capabilities/{semantic_view}",
+        )
+        assert capabilities["metric"]["metric"] == target["metric"]
+        assert capabilities["metric"]["aggregation"] == aggregation["method"]
+        assert isinstance(capabilities["allowed_dimensions"], list)
+        assert isinstance(capabilities["filter_members"], list)
+        assert isinstance(capabilities["allowed_time_dimensions"], list)
 
 
 @pytest.mark.parametrize(

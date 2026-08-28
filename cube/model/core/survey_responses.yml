@@ -8,48 +8,84 @@ cubes:
       every: __PRE_AGGREGATION_REFRESH_EVERY__
 
     measures:
-      - name: response_count
+      - name: survey_count
         type: count
-
-      - name: distinct_survey_count
-        sql: id
-        type: count_distinct
+        meta:
+          query_target: survey
+          public_aggregation: count
+          entity: survey
 
       - name: responding_store_count
         sql: store_key
         type: count_distinct
+        meta:
+          query_target: store
+          public_aggregation: count
+          entity: store
 
       - name: cls_sum
         sql: cls
         type: sum
+        meta:
+          query_target: cls
+          public_aggregation: sum
+          entity: cls
 
       - name: cls_average
         sql: cls
         type: avg
+        meta:
+          query_target: cls
+          public_aggregation: average
+          entity: cls
 
       - name: topic_sentiment_score_sum
         sql: topic_sentiment_score
         type: sum
+        meta:
+          query_target: topic_sentiment_score
+          public_aggregation: sum
+          entity: topic_sentiment_score
 
       - name: topic_sentiment_score_average
         sql: topic_sentiment_score
         type: avg
+        meta:
+          query_target: topic_sentiment_score
+          public_aggregation: average
+          entity: topic_sentiment_score
 
       - name: median_topic_sentiment_score
         sql: PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY {CUBE}.topic_sentiment_score)
         type: number
+        meta:
+          query_target: topic_sentiment_score
+          public_aggregation: median
+          entity: topic_sentiment_score
 
       - name: first_reported_at
         sql: reported_at
         type: min
+        meta:
+          query_target: reported_at
+          public_aggregation: min
+          entity: reported_at
 
       - name: last_reported_at
         sql: reported_at
         type: max
+        meta:
+          query_target: reported_at
+          public_aggregation: max
+          entity: reported_at
 
       - name: last_updated_at
         sql: updated_at
         type: max
+        meta:
+          query_target: updated_at
+          public_aggregation: max
+          entity: updated_at
 
       # Standard response-level dashboard sentiment measures. The response
       # sentiment source is topic_sentiment; surveys.sentiment is legacy.
@@ -283,7 +319,7 @@ cubes:
     pre_aggregations:
       - name: daily_core
         measures:
-          - response_count
+          - survey_count
           - cls_sum
           - topic_sentiment_score_sum
         dimensions:
@@ -300,7 +336,7 @@ cubes:
 
       - name: monthly_core
         measures:
-          - response_count
+          - survey_count
           - cls_sum
           - topic_sentiment_score_sum
         dimensions:
