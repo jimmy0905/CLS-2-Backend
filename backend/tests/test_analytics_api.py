@@ -27,6 +27,7 @@ from utils.analytics import (
     CatalogField,
     CatalogMetric,
     FieldType,
+    QueryAggregation,
     QuerySpec,
     SemanticCatalog,
     validate_query,
@@ -96,20 +97,27 @@ def _catalog() -> SemanticCatalog:
 
 def test_core_dashboard_sentiment_metrics_are_queryable_without_publication() -> None:
     catalog = analytics._catalog_from_records([], [])
-    metrics = {metric.slug: metric for metric in catalog.metrics}
+    # A slug is unique only within its grain; survey_count and
+    # responding_store_count intentionally recur across semantic views.
+    metrics = {
+        (metric.semantic_view, metric.slug): metric for metric in catalog.metrics
+    }
 
-    responding_stores = metrics["responding_store_count"]
-    assert responding_stores.semantic_view == "survey_responses"
+    responding_stores = metrics[("survey_responses", "responding_store_count")]
     assert responding_stores.aggregation is Aggregation.DISTINCT_COUNT
     assert responding_stores.source_field == "store_key"
 
     for sentiment in ("positive", "negative", "neutral", "mixed"):
-        metric = metrics[f"topic_sentiment_{sentiment}_count"]
+        metric = metrics[("survey_responses", f"topic_sentiment_{sentiment}_count")]
         assert metric.aggregation is Aggregation.FILTERED_COUNT
         assert metric.source_field == "topic_sentiment"
         assert metric.parameters == {
             "filter": {"operator": "equals", "value": sentiment.upper()}
         }
+        # The same sentiment is also reachable as a metric target so a chart can
+        # measure one enum value without spending a group-by slot on it.
+        assert metric.query_target == f"topic_sentiment_{sentiment}"
+        assert metric.public_aggregation is QueryAggregation.COUNT
 
     for prefix, view in (
         ("topic", "survey_topics"),
@@ -117,10 +125,20 @@ def test_core_dashboard_sentiment_metrics_are_queryable_without_publication() ->
         ("keyword", "survey_keywords"),
     ):
         for sentiment in ("positive", "negative", "neutral"):
-            metric = metrics[f"{prefix}_assignment_{sentiment}_count"]
-            assert metric.semantic_view == view
+            metric = metrics[(view, f"{prefix}_assignment_{sentiment}_count")]
             assert metric.aggregation is Aggregation.FILTERED_COUNT
             assert metric.source_field == "sentiment"
+            assert metric.query_target == f"sentiment_{sentiment}"
+
+    # The combination grain must never count fanned-out rows.
+    for sentiment in ("positive", "negative", "neutral", "mixed"):
+        metric = metrics[
+            ("survey_assignments", f"topic_sentiment_{sentiment}_survey_count")
+        ]
+        assert metric.aggregation is Aggregation.FILTERED_DISTINCT_COUNT
+        assert metric.source_field == "topic_sentiment"
+        assert metric.parameters["distinctField"] == "survey_id"
+        assert metric.query_target == f"topic_sentiment_{sentiment}"
 
 
 def test_published_chart_response_uses_active_snapshot_version() -> None:
@@ -869,6 +887,18 @@ def test_query_compiles_catalog_members_and_returns_chart_ready_rows(monkeypatch
             "type": "number",
             "key": "value",
         },
+        # One dimension has a row axis but no column axis, and no chart type was
+        # requested, so nothing is capped.
+        "layout": {
+            "chart_type": None,
+            "row_dimension": "store_name",
+            "column_dimension": None,
+            "value_key": "value",
+            "series_limit": None,
+            "truncated_series": False,
+            "other_series_label": None,
+            "filled_cells": 0,
+        },
     }
     assert body["freshness_time"] == "2026-08-25T12:00:00Z"
     assert cube.calls[0][0] == {
@@ -1256,6 +1286,8 @@ def test_promoted_response_fields_project_to_each_assignment_grain(monkeypatch) 
     )
     catalog = analytics._catalog_from_records([field], [])
 
+    # Every grain projects facts.*, so a promoted response field reaches all of
+    # them, including the assignment-combination grain.
     assert {
         item.semantic_view
         for item in catalog.fields
@@ -1265,6 +1297,7 @@ def test_promoted_response_fields_project_to_each_assignment_grain(monkeypatch) 
         "survey_topics",
         "survey_departments",
         "survey_keywords",
+        "survey_assignments",
     }
     monkeypatch.setattr(config, "DEPLOYMENT_PROFILE", "wtchk_cls")
     payload = analytics._cube_catalog_payload([field], [], 4)
@@ -1275,6 +1308,7 @@ def test_promoted_response_fields_project_to_each_assignment_grain(monkeypatch) 
         "survey_topics",
         "survey_departments",
         "survey_keywords",
+        "survey_assignments",
     }
 
 

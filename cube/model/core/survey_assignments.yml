@@ -1,0 +1,352 @@
+cubes:
+  - name: survey_assignments
+    title: Survey assignment combinations
+    description: >-
+      One row per survey-to-(keyword, department, topic) combination. A response
+      repeats once per product of its assignment counts, so only measures that
+      deduplicate on distinct_survey_id are meaningful at this grain. Response
+      averages such as CLS are deliberately absent.
+    sql_table: analytics_survey_assignments
+
+    measures:
+      - name: combination_count
+        type: count
+
+      - name: survey_count
+        sql: distinct_survey_id
+        type: count_distinct
+        meta:
+          query_target: survey
+          public_aggregation: count
+          entity: survey
+
+      - name: responding_store_count
+        sql: store_key
+        type: count_distinct
+        meta:
+          query_target: store
+          public_aggregation: count
+          entity: store
+
+      - name: topic_sentiment_positive_survey_count
+        sql: COUNT(DISTINCT CASE WHEN {CUBE}.topic_sentiment = 'POSITIVE' THEN {CUBE}.distinct_survey_id END)
+        type: number
+
+      - name: topic_sentiment_negative_survey_count
+        sql: COUNT(DISTINCT CASE WHEN {CUBE}.topic_sentiment = 'NEGATIVE' THEN {CUBE}.distinct_survey_id END)
+        type: number
+
+      - name: topic_sentiment_neutral_survey_count
+        sql: COUNT(DISTINCT CASE WHEN {CUBE}.topic_sentiment = 'NEUTRAL' THEN {CUBE}.distinct_survey_id END)
+        type: number
+
+      - name: topic_sentiment_mixed_survey_count
+        sql: COUNT(DISTINCT CASE WHEN {CUBE}.topic_sentiment = 'MIXED' THEN {CUBE}.distinct_survey_id END)
+        type: number
+
+      - name: keyword_sentiment_positive_survey_count
+        sql: COUNT(DISTINCT CASE WHEN {CUBE}.keyword_sentiment = 'POSITIVE' THEN {CUBE}.distinct_survey_id END)
+        type: number
+
+      - name: keyword_sentiment_negative_survey_count
+        sql: COUNT(DISTINCT CASE WHEN {CUBE}.keyword_sentiment = 'NEGATIVE' THEN {CUBE}.distinct_survey_id END)
+        type: number
+
+      - name: keyword_sentiment_neutral_survey_count
+        sql: COUNT(DISTINCT CASE WHEN {CUBE}.keyword_sentiment = 'NEUTRAL' THEN {CUBE}.distinct_survey_id END)
+        type: number
+
+      - name: department_sentiment_positive_survey_count
+        sql: COUNT(DISTINCT CASE WHEN {CUBE}.department_sentiment = 'POSITIVE' THEN {CUBE}.distinct_survey_id END)
+        type: number
+
+      - name: department_sentiment_negative_survey_count
+        sql: COUNT(DISTINCT CASE WHEN {CUBE}.department_sentiment = 'NEGATIVE' THEN {CUBE}.distinct_survey_id END)
+        type: number
+
+      - name: department_sentiment_neutral_survey_count
+        sql: COUNT(DISTINCT CASE WHEN {CUBE}.department_sentiment = 'NEUTRAL' THEN {CUBE}.distinct_survey_id END)
+        type: number
+
+      - name: topic_assignment_sentiment_positive_survey_count
+        sql: COUNT(DISTINCT CASE WHEN {CUBE}.topic_assignment_sentiment = 'POSITIVE' THEN {CUBE}.distinct_survey_id END)
+        type: number
+
+      - name: topic_assignment_sentiment_negative_survey_count
+        sql: COUNT(DISTINCT CASE WHEN {CUBE}.topic_assignment_sentiment = 'NEGATIVE' THEN {CUBE}.distinct_survey_id END)
+        type: number
+
+      - name: topic_assignment_sentiment_neutral_survey_count
+        sql: COUNT(DISTINCT CASE WHEN {CUBE}.topic_assignment_sentiment = 'NEUTRAL' THEN {CUBE}.distinct_survey_id END)
+        type: number
+
+      # __LOCAL_MEASURES__
+
+    dimensions:
+      - name: combination_id
+        sql: combination_id
+        type: string
+        primary_key: true
+        public: true
+
+      - name: survey_id
+        sql: survey_id
+        type: string
+
+      - name: response_id
+        sql: id
+        type: number
+
+      - name: respondent_id
+        sql: respondent_id
+        type: string
+
+      - name: keyword_id
+        sql: keyword_id
+        type: number
+
+      - name: keyword
+        sql: keyword
+        type: string
+
+      - name: keyword_sentiment
+        sql: keyword_sentiment
+        type: string
+
+      - name: department_id
+        sql: department_id
+        type: number
+
+      - name: department
+        sql: department_name
+        type: string
+
+      - name: department_sentiment
+        sql: department_sentiment
+        type: string
+
+      - name: topic_id
+        sql: topic_id
+        type: number
+
+      - name: topic
+        sql: topic
+        type: string
+
+      - name: topic_assignment_sentiment
+        sql: topic_assignment_sentiment
+        type: string
+
+      - name: reported_at
+        sql: reported_at
+        type: time
+
+      - name: created_at
+        sql: created_at
+        type: time
+
+      - name: updated_at
+        sql: updated_at
+        type: time
+
+      - name: comment
+        sql: comment
+        type: string
+
+      - name: topic_sentiment
+        sql: topic_sentiment
+        type: string
+
+      - name: topic_sentiment_score
+        sql: topic_sentiment_score
+        type: number
+
+      - name: cls
+        sql: cls
+        type: number
+
+      - name: store_key
+        sql: store_key
+        type: number
+
+      - name: store_name
+        sql: store_name
+        type: string
+
+      - name: store_name_english
+        sql: store_name_english
+        type: string
+
+      - name: store_name_local
+        sql: store_name_local
+        type: string
+
+      - name: bu_key
+        sql: bu_key
+        type: string
+
+      - name: area_manager
+        sql: area_manager
+        type: string
+
+      - name: store_format
+        sql: store_format
+        type: string
+
+      - name: store_type
+        sql: store_type
+        type: string
+
+      - name: operations_controller
+        sql: operations_controller
+        type: string
+
+      - name: regional_manager
+        sql: regional_manager
+        type: string
+
+      - name: px
+        sql: px
+        type: string
+
+      - name: csr
+        sql: csr
+        type: string
+
+      - name: dr
+        sql: dr
+        type: string
+
+      - name: mag_type
+        sql: mag_type
+        type: string
+
+      - name: cf_grouping
+        sql: cf_grouping
+        type: string
+
+      - name: store_brand
+        sql: store_brand
+        type: string
+
+      - name: competitor
+        sql: competitor
+        type: string
+
+      - name: region
+        sql: region
+        type: string
+
+      - name: area
+        sql: area
+        type: string
+
+      - name: province
+        sql: province
+        type: string
+
+      - name: territory
+        sql: territory
+        type: string
+
+      - name: toh
+        sql: toh
+        type: string
+
+      - name: district
+        sql: district
+        type: string
+
+      - name: city
+        sql: city
+        type: string
+
+      - name: operations_manager
+        sql: operations_manager
+        type: string
+
+      - name: district_manager
+        sql: district_manager
+        type: string
+
+      - name: sic
+        sql: sic
+        type: string
+
+      - name: soc
+        sql: soc
+        type: string
+
+      - name: tech_life_type
+        sql: tech_life_type
+        type: string
+
+      - name: operation_manager_tl
+        sql: operation_manager_tl
+        type: string
+
+      - name: region_manager_tl
+        sql: region_manager_tl
+        type: string
+
+      - name: relocation
+        sql: relocation
+        type: string
+
+      - name: latitude
+        sql: latitude
+        type: number
+
+      - name: longitude
+        sql: longitude
+        type: number
+
+      - name: store_open_date
+        sql: store_open_date
+        type: time
+
+      - name: store_close_date
+        sql: store_close_date
+        type: time
+
+      - name: is_closed
+        sql: is_closed
+        type: boolean
+
+      - name: channel_name
+        sql: channel_name
+        type: string
+
+      - name: channel_id
+        sql: channel_id
+        type: number
+
+      - name: delivery_service_name
+        sql: delivery_service_name
+        type: string
+
+      - name: delivery_service_id
+        sql: delivery_service_id
+        type: number
+
+      # __LOCAL_DIMENSIONS__
+
+    pre_aggregations:
+      - name: daily_topic_departments
+        measures:
+          - survey_count
+          - topic_sentiment_positive_survey_count
+          - topic_sentiment_negative_survey_count
+          - topic_sentiment_neutral_survey_count
+          - topic_sentiment_mixed_survey_count
+        dimensions:
+          - topic
+          - department
+        time_dimension: reported_at
+        granularity: day
+        partition_granularity: month
+        scheduled_refresh: true
+        refresh_key:
+          every: __PRE_AGGREGATION_REFRESH_EVERY__
+
+      # __LOCAL_PREAGGREGATIONS__

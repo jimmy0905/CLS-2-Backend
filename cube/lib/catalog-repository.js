@@ -12,6 +12,7 @@ const SUPPORTED_OPERATIONS = new Set([
   'count',
   'distinct_count',
   'filtered_count',
+  'filtered_distinct_count',
   'filtered_rate',
   'weighted_filtered_rate',
   'sum',
@@ -69,7 +70,12 @@ const SEMANTIC_VIEWS = new Set([
   'survey_topics',
   'survey_departments',
   'survey_keywords',
+  'survey_assignments',
 ]);
+// A survey_assignments row is one combination of every assignment family, so a
+// response repeats once per product of its assignment counts. Only operations
+// that deduplicate on a response key stay meaningful at that grain.
+const DISTINCT_FIELD_OPERATIONS = new Set(['filtered_distinct_count']);
 const RESPONSE_CORE_FIELDS = {
   id: ['id', 'number'],
   survey_id: ['survey_id', 'string'],
@@ -149,6 +155,20 @@ const CORE_FIELDS = {
     keyword_id: ['keyword_id', 'number'],
     keyword: ['keyword', 'string'],
   },
+  survey_assignments: {
+    ...ASSIGNMENT_RESPONSE_CORE_FIELDS,
+    combination_id: ['combination_id', 'string'],
+    response_id: ['id', 'number'],
+    keyword_id: ['keyword_id', 'number'],
+    keyword: ['keyword', 'string'],
+    keyword_sentiment: ['keyword_sentiment', 'string'],
+    department_id: ['department_id', 'number'],
+    department: ['department_name', 'string'],
+    department_sentiment: ['department_sentiment', 'string'],
+    topic_id: ['topic_id', 'number'],
+    topic: ['topic', 'string'],
+    topic_assignment_sentiment: ['topic_assignment_sentiment', 'string'],
+  },
 };
 const CORE_MEASURES = {
   survey_responses: new Set([
@@ -170,6 +190,24 @@ const CORE_MEASURES = {
   survey_topics: new Set(['assignment_count', 'survey_count', 'topic_assignment_positive_count', 'topic_assignment_negative_count', 'topic_assignment_neutral_count']),
   survey_departments: new Set(['assignment_count', 'survey_count', 'department_assignment_positive_count', 'department_assignment_negative_count', 'department_assignment_neutral_count']),
   survey_keywords: new Set(['assignment_count', 'survey_count', 'keyword_assignment_positive_count', 'keyword_assignment_negative_count', 'keyword_assignment_neutral_count']),
+  survey_assignments: new Set([
+    'combination_count',
+    'survey_count',
+    'responding_store_count',
+    'topic_sentiment_positive_survey_count',
+    'topic_sentiment_negative_survey_count',
+    'topic_sentiment_neutral_survey_count',
+    'topic_sentiment_mixed_survey_count',
+    'keyword_sentiment_positive_survey_count',
+    'keyword_sentiment_negative_survey_count',
+    'keyword_sentiment_neutral_survey_count',
+    'department_sentiment_positive_survey_count',
+    'department_sentiment_negative_survey_count',
+    'department_sentiment_neutral_survey_count',
+    'topic_assignment_sentiment_positive_survey_count',
+    'topic_assignment_sentiment_negative_survey_count',
+    'topic_assignment_sentiment_neutral_survey_count',
+  ]),
 };
 
 const CHART_DIMENSION_FIELDS = new Set([
@@ -177,10 +215,12 @@ const CHART_DIMENSION_FIELDS = new Set([
   'store_name_local', 'store_format', 'store_type', 'store_brand', 'region',
   'area', 'province', 'territory', 'district', 'city', 'channel_name',
   'delivery_service_name', 'topic', 'department', 'keyword',
+  'keyword_sentiment', 'department_sentiment', 'topic_assignment_sentiment',
 ]);
 const ASSIGNMENT_SCOPE_FIELDS = new Set([
   'assignment_id', 'sentiment', 'topic_id', 'topic', 'department_id',
-  'department', 'keyword_id', 'keyword',
+  'department', 'keyword_id', 'keyword', 'combination_id', 'keyword_sentiment',
+  'department_sentiment', 'topic_assignment_sentiment',
 ]);
 
 function coreFieldDescriptor(semanticView, slug) {
@@ -358,10 +398,22 @@ function validateCatalog(catalog, expectedProfile) {
     }
     if (metric.sourceField) assertIdentifier(metric.sourceField, 'metric source field');
     if (metric.weightField) assertIdentifier(metric.weightField, 'metric weight field');
+    const distinctSlug = metric.parameters && metric.parameters.distinctField;
+    if (distinctSlug != null) assertIdentifier(distinctSlug, 'metric distinct field');
     const sourceField = resolveCatalogField(fields, metric.semanticView, metric.sourceField);
     const weightField = resolveCatalogField(fields, metric.semanticView, metric.weightField);
+    const distinctField = resolveCatalogField(fields, metric.semanticView, distinctSlug);
     if (metric.sourceField && !sourceField) {
       throw new Error(`Unknown source field for ${metric.slug}`);
+    }
+    if (DISTINCT_FIELD_OPERATIONS.has(metric.operation) && distinctSlug == null) {
+      throw new Error(`Metric ${metric.slug} requires a distinct field`);
+    }
+    if (DISTINCT_FIELD_OPERATIONS.has(metric.operation) && !distinctField) {
+      throw new Error(`Unknown distinct field for ${metric.slug}`);
+    }
+    if (!DISTINCT_FIELD_OPERATIONS.has(metric.operation) && distinctSlug != null) {
+      throw new Error(`Metric ${metric.slug} does not accept a distinct field`);
     }
     if (metric.operation !== 'count' && !metric.sourceField) {
       throw new Error(`Unknown source field for ${metric.slug}`);
@@ -380,7 +432,7 @@ function validateCatalog(catalog, expectedProfile) {
       throw new Error(`Weight field for ${metric.slug} must be numeric`);
     }
     if (metric.visibility === 'viewer') {
-      const dependencies = [sourceField, weightField].filter(Boolean);
+      const dependencies = [sourceField, weightField, distinctField].filter(Boolean);
       if (dependencies.some((field) => field.visibility !== 'viewer')) {
         throw new Error(`Viewer metric ${metric.slug} depends on an admin-only field`);
       }
@@ -581,6 +633,14 @@ function typedSqlLiteral(value, field) {
   return sqlLiteral(value, 500);
 }
 
+function distinctFieldSlug(metric) {
+  const slug = metric.parameters && metric.parameters.distinctField;
+  if (typeof slug !== 'string') {
+    throw new Error(`Metric ${metric.slug} requires a distinct field`);
+  }
+  return slug;
+}
+
 function filterPredicate(metric, fields) {
   const field = fields.get(metric.sourceField);
   const expression = fieldExpression(field);
@@ -695,6 +755,15 @@ function metricSql(metric, fields) {
     case 'distinct_count': return { type: 'count_distinct', sql: source };
     case 'filtered_count':
       return { type: 'number', sql: `SUM(CASE WHEN ${filterPredicate(metric, fields)} THEN 1 ELSE 0 END)` };
+    case 'filtered_distinct_count': {
+      // Counting rows would multiply by the assignment fan-out, so the match is
+      // projected onto the deduplication key instead.
+      const distinct = fieldExpression(fields.get(distinctFieldSlug(metric)));
+      return {
+        type: 'number',
+        sql: `COUNT(DISTINCT CASE WHEN ${filterPredicate(metric, fields)} THEN ${distinct} END)`,
+      };
+    }
     case 'filtered_rate':
     case 'proportion_confidence_interval': {
       const predicate = filterPredicate(metric, fields);

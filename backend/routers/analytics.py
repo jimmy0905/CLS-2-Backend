@@ -34,15 +34,19 @@ from models.AnalyticsMetric import AnalyticsMetric
 from models.AnalyticsModelVersion import AnalyticsModelVersion
 from models.AnalyticsQueryLog import AnalyticsQueryLog
 from models.User import User
+from models.enum.Sentiment import Sentiment, TopicSentiment
 from utils.analytics import (
     Aggregation,
     AnalyticsValidationError,
     CatalogField,
     CatalogMetric,
+    ChartType,
     FieldType,
     FilterSpec,
+    MAX_AGGREGATE_ROWS,
     MAX_DIMENSIONS,
     MAX_FILTERS,
+    MAX_SERIES,
     OrderSpec,
     QueryAggregation,
     QuerySpec,
@@ -50,10 +54,13 @@ from utils.analytics import (
     Visibility,
     allowed_filter_operators,
     chart_combination_rules,
+    chart_layout,
     compile_cube_query,
     metric_result_type,
+    metric_target_candidates,
     metric_targets,
     resolve_query_metric,
+    shape_chart_rows,
     validate_chart_definition,
     validate_identifier,
     validate_metric,
@@ -82,7 +89,18 @@ _SEMANTIC_VIEWS = {
     "survey_topics",
     "survey_departments",
     "survey_keywords",
+    "survey_assignments",
 }
+# One alias keeps every request schema in step when a grain is added; the set
+# above stays the runtime membership check for stored records.
+SemanticView = Literal[
+    "survey_responses",
+    "survey_topics",
+    "survey_departments",
+    "survey_keywords",
+    "survey_assignments",
+]
+
 _PROFILE = re.compile(r"^[a-z0-9]+_(?:cls|ecls)$")
 _CHART_TYPES = tuple(
     rule["chart_type"] for rule in chart_combination_rules()
@@ -112,6 +130,18 @@ _ENDPOINT_DESCRIPTIONS = {
     "viewer_query_capabilities": "Resolve one logical metric target and aggregation "
     "against the active catalog, then return the exact dimensions, filters, typed operators, "
     "and granular time fields that the same caller may use in an aggregate query.",
+    "viewer_builder_measures": "List everything a chart can measure, flattened across "
+    "row grains and with enum dimensions expanded into one target per value. Each entry "
+    "reports its available aggregations and whether it survives crossing two assignment "
+    "families, so a caller can start from the question rather than the row grain.",
+    "viewer_builder_options": "Report what remains selectable for a partial chart "
+    "builder selection, in any order. The response resolves the narrowest row grain that "
+    "can answer the selection, lists the still-valid breakdowns, series, time fields and "
+    "intervals, gives the compatible chart types, and returns the executable query once "
+    "the selection is complete.",
+    "viewer_builder_query": "Run a complete chart builder selection. The server chooses "
+    "the narrowest row grain that answers it, validates the chart shape against the data "
+    "shape, caps unbounded series, and reports the row and column layout with the result.",
     "viewer_records_query": "Return role-authorized, paginated records from the live database. "
     "Survey records exclude soft-deleted rows, preserve the legacy and canonical "
     "sentiment fields, and use EXISTS predicates for assignment filters so each "
@@ -205,6 +235,7 @@ _AVAILABILITY_VIEW_NAMES = {
     "survey_topics": "analytics_survey_topics",
     "survey_departments": "analytics_survey_departments",
     "survey_keywords": "analytics_survey_keywords",
+    "survey_assignments": "analytics_survey_assignments",
 }
 _ASSIGNMENT_AVAILABILITY_ALIASES = {
     "response_id": "id",
@@ -216,18 +247,49 @@ _FILTER_OPTION_METRIC_TARGETS = {
     "survey_topics": "topic_assignment",
     "survey_departments": "department_assignment",
     "survey_keywords": "keyword_assignment",
+    # The combination grain repeats a response once per assignment product, so
+    # option counts must come from a deduplicated survey count.
+    "survey_assignments": "survey",
 }
 _SEMANTIC_VIEW_GRAINS = {
     "survey_responses": "one non-deleted survey response",
     "survey_topics": "one survey-to-topic assignment",
     "survey_departments": "one survey-to-department assignment",
     "survey_keywords": "one survey-to-keyword assignment",
+    "survey_assignments": (
+        "one survey-to-(keyword, department, topic) assignment combination"
+    ),
 }
 _ASSIGNMENT_DIMENSIONS = {
     "survey_responses": None,
     "survey_topics": "topic",
     "survey_departments": "department",
     "survey_keywords": "keyword",
+    # No single assignment dimension defines this grain; see
+    # _SEMANTIC_VIEW_ASSIGNMENT_DIMENSIONS for the full set.
+    "survey_assignments": None,
+}
+_SEMANTIC_VIEW_ASSIGNMENT_DIMENSIONS: dict[str, tuple[str, ...]] = {
+    "survey_responses": (),
+    "survey_topics": ("topic",),
+    "survey_departments": ("department",),
+    "survey_keywords": ("keyword",),
+    "survey_assignments": ("keyword", "department", "topic"),
+}
+_ASSIGNMENT_SENTIMENT_DIMENSIONS: dict[str, str | None] = {
+    "survey_responses": None,
+    "survey_topics": "sentiment",
+    "survey_departments": "sentiment",
+    "survey_keywords": "sentiment",
+    # Three assignment families coexist here, so each keeps its own column.
+    "survey_assignments": None,
+}
+# Assignment dimensions that only the combination grain can cross with each
+# other, mapped to the sentiment column recorded on that assignment.
+_COMBINATION_ASSIGNMENT_SENTIMENTS = {
+    "keyword": "keyword_sentiment",
+    "department": "department_sentiment",
+    "topic": "topic_assignment_sentiment",
 }
 
 _COMMON_QUERY_OVERRIDES = ("filters", "timezone", "order", "limit")
@@ -444,6 +506,9 @@ _QUERY_COMBINATION_DEFINITIONS: tuple[dict[str, Any], ...] = (
 _CHART_DIMENSION_FIELDS = {
     "topic_sentiment",
     "sentiment",
+    "keyword_sentiment",
+    "department_sentiment",
+    "topic_assignment_sentiment",
     "store_name",
     "store_name_english",
     "store_name_local",
@@ -471,6 +536,10 @@ _ASSIGNMENT_SCOPE_FIELDS = {
     "department",
     "keyword_id",
     "keyword",
+    "combination_id",
+    "keyword_sentiment",
+    "department_sentiment",
+    "topic_assignment_sentiment",
 }
 
 
@@ -578,6 +647,57 @@ for _view, _assignment_members in {
         _core_field(slug, data_type, _view)
         for slug, data_type in _assignment_members.items()
     )
+
+# The combination grain carries all three assignment families at once, so each
+# keeps a distinctly named sentiment column instead of a shared "sentiment".
+_CORE_FIELDS += (
+    _core_field("combination_id", FieldType.STRING, "survey_assignments"),
+    _core_field("response_id", FieldType.NUMBER, "survey_assignments"),
+)
+_CORE_FIELDS += tuple(
+    _core_field(slug, data_type, "survey_assignments")
+    for slug, data_type in _RESPONSE_FIELD_TYPES.items()
+    if slug != "id"
+)
+_CORE_FIELDS += tuple(
+    _core_field(slug, data_type, "survey_assignments")
+    for slug, data_type in {
+        "keyword_id": FieldType.NUMBER,
+        "keyword": FieldType.STRING,
+        "keyword_sentiment": FieldType.STRING,
+        "department_id": FieldType.NUMBER,
+        "department": FieldType.STRING,
+        "department_sentiment": FieldType.STRING,
+        "topic_id": FieldType.NUMBER,
+        "topic": FieldType.STRING,
+        "topic_assignment_sentiment": FieldType.STRING,
+    }.items()
+)
+
+
+# Enum-valued dimensions the builder may expand into one measurable target per
+# value, so a user can measure "topic sentiment is MIXED" directly instead of
+# spending a group-by slot on the sentiment breakdown. Only declared enums are
+# expanded; an arbitrary string dimension has no closed value set.
+_ENUM_DIMENSION_VALUES: dict[str, tuple[str, ...]] = {
+    "topic_sentiment": tuple(member.value for member in TopicSentiment),
+    "sentiment": tuple(member.value for member in Sentiment),
+    "keyword_sentiment": tuple(member.value for member in Sentiment),
+    "department_sentiment": tuple(member.value for member in Sentiment),
+    "topic_assignment_sentiment": tuple(member.value for member in Sentiment),
+}
+
+
+def enum_dimension_values(slug: str) -> tuple[str, ...]:
+    """Return the closed value set of a declared enum dimension."""
+
+    return _ENUM_DIMENSION_VALUES.get(slug, ())
+
+
+def enum_metric_target(field_slug: str, value: str) -> str:
+    """Return the logical metric target naming one enum value of a dimension."""
+
+    return validate_identifier(f"{field_slug}_{value.lower()}")
 
 
 def _core_metric(
@@ -699,7 +819,9 @@ _CORE_METRICS: tuple[CatalogMetric, ...] = (
     # These are standard dashboard measures, not BU-specific local definitions.
     # Keep them core so existing sentiment-breakdown cards work immediately on a
     # new profile without an administrator first publishing four duplicate
-    # filtered-count definitions.
+    # filtered-count definitions.  Each also publishes an enum-value metric
+    # target so the builder can measure one sentiment without spending a
+    # group-by slot on the sentiment dimension.
     *(
         _core_metric(
             f"topic_sentiment_{sentiment.lower()}_count",
@@ -708,8 +830,12 @@ _CORE_METRICS: tuple[CatalogMetric, ...] = (
             parameters={
                 "filter": {"operator": "equals", "value": sentiment}
             },
+            query_target=enum_metric_target("topic_sentiment", sentiment),
+            public_aggregation=QueryAggregation.COUNT,
+            entity="survey",
+            label=f"{sentiment.title()} Topic Sentiment Responses",
         )
-        for sentiment in ("POSITIVE", "NEGATIVE", "NEUTRAL", "MIXED")
+        for sentiment in enum_dimension_values("topic_sentiment")
     ),
 )
 for _view in ("survey_topics", "survey_departments", "survey_keywords"):
@@ -744,9 +870,65 @@ for _view in ("survey_topics", "survey_departments", "survey_keywords"):
                 parameters={
                     "filter": {"operator": "equals", "value": sentiment}
                 },
+                query_target=enum_metric_target("sentiment", sentiment),
+                public_aggregation=QueryAggregation.COUNT,
+                entity=f"{_prefix}_assignment",
+                label=f"{sentiment.title()} {_prefix.title()} Assignments",
             )
-            for sentiment in ("POSITIVE", "NEGATIVE", "NEUTRAL")
+            for sentiment in enum_dimension_values("sentiment")
         ),
+    )
+
+# The combination grain fans a response out once per assignment product, so every
+# measure here deduplicates on the response key. Response-level sums and averages
+# such as CLS are deliberately absent: they would be weighted by that product.
+_CORE_METRICS += (
+    _core_metric(
+        "survey_count",
+        Aggregation.DISTINCT_COUNT,
+        "survey_id",
+        semantic_view="survey_assignments",
+        query_target="survey",
+        public_aggregation=QueryAggregation.COUNT,
+        entity="survey",
+        label="Unique Survey Count",
+    ),
+    _core_metric(
+        "responding_store_count",
+        Aggregation.DISTINCT_COUNT,
+        "store_key",
+        semantic_view="survey_assignments",
+        query_target="store",
+        public_aggregation=QueryAggregation.COUNT,
+        entity="store",
+        label="Responding Store Count",
+    ),
+)
+for _enum_field in (
+    "topic_sentiment",
+    "keyword_sentiment",
+    "department_sentiment",
+    "topic_assignment_sentiment",
+):
+    _CORE_METRICS += tuple(
+        _core_metric(
+            f"{_enum_field}_{_value.lower()}_survey_count",
+            Aggregation.FILTERED_DISTINCT_COUNT,
+            _enum_field,
+            semantic_view="survey_assignments",
+            parameters={
+                "filter": {"operator": "equals", "value": _value},
+                "distinctField": "survey_id",
+            },
+            query_target=enum_metric_target(_enum_field, _value),
+            public_aggregation=QueryAggregation.COUNT,
+            entity="survey",
+            label=(
+                f"{_value.title()} "
+                f"{_enum_field.replace('_', ' ').title()} Surveys"
+            ),
+        )
+        for _value in enum_dimension_values(_enum_field)
     )
 
 
@@ -800,6 +982,10 @@ class SemanticViewCombinationOutput(_StrictOutput):
     assignment_dimension: str | None
     response_sentiment_dimension: str
     assignment_sentiment_dimension: str | None
+    # The combination grain carries several assignment families at once, so it
+    # reports the whole set and leaves the single-family fields null.
+    assignment_dimensions: tuple[str, ...] = ()
+    assignment_sentiment_dimensions: dict[str, str] = Field(default_factory=dict)
 
 
 class ChartCombinationOutput(_StrictOutput):
@@ -860,12 +1046,7 @@ class QueryCapabilitiesInput(_StrictInput):
         },
     )
 
-    semantic_view: Literal[
-        "survey_responses",
-        "survey_topics",
-        "survey_departments",
-        "survey_keywords",
-    ]
+    semantic_view: SemanticView
     metric: str
     aggregation: QueryAggregation
 
@@ -900,6 +1081,143 @@ class QueryCapabilitiesResponse(_StrictOutput):
     filter_members: tuple[FilterMemberCapabilityOutput, ...]
     allowed_time_dimensions: tuple[CatalogFieldOutput, ...]
     result_type: FieldType
+    warnings: tuple[str, ...]
+
+
+# --- Chart builder -------------------------------------------------------
+#
+# The builder is a column-first facade over the goal-first query contract. A
+# caller picks what to measure, how to break it down, how to aggregate, and how
+# to draw it, in any order; the server resolves which semantic view can answer
+# that combination and reports what remains selectable.
+
+
+class BuilderMeasureInput(_StrictInput):
+    """What to measure. An enum dimension is measurable one value at a time."""
+
+    field: str
+    enum_value: str | None = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "Required for an enum dimension and rejected otherwise. Selecting "
+            "one value measures just that value instead of spending a group-by "
+            "slot on the whole breakdown."
+        ),
+    )
+
+    @field_validator("field")
+    @classmethod
+    def _field_identifier(cls, value: str) -> str:
+        return validate_identifier(value)
+
+
+class BuilderTimeSeriesInput(_StrictInput):
+    field: str
+    interval: Literal["day", "week", "month", "quarter", "year"]
+
+    @field_validator("field")
+    @classmethod
+    def _field_identifier(cls, value: str) -> str:
+        return validate_identifier(value)
+
+
+class BuilderSeriesInput(_StrictInput):
+    """The second breakdown: either another column or a time interval."""
+
+    dimension: str | None = None
+    time: BuilderTimeSeriesInput | None = None
+
+    @field_validator("dimension")
+    @classmethod
+    def _dimension_identifier(cls, value: str | None) -> str | None:
+        return validate_identifier(value) if value is not None else None
+
+    @model_validator(mode="after")
+    def _exactly_one(self) -> "BuilderSeriesInput":
+        if (self.dimension is None) == (self.time is None):
+            raise ValueError("A series is either one dimension or one time interval")
+        return self
+
+
+class BuilderSelectionInput(_StrictInput):
+    measure: BuilderMeasureInput | None = None
+    aggregation: QueryAggregation | None = None
+    breakdown: str | None = Field(
+        default=None,
+        description="Primary group-by dimension; the 'for every X' of a request.",
+    )
+    series: BuilderSeriesInput | None = None
+    chart_type: ChartType | None = None
+    filters: tuple[FilterSpec, ...] = Field(default=(), max_length=MAX_FILTERS)
+    time_range: tuple[str, str] | None = None
+    timezone: str | None = None
+
+    @field_validator("breakdown")
+    @classmethod
+    def _breakdown_identifier(cls, value: str | None) -> str | None:
+        return validate_identifier(value) if value is not None else None
+
+
+class BuilderQueryInput(BuilderSelectionInput):
+    order: tuple[OrderSpec, ...] = Field(default=(), max_length=8)
+    limit: int = Field(default=MAX_AGGREGATE_ROWS, ge=1, le=MAX_AGGREGATE_ROWS)
+    series_limit: int | None = Field(default=None, ge=1, le=MAX_SERIES)
+    fill_empty: bool = False
+
+    @model_validator(mode="after")
+    def _requires_a_measure(self) -> "BuilderQueryInput":
+        if self.measure is None or self.aggregation is None:
+            raise ValueError("A builder query requires a measure and an aggregation")
+        return self
+
+
+class BuilderAggregationOutput(_StrictOutput):
+    method: QueryAggregation
+    label: str
+    result_type: FieldType
+
+
+class BuilderMeasureOutput(_StrictOutput):
+    key: str
+    label: str
+    field: str
+    enum_value: str | None
+    semantic_views: tuple[str, ...]
+    aggregations: tuple[BuilderAggregationOutput, ...]
+    result_type: FieldType
+    # A response-level average is distorted by the assignment fan-out of the
+    # combination grain, so such a measure cannot cross assignment families.
+    supports_cross_assignment: bool
+
+
+class BuilderMeasuresResponse(_StrictOutput):
+    model_version: int
+    count: int
+    measures: tuple[BuilderMeasureOutput, ...]
+
+
+class BuilderDimensionOutput(_StrictOutput):
+    slug: str
+    label: str
+    data_type: FieldType
+    scope: Literal["response", "assignment"]
+    enum_values: tuple[str, ...]
+
+
+class BuilderOptionsResponse(_StrictOutput):
+    model_version: int
+    semantic_view: str | None
+    grain: str | None
+    selection_complete: bool
+    available_measures: tuple[BuilderMeasureOutput, ...]
+    available_aggregations: tuple[BuilderAggregationOutput, ...]
+    available_breakdowns: tuple[BuilderDimensionOutput, ...]
+    available_series_dimensions: tuple[BuilderDimensionOutput, ...]
+    available_time_fields: tuple[BuilderDimensionOutput, ...]
+    available_intervals: tuple[str, ...]
+    compatible_chart_types: tuple[str, ...]
+    query: QuerySpec | None
     warnings: tuple[str, ...]
 
 
@@ -1007,12 +1325,7 @@ class MetricInput(_StrictInput):
     slug: str
     label: str = Field(min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=1_000)
-    semantic_view: Literal[
-        "survey_responses",
-        "survey_topics",
-        "survey_departments",
-        "survey_keywords",
-    ] = Field(
+    semantic_view: SemanticView = Field(
         default="survey_responses",
         description=(
             "Metric row grain. survey_responses is one survey; assignment views "
@@ -1188,12 +1501,7 @@ class ChartInput(_StrictInput):
         "donut",
         "heatmap",
     ]
-    semantic_view: Literal[
-        "survey_responses",
-        "survey_topics",
-        "survey_departments",
-        "survey_keywords",
-    ] = Field(
+    semantic_view: SemanticView = Field(
         description=(
             "Required chart row grain. Use survey_responses for response-level "
             "analysis; use one assignment view for topic, department, or keyword analysis."
@@ -1266,12 +1574,7 @@ class FilterOptionsInput(_StrictInput):
         },
     )
 
-    semantic_view: Literal[
-        "survey_responses",
-        "survey_topics",
-        "survey_departments",
-        "survey_keywords",
-    ]
+    semantic_view: SemanticView
     member: str
     # Reserve room for the endpoint's non-null filter and optional search.
     filters: tuple[FilterSpec, ...] = Field(default=(), max_length=18)
@@ -1778,6 +2081,7 @@ def _query_schema(
             "type": result_type,
             "key": "value",
         },
+        "layout": None,
     }
 
 
@@ -1916,6 +2220,8 @@ async def _execute_query(
         schema = _query_schema(query, catalog, role)
         columns = _column_metadata(schema)
         rows = _format_rows(formatted_result["rows"], query, columns)
+        rows, layout = shape_chart_rows(rows, query)
+        schema["layout"] = layout.model_dump() if layout is not None else None
     except _AnalyticsCatalogChangedError as error:
         query_log.status = "failed"
         query_log.error_message = "Analytics catalog changed during query execution"
@@ -1985,6 +2291,440 @@ async def _execute_query(
     }
 
 
+_BUILDER_INTERVALS = ("day", "week", "month", "quarter", "year")
+# Narrowest grain first. Routing prefers the earliest view that holds every
+# selected member, so a single-family request never pays the combination
+# grain's assignment fan-out.
+_BUILDER_VIEW_PREFERENCE = (
+    "survey_responses",
+    "survey_topics",
+    "survey_departments",
+    "survey_keywords",
+    "survey_assignments",
+)
+# Selecting two of these forces the combination grain, where a response repeats
+# once per assignment combination.
+_CROSS_ASSIGNMENT_DIMENSIONS = frozenset(
+    {"keyword", "department", "topic", *_COMBINATION_ASSIGNMENT_SENTIMENTS.values()}
+)
+
+
+def _builder_measure_key(field_slug: str, enum_value: str | None) -> str:
+    return field_slug if enum_value is None else f"{field_slug}:{enum_value}"
+
+
+def _builder_measure_label(field_slug: str, enum_value: str | None) -> str:
+    field_label = field_slug.replace("_", " ").title()
+    if enum_value is None:
+        return field_label
+    return f"{field_label} is {enum_value}"
+
+
+def _measure_target(measure: BuilderMeasureInput) -> str:
+    """Map a builder measure onto the logical metric target that answers it."""
+
+    if measure.enum_value is None:
+        return measure.field
+    values = enum_dimension_values(measure.field)
+    if not values:
+        raise AnalyticsValidationError(
+            f"Dimension {measure.field} has no enumerated values to measure"
+        )
+    if measure.enum_value not in values:
+        raise AnalyticsValidationError(
+            f"{measure.enum_value} is not a value of {measure.field}"
+        )
+    return enum_metric_target(measure.field, measure.enum_value)
+
+
+def _cross_assignment_safe(
+    catalog: SemanticCatalog,
+    target: str,
+    aggregation: QueryAggregation,
+    role: str = "viewer",
+) -> bool:
+    """Report whether the combination grain can answer this goal honestly.
+
+    Only metrics that deduplicate on the response key survive the fan-out. The
+    grain publishes exactly those, so presence there is the check.
+    """
+
+    return bool(
+        metric_target_candidates(
+            catalog, "survey_assignments", target, aggregation, role
+        )
+    )
+
+
+def _builder_measures(
+    catalog: SemanticCatalog, role: str
+) -> tuple[BuilderMeasureOutput, ...]:
+    """List every measurable target across all grains, enum values expanded.
+
+    Flattening across grains is what lets a caller start from "what do I want to
+    see" rather than having to know which row grain can answer it.
+    """
+
+    by_key: dict[str, dict[str, Any]] = {}
+    for semantic_view in _BUILDER_VIEW_PREFERENCE:
+        for target in metric_targets(catalog, semantic_view, role):
+            field_slug, _, enum_value = _split_enum_target(target.metric)
+            key = _builder_measure_key(field_slug, enum_value)
+            entry = by_key.setdefault(
+                key,
+                {
+                    "field": field_slug,
+                    "enum_value": enum_value,
+                    "target": target.metric,
+                    "views": [],
+                    "aggregations": {},
+                },
+            )
+            entry["views"].append(semantic_view)
+            for option in target.aggregations:
+                entry["aggregations"].setdefault(
+                    option.method,
+                    BuilderAggregationOutput(
+                        method=option.method,
+                        label=option.label,
+                        result_type=option.result_type,
+                    ),
+                )
+
+    result: list[BuilderMeasureOutput] = []
+    for key, entry in sorted(by_key.items()):
+        aggregations = tuple(
+            entry["aggregations"][method]
+            for method in sorted(entry["aggregations"], key=lambda item: item.value)
+        )
+        if not aggregations:
+            continue
+        result.append(
+            BuilderMeasureOutput(
+                key=key,
+                label=_builder_measure_label(entry["field"], entry["enum_value"]),
+                field=entry["field"],
+                enum_value=entry["enum_value"],
+                semantic_views=tuple(entry["views"]),
+                aggregations=aggregations,
+                result_type=aggregations[0].result_type,
+                supports_cross_assignment="survey_assignments" in entry["views"],
+            )
+        )
+    return tuple(result)
+
+
+def _split_enum_target(target: str) -> tuple[str, str | None, str | None]:
+    """Recover the (field, target, enum value) behind a metric target slug."""
+
+    for field_slug, values in _ENUM_DIMENSION_VALUES.items():
+        for value in values:
+            if target == enum_metric_target(field_slug, value):
+                return field_slug, target, value
+    return target, target, None
+
+
+def _selected_members(selection: BuilderSelectionInput) -> tuple[str, ...]:
+    members: list[str] = []
+    if selection.breakdown is not None:
+        members.append(selection.breakdown)
+    if selection.series is not None and selection.series.dimension is not None:
+        members.append(selection.series.dimension)
+    if selection.series is not None and selection.series.time is not None:
+        members.append(selection.series.time.field)
+    members.extend(item.member for item in selection.filters)
+    return tuple(members)
+
+
+def _resolve_builder_view(
+    selection: BuilderSelectionInput, catalog: SemanticCatalog, role: str
+) -> tuple[str | None, list[str]]:
+    """Pick the narrowest grain that holds every selected member and the goal."""
+
+    warnings: list[str] = []
+    members = _selected_members(selection)
+    target = (
+        _measure_target(selection.measure) if selection.measure is not None else None
+    )
+    # Nothing has been chosen yet, so no grain is implied and the caller should
+    # still see every dimension any grain could offer.
+    if target is None and not members:
+        return None, warnings
+
+    known_views = {field.semantic_view for field in catalog.fields}
+    holds_members: list[str] = []
+    for semantic_view in _BUILDER_VIEW_PREFERENCE:
+        if semantic_view not in known_views:
+            continue
+        available = {
+            field.slug
+            for field in catalog.fields
+            if field.semantic_view == semantic_view
+            and (role == "admin" or field.visibility is Visibility.VIEWER)
+        }
+        if any(member not in available for member in members):
+            continue
+        holds_members.append(semantic_view)
+        if target is not None and selection.aggregation is not None:
+            if not metric_target_candidates(
+                catalog, semantic_view, target, selection.aggregation, role
+            ):
+                continue
+        return semantic_view, warnings
+
+    if target is None or selection.aggregation is None:
+        return None, warnings
+
+    crossed = [
+        member for member in members if member in _CROSS_ASSIGNMENT_DIMENSIONS
+    ]
+    if len(crossed) > 1:
+        warnings.append(
+            "Crossing assignment families repeats a response once per "
+            "combination, so this measure cannot be reported honestly at that "
+            "grain. Use a response-level breakdown or a counting measure."
+        )
+    elif holds_members:
+        # Some grain holds the breakdowns, but none of those grains publishes
+        # this goal. Naming the grain is what makes the refusal actionable.
+        assert selection.measure is not None
+        label = _builder_measure_label(
+            selection.measure.field, selection.measure.enum_value
+        )
+        warnings.append(
+            f"{selection.aggregation.value} of {label} is not published at the "
+            f"{holds_members[0]} grain that {', '.join(members)} requires."
+        )
+    return None, warnings
+
+
+def _distinct_by_slug(fields: Any) -> list[CatalogField]:
+    """Collapse the same dimension repeated across grains into one entry."""
+
+    seen: dict[str, CatalogField] = {}
+    for field in fields:
+        seen.setdefault(field.slug, field)
+    return list(seen.values())
+
+
+def _builder_dimension_output(
+    field: CatalogField,
+) -> BuilderDimensionOutput:
+    return BuilderDimensionOutput(
+        slug=field.slug,
+        label=field.label,
+        data_type=field.data_type,
+        scope=field.scope,
+        enum_values=enum_dimension_values(field.slug),
+    )
+
+
+def _builder_query(
+    selection: BuilderQueryInput, semantic_view: str
+) -> QuerySpec:
+    """Compile a builder selection into the governed aggregate query."""
+
+    assert selection.measure is not None and selection.aggregation is not None
+    dimensions: list[str] = []
+    if selection.breakdown is not None:
+        dimensions.append(selection.breakdown)
+    time_dimension: str | None = None
+    time_granularity: str | None = None
+    if selection.series is not None:
+        if selection.series.dimension is not None:
+            dimensions.append(selection.series.dimension)
+        else:
+            assert selection.series.time is not None
+            time_dimension = selection.series.time.field
+            time_granularity = selection.series.time.interval
+
+    return QuerySpec(
+        semantic_view=semantic_view,
+        dimensions=tuple(dimensions),
+        metric=_measure_target(selection.measure),
+        aggregation=selection.aggregation,
+        filters=selection.filters,
+        time_dimension=time_dimension,
+        time_range=selection.time_range,
+        timezone=selection.timezone,
+        time_granularity=time_granularity,
+        order=selection.order,
+        limit=selection.limit,
+        chart_type=selection.chart_type,
+        series_limit=selection.series_limit,
+        fill_empty=selection.fill_empty,
+    )
+
+
+def _compatible_chart_types(
+    query: QuerySpec, catalog: SemanticCatalog, role: str
+) -> tuple[str, ...]:
+    result: list[str] = []
+    for chart_type in _CHART_TYPES:
+        try:
+            validate_chart_definition(
+                chart_type,
+                query.dimensions,
+                query.metric,
+                query.aggregation,
+                catalog,
+                semantic_view=query.semantic_view,
+                time_dimension=query.time_dimension,
+                time_granularity=query.time_granularity,
+                role=role,
+            )
+        except AnalyticsValidationError:
+            continue
+        result.append(chart_type)
+    return tuple(result)
+
+
+def _breakdown_is_honest(
+    selection: BuilderSelectionInput,
+    catalog: SemanticCatalog,
+    field: CatalogField,
+    role: str,
+) -> bool:
+    """Reject a dimension that would force a grain the measure cannot survive.
+
+    Adding a second assignment family moves the query to the combination grain,
+    where a response repeats once per combination. A measure that only exists as
+    a sum or average of response values would then be silently weighted by that
+    repetition, so it is not offered.
+    """
+
+    if field.slug not in _CROSS_ASSIGNMENT_DIMENSIONS:
+        return True
+    if selection.measure is None or selection.aggregation is None:
+        return True
+
+    already = {
+        member
+        for member in _selected_members(selection)
+        if member in _CROSS_ASSIGNMENT_DIMENSIONS
+    }
+    if not already or field.slug in already:
+        return True
+    try:
+        target = _measure_target(selection.measure)
+    except AnalyticsValidationError:
+        return False
+    return _cross_assignment_safe(catalog, target, selection.aggregation)
+
+
+def _builder_options(
+    selection: BuilderSelectionInput,
+    catalog: SemanticCatalog,
+    model_version: int,
+    role: str,
+) -> BuilderOptionsResponse:
+    """Report what is still selectable, whatever order the caller chose in."""
+
+    measures = _builder_measures(catalog, role)
+    semantic_view, warnings = _resolve_builder_view(selection, catalog, role)
+
+    aggregations: tuple[BuilderAggregationOutput, ...] = ()
+    if selection.measure is not None:
+        key = _builder_measure_key(
+            selection.measure.field, selection.measure.enum_value
+        )
+        chosen = next((item for item in measures if item.key == key), None)
+        if chosen is None:
+            raise AnalyticsValidationError(
+                f"{key} is not a measurable target in the active catalog"
+            )
+        aggregations = chosen.aggregations
+        if selection.aggregation is not None and selection.aggregation not in {
+            option.method for option in aggregations
+        }:
+            raise AnalyticsValidationError(
+                f"{selection.aggregation.value} is not available for {key}"
+            )
+
+    chart_types: tuple[str, ...] = ()
+    query: QuerySpec | None = None
+
+    # Before a grain is pinned, offer what any grain could answer so the first
+    # screen is not silently narrowed to response-level dimensions.
+    scoped_views = (
+        (semantic_view,) if semantic_view is not None else _BUILDER_VIEW_PREFERENCE
+    )
+    chartable = _distinct_by_slug(
+        field
+        for view in scoped_views
+        for field in catalog.fields
+        if field.semantic_view == view
+        and field.usage == "chart"
+        and (role == "admin" or field.visibility is Visibility.VIEWER)
+    )
+    series_dimension = (
+        selection.series.dimension if selection.series is not None else None
+    )
+    # A dimension already used on one axis cannot also occupy the other.
+    breakdowns = tuple(
+        _builder_dimension_output(field)
+        for field in chartable
+        if field.slug != series_dimension
+        and _breakdown_is_honest(selection, catalog, field, role)
+    )
+    series_dimensions = tuple(
+        _builder_dimension_output(field)
+        for field in chartable
+        if field.slug != selection.breakdown
+        and _breakdown_is_honest(selection, catalog, field, role)
+    )
+    time_fields = tuple(
+        _builder_dimension_output(field)
+        for field in _distinct_by_slug(
+            field
+            for view in scoped_views
+            for field in catalog.fields
+            if field.semantic_view == view
+            and field.time_dimension
+            and (role == "admin" or field.visibility is Visibility.VIEWER)
+        )
+    )
+
+    selection_complete = (
+        semantic_view is not None
+        and selection.measure is not None
+        and selection.aggregation is not None
+    )
+    if selection_complete:
+        assert semantic_view is not None
+        try:
+            candidate = _builder_query(
+                BuilderQueryInput.model_validate(
+                    {
+                        **selection.model_dump(mode="json"),
+                        "limit": MAX_AGGREGATE_ROWS,
+                    }
+                ),
+                semantic_view,
+            )
+            chart_types = _compatible_chart_types(candidate, catalog, role)
+            query = validate_query(candidate, catalog, role)
+        except (AnalyticsValidationError, ValueError) as error:
+            warnings.append(str(error))
+            query = None
+
+    return BuilderOptionsResponse(
+        model_version=model_version,
+        semantic_view=semantic_view,
+        grain=_SEMANTIC_VIEW_GRAINS.get(semantic_view) if semantic_view else None,
+        selection_complete=query is not None,
+        available_measures=measures,
+        available_aggregations=aggregations,
+        available_breakdowns=breakdowns,
+        available_series_dimensions=series_dimensions,
+        available_time_fields=time_fields,
+        available_intervals=_BUILDER_INTERVALS,
+        compatible_chart_types=chart_types,
+        query=query,
+        warnings=tuple(warnings),
+    )
+
+
 def _semantic_view_combination(
     catalog: SemanticCatalog, semantic_view: str
 ) -> SemanticViewCombinationOutput:
@@ -1993,14 +2733,21 @@ def _semantic_view_combination(
         for field in catalog.fields
         if field.semantic_view == semantic_view and field.slug != "value"
     )
+    assignment_dimensions = _SEMANTIC_VIEW_ASSIGNMENT_DIMENSIONS[semantic_view]
     return SemanticViewCombinationOutput(
         semantic_view=semantic_view,
         grain=_SEMANTIC_VIEW_GRAINS[semantic_view],
         dimensions=dimensions,
         assignment_dimension=_ASSIGNMENT_DIMENSIONS[semantic_view],
         response_sentiment_dimension="topic_sentiment",
-        assignment_sentiment_dimension=(
-            "sentiment" if semantic_view != "survey_responses" else None
+        assignment_sentiment_dimension=_ASSIGNMENT_SENTIMENT_DIMENSIONS[semantic_view],
+        assignment_dimensions=assignment_dimensions,
+        assignment_sentiment_dimensions=(
+            dict(_COMBINATION_ASSIGNMENT_SENTIMENTS)
+            if semantic_view == "survey_assignments"
+            else {
+                dimension: "sentiment" for dimension in assignment_dimensions
+            }
         ),
     )
 
@@ -2178,24 +2925,6 @@ def _query_combinations_response(
             # a combination that the same caller cannot send to POST /query.
             continue
 
-        compatible_chart_types: list[str] = []
-        for chart_type in _CHART_TYPES:
-            try:
-                validate_chart_definition(
-                    chart_type,
-                    query.dimensions,
-                    query.metric,
-                    query.aggregation,
-                    catalog,
-                    semantic_view=query.semantic_view,
-                    time_dimension=query.time_dimension,
-                    time_granularity=query.time_granularity,
-                    role=role,
-                )
-            except AnalyticsValidationError:
-                continue
-            compatible_chart_types.append(chart_type)
-
         combinations.append(
             QueryCombinationOutput(
                 slug=definition["slug"],
@@ -2204,7 +2933,7 @@ def _query_combinations_response(
                 semantic_view=query.semantic_view,
                 grain=_SEMANTIC_VIEW_GRAINS[query.semantic_view],
                 query=query,
-                compatible_chart_types=tuple(compatible_chart_types),
+                compatible_chart_types=_compatible_chart_types(query, catalog, role),
                 allowed_overrides=definition["allowed_overrides"],
             )
         )
@@ -2288,6 +3017,10 @@ def _chart_query(
         time_granularity=values.get("time_granularity"),
         order=values["order"],
         limit=query_limit,
+        # Carrying the type lets the shared shaping report the row/column layout.
+        # A slice chart is capped here to twelve and its remainder is replaced by
+        # the accurate total from the follow-up query in the endpoint.
+        chart_type=chart["chart_type"],
     )
     return query, compile_cube_query(query, catalog, role)
 
@@ -2548,6 +3281,7 @@ def _validate_metric_filter(
 ) -> None:
     filtered_operations = {
         Aggregation.FILTERED_COUNT,
+        Aggregation.FILTERED_DISTINCT_COUNT,
         Aggregation.FILTERED_RATE,
         Aggregation.WEIGHTED_FILTERED_RATE,
         Aggregation.PROPORTION_CONFIDENCE_INTERVAL,
@@ -2861,12 +3595,7 @@ async def get_catalog(
     response_model_exclude_none=True,
 )
 async def get_query_combinations(
-    semantic_view: Literal[
-        "survey_responses",
-        "survey_topics",
-        "survey_departments",
-        "survey_keywords",
-    ]
+    semantic_view: SemanticView
     | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -2914,17 +3643,94 @@ async def get_query_capabilities(
 
 
 @viewer_router.get(
+    "/builder/measures",
+    summary="List measurable chart targets",
+    description=_ENDPOINT_DESCRIPTIONS["viewer_builder_measures"],
+    response_model=BuilderMeasuresResponse,
+)
+async def get_builder_measures(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> BuilderMeasuresResponse:
+    role = _role(current_user)
+    try:
+        version = _active_model_version(db)
+        catalog = _catalog_from_version(version, role)
+        measures = _builder_measures(catalog, role)
+    except (AnalyticsValidationError, ValueError) as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    return BuilderMeasuresResponse(
+        model_version=version.catalog_version if version else 0,
+        count=len(measures),
+        measures=measures,
+    )
+
+
+@viewer_router.post(
+    "/builder/options",
+    summary="Resolve remaining chart builder options",
+    description=_ENDPOINT_DESCRIPTIONS["viewer_builder_options"],
+    response_model=BuilderOptionsResponse,
+)
+async def post_builder_options(
+    payload: BuilderSelectionInput | None = Body(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> BuilderOptionsResponse:
+    role = _role(current_user)
+    selection = payload or BuilderSelectionInput()
+    try:
+        version = _active_model_version(db)
+        catalog = _catalog_from_version(version, role)
+        return _builder_options(
+            selection,
+            catalog,
+            version.catalog_version if version else 0,
+            role,
+        )
+    except (AnalyticsValidationError, ValueError, KeyError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@viewer_router.post(
+    "/builder/query",
+    summary="Run a chart builder selection",
+    description=_ENDPOINT_DESCRIPTIONS["viewer_builder_query"],
+)
+async def post_builder_query(
+    payload: BuilderQueryInput,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    role = _role(current_user)
+    try:
+        version = _active_model_version(db)
+        catalog = _catalog_from_version(version, role)
+        semantic_view, warnings = _resolve_builder_view(payload, catalog, role)
+        if semantic_view is None:
+            detail = warnings[0] if warnings else (
+                "No semantic view can answer that combination of measure and breakdowns"
+            )
+            raise HTTPException(status_code=422, detail=detail)
+        query = _builder_query(payload, semantic_view)
+    except (AnalyticsValidationError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    response = await _execute_query(
+        query, db, current_user, pinned_version=version, pinned_catalog=catalog
+    )
+    response["semantic_view_reason"] = _SEMANTIC_VIEW_GRAINS[semantic_view]
+    if warnings:
+        response.setdefault("warnings", []).extend(warnings)
+    return response
+
+
+@viewer_router.get(
     "/catalog/availability",
     summary="Get field data availability",
     description=_ENDPOINT_DESCRIPTIONS["viewer_availability"],
 )
 async def get_catalog_availability(
-    semantic_view: Literal[
-        "survey_responses",
-        "survey_topics",
-        "survey_departments",
-        "survey_keywords",
-    ] = "survey_responses",
+    semantic_view: SemanticView = "survey_responses",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:

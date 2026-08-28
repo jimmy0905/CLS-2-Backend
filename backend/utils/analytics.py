@@ -20,6 +20,27 @@ from utils.utc import resolve_timezone
 MAX_DIMENSIONS = 3
 MAX_FILTERS = 20
 MAX_AGGREGATE_ROWS = 1_000
+# A chart stops being readable long before a query stops being valid. Closed
+# dimensions stay well inside this ceiling (21 topics, 9 departments), while
+# open ones such as keyword or store name need the cap.
+MAX_SERIES = 50
+DEFAULT_SERIES_LIMIT = 10
+DEFAULT_SLICE_LIMIT = 12
+OTHER_SERIES_LABEL = "Other"
+
+ChartType = Literal[
+    "kpi",
+    "table",
+    "bar",
+    "column",
+    "stacked_bar",
+    "grouped_bar",
+    "line",
+    "area",
+    "pie",
+    "donut",
+    "heatmap",
+]
 
 _SAFE_IDENTIFIER = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
 
@@ -50,6 +71,7 @@ class Aggregation(str, Enum):
     COUNT = "count"
     DISTINCT_COUNT = "distinct_count"
     FILTERED_COUNT = "filtered_count"
+    FILTERED_DISTINCT_COUNT = "filtered_distinct_count"
     FILTERED_RATE = "filtered_rate"
     WEIGHTED_FILTERED_RATE = "weighted_filtered_rate"
     SUM = "sum"
@@ -91,6 +113,7 @@ _ALL_TYPE_AGGREGATIONS = frozenset(
         Aggregation.COUNT,
         Aggregation.DISTINCT_COUNT,
         Aggregation.FILTERED_COUNT,
+        Aggregation.FILTERED_DISTINCT_COUNT,
         Aggregation.FILTERED_RATE,
         Aggregation.WEIGHTED_FILTERED_RATE,
         Aggregation.PROPORTION_CONFIDENCE_INTERVAL,
@@ -144,6 +167,18 @@ SIMPLE_AGGREGATIONS = frozenset(
         Aggregation.MEDIAN,
     }
 )
+
+# Aggregations a governed metric may use while still being reachable as a public
+# metric target. The filtered families are how one enum value becomes its own
+# measurable target: the value is baked into the metric definition rather than
+# consuming a group-by slot or a caller-supplied filter.
+FILTERED_METRIC_AGGREGATIONS = frozenset(
+    {
+        Aggregation.FILTERED_COUNT,
+        Aggregation.FILTERED_DISTINCT_COUNT,
+    }
+)
+PUBLIC_METRIC_AGGREGATIONS = SIMPLE_AGGREGATIONS | FILTERED_METRIC_AGGREGATIONS
 
 
 def validate_identifier(value: str) -> str:
@@ -386,22 +421,30 @@ def metric_result_type(
     return FieldType.NUMBER
 
 
-def _metric_target_candidates(
+def metric_target_candidates(
     catalog: SemanticCatalog,
     semantic_view: str,
     target: str,
     aggregation: QueryAggregation,
-    role: str,
+    role: str = "viewer",
 ) -> list[CatalogMetric]:
+    """Return the governed measures a logical target/method pair resolves to.
+
+    A published pair resolves to exactly one measure; an empty result means the
+    grain cannot answer that goal, which is what makes this usable as a
+    capability check as well as a resolver.
+    """
+
     return [
         metric
         for metric in catalog.metrics
         if metric.semantic_view == semantic_view
         and metric.query_target == target
         and metric.public_aggregation is aggregation
-        and metric.aggregation in SIMPLE_AGGREGATIONS
+        and metric.aggregation in PUBLIC_METRIC_AGGREGATIONS
         and _visible(metric, role)
     ]
+
 
 
 def resolve_query_metric(
@@ -411,7 +454,7 @@ def resolve_query_metric(
 ) -> CatalogMetric:
     """Resolve a logical metric target/method to one governed Cube measure."""
 
-    matches = _metric_target_candidates(
+    matches = metric_target_candidates(
         catalog, query.semantic_view, query.metric, query.aggregation, role
     )
     if not matches:
@@ -441,7 +484,7 @@ def metric_targets(
         if metric.semantic_view == semantic_view
         and metric.query_target is not None
         and metric.public_aggregation is not None
-        and metric.aggregation in SIMPLE_AGGREGATIONS
+        and metric.aggregation in PUBLIC_METRIC_AGGREGATIONS
         and _visible(metric, role)
     }
     by_target: dict[str, list[MetricAggregationOption]] = {}
@@ -451,7 +494,7 @@ def metric_targets(
         pairs, key=lambda pair: (str(pair[0]), str(pair[1]))
     ):
         assert target is not None and aggregation is not None
-        matches = _metric_target_candidates(
+        matches = metric_target_candidates(
             catalog, semantic_view, target, aggregation, role
         )
         if len(matches) != 1:
@@ -462,7 +505,10 @@ def metric_targets(
         except AnalyticsValidationError:
             continue
         entity = governed.entity or target
-        target_labels.setdefault(target, entity.replace("_", " ").title())
+        # An enum-value target counts one entity but is not that entity, so the
+        # target slug is what distinguishes it from its siblings.
+        label_source = target if target != entity else entity
+        target_labels.setdefault(target, label_source.replace("_", " ").title())
         target_entities.setdefault(target, entity)
         by_target.setdefault(target, []).append(
             MetricAggregationOption(
@@ -639,6 +685,31 @@ class QuerySpec(BaseModel):
     ] | None = None
     order: tuple[OrderSpec, ...] = Field(default=(), max_length=8)
     limit: int = Field(default=MAX_AGGREGATE_ROWS, ge=1, le=MAX_AGGREGATE_ROWS)
+    chart_type: ChartType | None = Field(
+        default=None,
+        description=(
+            "Optional intended rendering. When present the server validates the "
+            "dimension, time, and metric-type shape against the chart contract "
+            "and reports the row/column layout with the result."
+        ),
+    )
+    series_limit: int | None = Field(
+        default=None,
+        ge=1,
+        le=MAX_SERIES,
+        description=(
+            "Optional cap on the number of series a chart renders. Applies to the "
+            "column dimension of a cross tabulation and to the series dimension "
+            "of a time chart; unbounded dimensions such as keyword need it."
+        ),
+    )
+    fill_empty: bool = Field(
+        default=False,
+        description=(
+            "Complete a cross tabulation into a full grid by adding zero-valued "
+            "rows for observed row/column pairs that returned no data."
+        ),
+    )
 
     @field_validator("semantic_view")
     @classmethod
@@ -864,8 +935,23 @@ def validate_metric(metric: CatalogMetric, catalog: SemanticCatalog) -> CatalogM
             "Only confidence interval metrics accept a confidence level"
         )
 
+    distinct_field = metric.parameters.get("distinctField")
+    if metric.aggregation is Aggregation.FILTERED_DISTINCT_COUNT:
+        # Row counting would multiply by the assignment fan-out of a combination
+        # grain, so the match projects onto an explicit deduplication key.
+        if not isinstance(distinct_field, str):
+            raise AnalyticsValidationError(
+                f"Metric {metric.slug} requires a distinct field"
+            )
+        catalog.field(validate_identifier(distinct_field), metric.semantic_view)
+    elif distinct_field is not None:
+        raise AnalyticsValidationError(
+            f"Aggregation {metric.aggregation.value} does not accept a distinct field"
+        )
+
     filtered_operations = {
         Aggregation.FILTERED_COUNT,
+        Aggregation.FILTERED_DISTINCT_COUNT,
         Aggregation.FILTERED_RATE,
         Aggregation.WEIGHTED_FILTERED_RATE,
         Aggregation.PROPORTION_CONFIDENCE_INTERVAL,
@@ -961,6 +1047,24 @@ def validate_query(
     for order in query.order:
         if order.member not in selected:
             raise AnalyticsValidationError("Ordering is limited to selected members")
+
+    if query.chart_type is not None:
+        validate_chart_definition(
+            query.chart_type,
+            query.dimensions,
+            query.metric,
+            query.aggregation,
+            catalog,
+            semantic_view=query.semantic_view,
+            time_dimension=query.time_dimension,
+            time_granularity=query.time_granularity,
+            role=role,
+        )
+    layout = chart_layout(query)
+    if query.fill_empty and (layout is None or layout.column_dimension is None):
+        raise AnalyticsValidationError(
+            "Filling empty cells requires a cross tabulation with a column axis"
+        )
     return query
 
 
@@ -1117,6 +1221,8 @@ CHART_COMBINATION_RULES: tuple[dict[str, Any], ...] = (
         }
         for chart_type in ("bar", "column", "pie", "donut")
     ),
+    # A cross tabulation of two dimensions. grouped_bar compares the second
+    # dimension side by side, which suits comparison better than stacking.
     *(
         {
             "chart_type": chart_type,
@@ -1127,7 +1233,7 @@ CHART_COMBINATION_RULES: tuple[dict[str, Any], ...] = (
             "numeric_metric_required": True,
             "exact_metric_count": 1,
         }
-        for chart_type in ("stacked_bar", "heatmap")
+        for chart_type in ("stacked_bar", "grouped_bar", "heatmap")
     ),
     *(
         {
@@ -1237,6 +1343,173 @@ def validate_chart_definition(
                 raise AnalyticsValidationError(
                     "Selected field is not a granular time dimension"
                 )
+
+
+_SLICE_CHART_TYPES = frozenset({"pie", "donut"})
+_CROSS_TAB_CHART_TYPES = frozenset({"stacked_bar", "grouped_bar", "heatmap"})
+_SERIES_CHART_TYPES = frozenset({"line", "area"})
+
+
+class ChartLayout(BaseModel):
+    """How a long-format result maps onto a chart's axes."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    chart_type: ChartType | None = None
+    row_dimension: str | None = None
+    column_dimension: str | None = None
+    value_key: str = "value"
+    series_limit: int | None = None
+    truncated_series: bool = False
+    other_series_label: str | None = None
+    filled_cells: int = 0
+
+
+def chart_layout(query: "QuerySpec") -> ChartLayout | None:
+    """Describe the row and column axes so a client need not infer them.
+
+    A cross tabulation puts the first dimension on rows and the second on
+    columns. A time chart puts the time bucket on rows and the remaining
+    dimension on columns, which is what makes each of its values one line.
+    """
+
+    if query.time_dimension is not None and query.time_granularity is not None:
+        column = query.dimensions[0] if query.dimensions else None
+        return ChartLayout(
+            chart_type=query.chart_type,
+            row_dimension=query.time_dimension,
+            column_dimension=column,
+        )
+    if len(query.dimensions) == 2:
+        return ChartLayout(
+            chart_type=query.chart_type,
+            row_dimension=query.dimensions[0],
+            column_dimension=query.dimensions[1],
+        )
+    if len(query.dimensions) == 1:
+        return ChartLayout(
+            chart_type=query.chart_type,
+            row_dimension=query.dimensions[0],
+        )
+    return None
+
+
+def _numeric(value: Any) -> float:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0.0
+
+
+def _ranked_values(
+    rows: list[dict[str, Any]], member: str, value_key: str
+) -> list[Any]:
+    totals: dict[Any, float] = {}
+    for row in rows:
+        totals[row.get(member)] = totals.get(row.get(member), 0.0) + _numeric(
+            row.get(value_key)
+        )
+    return [
+        value
+        for value, _ in sorted(totals.items(), key=lambda item: (-item[1], str(item[0])))
+    ]
+
+
+def _series_limit_for(query: "QuerySpec") -> int | None:
+    if query.series_limit is not None:
+        return query.series_limit
+    if query.chart_type in _SLICE_CHART_TYPES:
+        return DEFAULT_SLICE_LIMIT
+    if query.chart_type in _SERIES_CHART_TYPES or query.chart_type in _CROSS_TAB_CHART_TYPES:
+        return DEFAULT_SERIES_LIMIT
+    return None
+
+
+def shape_chart_rows(
+    rows: list[dict[str, Any]], query: "QuerySpec"
+) -> tuple[list[dict[str, Any]], ChartLayout | None]:
+    """Cap series and complete the grid so the result suits the chart type.
+
+    Capping keeps an unbounded dimension such as keyword from producing hundreds
+    of unreadable series. A slice chart aggregates the remainder into one bucket
+    because its parts must still sum to the whole; other chart types drop it,
+    since an "Other" line or column would be a meaningless aggregate.
+    """
+
+    layout = chart_layout(query)
+    if layout is None or not rows:
+        return rows, layout
+
+    result = rows
+    limit = _series_limit_for(query)
+    truncated = False
+    other_label: str | None = None
+
+    if limit is not None:
+        # A slice chart has no column axis, so its own dimension is what gets cut.
+        member = (
+            layout.row_dimension
+            if query.chart_type in _SLICE_CHART_TYPES
+            else layout.column_dimension
+        )
+        if member is not None:
+            ranked = _ranked_values(result, member, layout.value_key)
+            if len(ranked) > limit:
+                truncated = True
+                kept = set(ranked[:limit])
+                if query.chart_type in _SLICE_CHART_TYPES:
+                    other_label = OTHER_SERIES_LABEL
+                    remainder = sum(
+                        _numeric(row.get(layout.value_key))
+                        for row in result
+                        if row.get(member) not in kept
+                    )
+                    result = [row for row in result if row.get(member) in kept]
+                    result.append({member: other_label, layout.value_key: remainder})
+                else:
+                    result = [row for row in result if row.get(member) in kept]
+
+    filled = 0
+    if query.fill_empty and layout.column_dimension is not None:
+        result, filled = _fill_cross_tab(result, layout)
+
+    return result, layout.model_copy(
+        update={
+            "series_limit": limit,
+            "truncated_series": truncated,
+            "other_series_label": other_label,
+            "filled_cells": filled,
+        }
+    )
+
+
+def _fill_cross_tab(
+    rows: list[dict[str, Any]], layout: ChartLayout
+) -> tuple[list[dict[str, Any]], int]:
+    row_member = layout.row_dimension
+    column_member = layout.column_dimension
+    if row_member is None or column_member is None:
+        return rows, 0
+
+    row_values: list[Any] = []
+    column_values: list[Any] = []
+    for row in rows:
+        if row.get(row_member) not in row_values:
+            row_values.append(row.get(row_member))
+        if row.get(column_member) not in column_values:
+            column_values.append(row.get(column_member))
+
+    present = {(row.get(row_member), row.get(column_member)) for row in rows}
+    template = {key: None for key in rows[0]}
+    added = [
+        {
+            **template,
+            row_member: row_value,
+            column_member: column_value,
+            layout.value_key: 0,
+        }
+        for row_value in row_values
+        for column_value in column_values
+        if (row_value, column_value) not in present
+    ]
+    return [*rows, *added], len(added)
 
 
 def escape_spreadsheet_formula(value: Any) -> Any:

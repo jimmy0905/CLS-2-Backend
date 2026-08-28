@@ -27,7 +27,8 @@ Content-Type: application/json
       "survey_responses.monthly_core",
       "survey_topics.daily_assignments",
       "survey_departments.daily_assignments",
-      "survey_keywords.daily_assignments"
+      "survey_keywords.daily_assignments",
+      "survey_assignments.daily_topic_departments"
     ],
     "dateRange": ["2026-07-01", "2026-09-01"]
   }
@@ -43,6 +44,12 @@ default is UTC plus `Asia/Hong_Kong`.
 Published chart rollups whose semantic view is affected are appended from the
 active catalog version; this is especially important for exact-dimension
 non-additive rollups.
+
+Every `survey_assignments` measure is a distinct count over the response key, so
+none of them is additive and its rollups only serve queries whose dimensions
+match exactly. `daily_topic_departments` is built because `topic` and
+`department` come from closed extraction lists and stay small; combinations
+involving `keyword` are left to PostgreSQL, since that dimension is unbounded.
 The caller records the request state on the upload. A rejected request is
 visible as `analytics_refresh_status=failed` but does not fail the already
 committed upload. Operators can poll returned job tokens through Cube's

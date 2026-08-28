@@ -14,8 +14,8 @@
 \r
 \set ON_ERROR_STOP on
 
--- Fail before creating/changing the role when migration 0009 has not created
--- the governed semantic views and safe JSON helper functions.
+-- Fail before creating/changing the role when migrations 0009 and 0014 have not
+-- created the governed semantic views and safe JSON helper functions.
 DO $preflight$
 DECLARE
     missing_objects text;
@@ -32,6 +32,8 @@ BEGIN
              to_regclass('public.analytics_survey_departments') IS NOT NULL),
             ('public.analytics_survey_keywords',
              to_regclass('public.analytics_survey_keywords') IS NOT NULL),
+            ('public.analytics_survey_assignments',
+             to_regclass('public.analytics_survey_assignments') IS NOT NULL),
             ('public.analytics_normalize_raw_row(json)',
              to_regprocedure('public.analytics_normalize_raw_row(json)') IS NOT NULL),
             ('public.analytics_raw_value(json,text)',
@@ -95,7 +97,7 @@ GRANT USAGE ON SCHEMA public TO wtchk_cls_analytics;
 REVOKE CREATE ON SCHEMA public FROM wtchk_cls_analytics;
 
 -- Remove direct access left by any previous use of this role, then grant only
--- the four governed semantic grains.
+-- the five governed semantic grains.
 REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public
     FROM wtchk_cls_analytics;
 REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public
@@ -105,7 +107,8 @@ GRANT SELECT ON TABLE
     public.analytics_survey_facts,
     public.analytics_survey_topics,
     public.analytics_survey_departments,
-    public.analytics_survey_keywords
+    public.analytics_survey_keywords,
+    public.analytics_survey_assignments
 TO wtchk_cls_analytics;
 
 GRANT EXECUTE ON FUNCTION public.analytics_normalize_raw_row(json)

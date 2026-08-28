@@ -47,7 +47,8 @@
           "semanticView": {"$ref": "#/$defs/semanticView"},
           "operation": {
             "enum": [
-              "count", "distinct_count", "filtered_count", "filtered_rate",
+              "count", "distinct_count", "filtered_count",
+              "filtered_distinct_count", "filtered_rate",
               "weighted_filtered_rate", "sum", "average", "weighted_sum",
               "weighted_average", "min", "max", "variance_sample",
               "variance_population", "weighted_variance_sample",
@@ -129,7 +130,10 @@
       ]
     },
     "semanticView": {
-      "enum": ["survey_responses", "survey_topics", "survey_departments", "survey_keywords"]
+      "enum": [
+        "survey_responses", "survey_topics", "survey_departments",
+        "survey_keywords", "survey_assignments"
+      ]
     }
   }
 }

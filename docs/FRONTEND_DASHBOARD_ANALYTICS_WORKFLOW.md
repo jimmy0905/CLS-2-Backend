@@ -455,6 +455,89 @@ Expose the selector state machine above only as an advanced explorer. This
 keeps the common path finite and understandable while still allowing every
 combination published by the active catalog.
 
+## Chart builder flow
+
+The builder endpoints are the recommended path for a free-form chart designer.
+They invert the selector above: the user starts from what they want to see and
+the server resolves the row grain, so `semantic_view` is never a user-facing
+choice.
+
+```text
+1. what to measure   GET  /analytics/builder/measures
+2. break down by     POST /analytics/builder/options
+3. and by / over     POST /analytics/builder/options
+4. aggregate         POST /analytics/builder/options
+5. draw as           POST /analytics/builder/options -> compatible_chart_types
+6. run               POST /analytics/builder/query
+```
+
+Re-post the whole partial selection to `builder/options` after every change and
+render only what comes back. The steps are order-independent, so a user may pick
+the breakdowns before the aggregation. Two consequences are worth handling in
+the UI:
+
+- `available_series_dimensions` shrinks once a measure is chosen. A response
+  average such as CLS cannot be crossed with a second assignment family, so
+  those options disappear and `warnings` says why.
+- `compatible_chart_types` changes as dimensions are added or removed. Keep the
+  chart picker disabled until it is non-empty, rather than letting the user
+  choose a type the data shape cannot support.
+
+### Worked example: MIXED sentiment by keyword and department
+
+```text
+Measure:   Topic sentiment is MIXED   -> topic_sentiment:MIXED + count
+Break by:  Keyword                    -> rows
+And by:    Department                 -> columns
+Draw as:   Grouped bar                -> also valid: heatmap, table
+```
+
+```json
+{
+  "measure": {"field": "topic_sentiment", "enum_value": "MIXED"},
+  "aggregation": "count",
+  "breakdown": "keyword",
+  "series": {"dimension": "department"},
+  "chart_type": "grouped_bar",
+  "fill_empty": true,
+  "limit": 200
+}
+```
+
+The server routes this to `survey_assignments` and counts distinct responses per
+cell. `schema.layout` returns `row_dimension: "keyword"` and
+`column_dimension: "department"`, so pivot on those two keys and read `value`.
+Because `keyword` is unbounded, the column axis is capped at ten series by
+default; raise it with `series_limit` and check `layout.truncated_series` before
+claiming the chart is complete. `fill_empty` adds the zero cells that make the
+grid rectangular.
+
+### Worked example: weekly CLS per store
+
+```text
+Measure:   CLS                        -> cls + average
+Break by:  Store                      -> one line each
+Over:      1 week buckets             -> reported_at + week
+Draw as:   Line                       -> also valid: area, table
+```
+
+```json
+{
+  "measure": {"field": "cls"},
+  "aggregation": "average",
+  "breakdown": "store_name_english",
+  "series": {"time": {"field": "reported_at", "interval": "week"}},
+  "chart_type": "line",
+  "timezone": "Asia/Hong_Kong"
+}
+```
+
+This stays on `survey_responses`, the cheapest grain that answers it. The layout
+puts `reported_at` on rows and `store_name_english` on columns, so each store
+becomes one line. With hundreds of stores the default cap keeps the top ten by
+total; show `layout.truncated_series` and let the user filter to specific stores
+rather than raising the cap indefinitely.
+
 ## Legacy dashboard replacement map
 
 | Legacy request | New published chart slug | Semantic view |

@@ -611,13 +611,14 @@ survey_responses + cls + id/count
 | --- | --- | --- |
 | `survey_responses + topic + id/count` | `422` | `topic` 不屬於 response view |
 | `survey_responses + sentiment + id/count` | `422` | response view 應使用 `topic_sentiment` |
-| `survey_topics + department + assignment_id/count` | `422` | Department 屬於另一個 assignment view |
-| `survey_topics + keyword + assignment_id/count` | `422` | Keyword 屬於另一個 assignment view |
+| `survey_topics + department + assignment_id/count` | `422` | Department 屬於另一個 assignment view，要交叉請改用 `survey_assignments` |
+| `survey_topics + keyword + assignment_id/count` | `422` | Keyword 屬於另一個 assignment view，要交叉請改用 `survey_assignments` |
 | `survey_topics + topic + id/count` | `422` | Topic view 沒有 `id` metric option |
 | `survey_responses + store_format + assignment_id/count` | `422` | Response view 沒有 `assignment_id` |
 | `survey_responses + cls/avg` | `422` | Aggregation 必須使用完整名稱 `average` |
 | 未出現在 `metric_targets` 的 target/aggregation | `422` | 只可使用唯一而且已發布的 pair |
-| 同時查詢 `topic`、`department`、`keyword` | `422` | 系統禁止跨 assignment grain fan-out |
+| 在單一 assignment view 內同時查詢 `topic`、`department`、`keyword` | `422` | 系統禁止 join 兩個 cube；請改用 `survey_assignments` |
+| `survey_assignments + cls/average` | `422` | 該 grain 只發布計數類 metric，見第 12.1 節 |
 | `reported_at` 同時放入 `dimensions` 和 `time_dimension` | `422` | 時間欄位不可重複選取 |
 
 ## 12. Assignment Views 為何沒有公開 `cls/average`
@@ -655,6 +656,67 @@ Survey-level score 應優先在 `survey_responses` 計算。
 
 不能直接假設 assignment-row average 是正確答案。
 
+## 12.1 `survey_assignments`：唯一能交叉兩種 assignment 的 grain
+
+`keyword`、`department`、`topic` 各自住在不同的 cube，彼此不能 join。所以
+「row 是 keyword、col 是 department」這種交叉表，需要一個本來就同時持有
+三者的 grain。
+
+`survey_assignments` 的一行 = 一個 `(response, keyword, department, topic)`
+組合，因此一份 Survey 會依其 assignment 數量的乘積重複出現。以本專案
+實際資料為例：61,124 份 Survey 展開成 936,257 行，平均放大 15.3 倍。
+
+正因為這個放大，該 grain **只發布會對 response 去重的 metric**：
+
+| 想問的問題 | Metric target | Aggregation | 實際計算 |
+| --- | --- | --- | --- |
+| 這一格有幾份 Survey？ | `survey` | `count` | `COUNT(DISTINCT survey_id)` |
+| 這一格有幾份 MIXED Survey？ | `topic_sentiment_mixed` | `count` | `COUNT(DISTINCT CASE WHEN topic_sentiment = 'MIXED' THEN survey_id END)` |
+
+如果改用「數行數」，同一格會從 526 變成 18,239 — 這正是第 12 節加權
+問題的同一個陷阱，只是放大了 35 倍。因此 `cls/sum` 與 `cls/average`
+在此 grain 刻意不發布。
+
+**只有需要交叉兩種 assignment 時才選這個 grain。** 單一種類請繼續用它
+自己的 view，既便宜又精確。Builder 會自動做這個選擇。
+
+## 12.2 Enum 欄位可以「單一值」當作被測量對象
+
+值域封閉的 Dimension，除了可以拿來分組，也會為每個值各自發布一個
+metric target，命名為 `<field>_<value>`：
+
+```json
+{
+  "semantic_view": "survey_responses",
+  "metric": "topic_sentiment_mixed",
+  "aggregation": "count"
+}
+```
+
+這與「分組」的差別在於**有沒有用掉一個 Dimension 名額**：
+
+| 目的 | 做法 | Dimension 用量 |
+| --- | --- | --- |
+| 一次看到全部情緒分佈 | `dimensions: ["topic_sentiment"]` + `survey/count` | 用掉 1 個 |
+| 只看 MIXED，並用兩個維度交叉 | `metric: "topic_sentiment_mixed"` | 用掉 0 個 |
+
+因為 Chart 最多只能有 2 個 Dimension 畫成交叉表，所以「每個 keyword ×
+每個 department 的 MIXED 數量」只能用後者。
+
+Enum target **只提供 `count`**。情緒是字串，加總或平均它沒有意義；要平均
+數值，就直接測量那個數值欄位。
+
+已宣告的 enum 欄位：
+
+| 欄位 | 值 | 出現的 View |
+| --- | --- | --- |
+| `topic_sentiment` | `POSITIVE`, `NEGATIVE`, `NEUTRAL`, `MIXED` | 全部 |
+| `sentiment` | `POSITIVE`, `NEGATIVE`, `NEUTRAL` | 三個單一 assignment views |
+| `keyword_sentiment` / `department_sentiment` / `topic_assignment_sentiment` | `POSITIVE`, `NEGATIVE`, `NEUTRAL` | `survey_assignments` |
+
+一般字串欄位（例如 `store_name_english`、`comment`）不會被展開，因為它
+沒有封閉值域。
+
 ## 13. Chart Dimension／Metric 形狀限制
 
 即使 `/analytics/query` 合法，也不代表可以發布成所有 Chart 類型。
@@ -663,7 +725,7 @@ Survey-level score 應優先在 `survey_responses` 計算。
 | --- | --- |
 | 無 time、0 Dimensions | `kpi`, `table` |
 | 無 time、1 Dimension | `bar`, `column`, `pie`, `donut`, `table` |
-| 無 time、2 Dimensions | `stacked_bar`, `heatmap`, `table` |
+| 無 time、2 Dimensions | `stacked_bar`, `grouped_bar`, `heatmap`, `table` |
 | 無 time、3 Dimensions | `table` |
 | 有 granular time、0–1 普通 Dimensions | `line`, `area`, `table` |
 | 有 granular time、2–3 普通 Dimensions | `table` |
@@ -684,7 +746,43 @@ Survey-level score 應優先在 `survey_responses` 計算。
 ```
 
 但不能用作 Pie Chart，因為 Pie 只接受一個 Dimension。它可以用於
-Table、Stacked Bar 或 Heatmap。
+Table、Stacked Bar、Grouped Bar 或 Heatmap。
+
+`/analytics/query` 也接受選填的 `chart_type`。填了之後，伺服器會在執行
+之前先驗證上表的形狀，所以不相容的組合會直接回 `422`，而不是回一堆
+前端畫不出來的資料。
+
+### 13.1 Series 上限與補空格
+
+即使查詢完全合法，圖也可能因為系列太多而無法閱讀，所以有系列軸的圖型
+會自動截斷：
+
+| 圖型 | 預設上限 | 剩下的部分 |
+| --- | --- | --- |
+| `pie`, `donut` | 12 | 合併成 `Other`，因為各部分必須加總成整體 |
+| `line`, `area`, `stacked_bar`, `grouped_bar`, `heatmap` | 10 | 直接捨棄，因為多一條「其他」線沒有意義 |
+
+上限是為**無界的軸**而存在。以本專案實際資料為例：`keyword` 有 22,623
+個值、`store_name_english` 有 343 個；而 `topic`（21 個）與
+`department`（9 個）來自抽取 prompt 的封閉清單，在預設上限下永遠不會被
+截斷。
+
+`series_limit` 可覆寫上限（最高 50），`schema.layout.truncated_series`
+會告訴你有沒有東西被丟掉。
+
+`fill_empty: true` 會把交叉表補成完整矩陣：用實際出現的 row 值 × col 值
+組合，為沒有資料的格子補上 0。它需要有欄軸，否則回 `422`。
+
+### 13.2 `schema.layout`：哪個維度是 row、哪個是 col
+
+查詢結果是長格式（每行一個組合），所以回應會附上 `layout` 說明軸的
+對應，前端不需要自己猜：
+
+| 查詢形狀 | `row_dimension` | `column_dimension` |
+| --- | --- | --- |
+| 2 個 Dimensions | 第 1 個 | 第 2 個 |
+| 有 granular time + 1 Dimension | 時間欄位 | 那個 Dimension（每個值一條線） |
+| 1 個 Dimension | 該 Dimension | `null` |
 
 ## 14. 實際選擇流程
 
@@ -696,6 +794,7 @@ Table、Stacked Bar 或 Heatmap。
 | Topic assignments | `survey_topics` |
 | Department assignments | `survey_departments` |
 | Keyword assignments | `survey_keywords` |
+| 兩種 assignment 的交叉組合 | `survey_assignments` |
 
 ### 第二步：選擇 Metric Target 與 Aggregation
 
@@ -714,6 +813,88 @@ Table、Stacked Bar 或 Heatmap。
 store_format, region, topic_sentiment, topic, department, keyword,
 reported_at, channel_name
 ```
+
+## 14.1 Chart Builder：不需要先選 Semantic View
+
+上面的流程要求使用者先理解「計算單位」。Builder endpoints 把順序反過來：
+使用者從「我想看到什麼」開始，由伺服器推導 grain，所以
+`semantic_view` 完全不會出現在畫面上。
+
+```text
+1. 選要測量什麼    GET  /analytics/builder/measures
+2. 選主分組        POST /analytics/builder/options
+3. 選第二分組或時間間隔  POST /analytics/builder/options
+4. 選聚合方式      POST /analytics/builder/options
+5. 選圖型          POST /analytics/builder/options -> compatible_chart_types
+6. 執行            POST /analytics/builder/query
+```
+
+四個步驟**任何順序都可以**。每次改動就把目前的部分選擇整份重送
+`builder/options`，然後只渲染回傳的內容。
+
+伺服器選 grain 的規則是「能回答的最窄那個」：
+
+| 選了幾種 assignment 維度 | 路由到 |
+| --- | --- |
+| 0 種 | `survey_responses` |
+| 1 種 | `survey_keywords` / `survey_departments` / `survey_topics` |
+| 2 種以上 | `survey_assignments` |
+
+所以只看單一種類時不會付 fan-out 的代價。
+
+### 範例一：每個 keyword 的 MIXED，group by department
+
+```text
+測量：  Topic sentiment 是 MIXED   -> topic_sentiment:MIXED + count
+主分組：keyword                    -> row
+第二：  department                 -> col
+圖型：  grouped_bar（也可 heatmap／table）
+```
+
+```json
+{
+  "measure": {"field": "topic_sentiment", "enum_value": "MIXED"},
+  "aggregation": "count",
+  "breakdown": "keyword",
+  "series": {"dimension": "department"},
+  "chart_type": "grouped_bar",
+  "fill_empty": true
+}
+```
+
+路由到 `survey_assignments`，每格算 distinct Survey 數。`schema.layout`
+回傳 `row_dimension: "keyword"`、`column_dimension: "department"`。
+
+### 範例二：每個 store 的 CLS，以 1 week 為間隔
+
+```text
+測量：  CLS                        -> cls + average
+主分組：store                      -> 每個 store 一條線
+時間：  reported_at，week
+圖型：  line（也可 area／table）
+```
+
+```json
+{
+  "measure": {"field": "cls"},
+  "aggregation": "average",
+  "breakdown": "store_name_english",
+  "series": {"time": {"field": "reported_at", "interval": "week"}},
+  "chart_type": "line"
+}
+```
+
+留在 `survey_responses`，是能回答它的最便宜 grain。
+
+### Builder 會主動擋掉會失真的組合
+
+選好 measure 之後，`available_series_dimensions` 會自動移除那些會把查詢
+推到該 measure 無法承受的 grain 的維度。例如 `cls/average` 是
+response 層的平均，一旦交叉兩種 assignment 就會被組合數加權，所以
+`department` 和 `topic` 不會出現在選項裡，`warnings` 也會說明原因。
+
+這就是「圖與資料要配合」在**資料正確性**層面的延伸 — 不只是圖型畫不
+畫得出來，而是這個數字有沒有意義。
 
 ## 15. Catalog、Availability 與執行狀態
 

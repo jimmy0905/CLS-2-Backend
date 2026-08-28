@@ -28,9 +28,14 @@ For every viewer, admin, and internal semantic-layer endpoint, see
 - Every profile receives a unique app ID, orchestrator ID, pre-aggregation
   schema, read-only PostgreSQL principal, API signing secret, metadata signing
   secret, and feature flag.
-- The core models maintain four explicit grains. No joins connect topic,
-  department, and keyword assignment cubes, and the query rewrite rejects a
-  request that names more than one assignment cube.
+- The core models maintain five explicit grains. No joins connect them, and the
+  query rewrite rejects a request that names more than one cube.
+- Crossing two assignment families is expressed by the `survey_assignments`
+  grain, which is one row per `(response, keyword, department, topic)`
+  combination, rather than by relaxing that rule. Because a response repeats
+  once per combination there, the grain publishes only measures that deduplicate
+  on the response key; response sums and averages such as CLS stay on
+  `survey_responses`.
 
 The persisted allocation is `deploy/analytics/profiles.json`: sorted profile
 names are assigned round-robin to four shards. `wtchk_cls` and `wtchk_ecls` are

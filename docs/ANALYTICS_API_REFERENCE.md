@@ -41,7 +41,7 @@ Roles are enforced at the API boundary:
 | Admin | Viewer access plus candidate discovery, governance definitions, publication, and all export jobs. |
 | Cube service | The private internal catalog endpoint only, authenticated by profile-bound HMAC. It is not a browser endpoint. |
 
-The only supported semantic views are `survey_responses`, `survey_topics`, `survey_departments`, and `survey_keywords`. Each is a separate grain. A request always names exactly one view, so assignment views cannot be combined and inflate response counts through topic/department/keyword fan-out.
+The supported semantic views are `survey_responses`, `survey_topics`, `survey_departments`, `survey_keywords`, and `survey_assignments`. Each is a separate grain. A request always names exactly one view, so cubes are never joined. Crossing two assignment families is expressed by the `survey_assignments` grain, which already holds all three, rather than by combining views.
 
 ### Semantic-view grains and sentiment mapping
 
@@ -53,12 +53,15 @@ The only supported semantic views are `survey_responses`, `survey_topics`, `surv
 | `survey_topics` | One topic assigned to a survey | `survey_topics` joined to the survey facts and `topics` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_topics.sentiment` | Topic analysis: group by `topic`, then use `topic_assignment/count` or `survey/count`. |
 | `survey_departments` | One department assigned to a survey | `survey_departments` joined to the survey facts and `departments` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_departments.sentiment` | Department analysis: group by `department`, then use `department_assignment/count` or `survey/count`. |
 | `survey_keywords` | One keyword assigned to a survey | `survey_keywords` joined to the survey facts and `keywords` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_keywords.sentiment` | Keyword analysis: group/filter by `keyword`, then use `keyword_assignment/count` or `survey/count`. |
+| `survey_assignments` | One `(response, keyword, department, topic)` combination | `analytics_survey_assignments`, all three assignment tables left-joined to the survey facts | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | One column per family: `keyword_sentiment`, `department_sentiment`, `topic_assignment_sentiment` | Cross tabulating two assignment families, such as keyword by department. Counting measures only. |
 
 In `survey_responses`, always use `topic_sentiment`; `sentiment` is not a valid public member. In assignment views, use `topic_sentiment` for the response-level value and `sentiment` only for that topic/department/keyword assignment row. This keeps the legacy `surveys.sentiment` out of analytics.
 
 Migration note: update any existing response-level metric, chart, saved query, drilldown, or frontend field selector that names `sentiment` to use `topic_sentiment`, then validate/publish a new catalog version. Do **not** change `sentiment` in an assignment-view definition unless you specifically mean the response-level value; in that case use `topic_sentiment`.
 
-Do not combine `survey_topics`, `survey_departments`, and `survey_keywords` in one query. A response can have multiple assignments of each kind, so doing so would multiply rows and make counts/averages ambiguous.
+Do not combine `survey_topics`, `survey_departments`, and `survey_keywords` in one query; Cube rejects any request naming two views. A response can have multiple assignments of each kind, so combining them would multiply rows and make counts and averages ambiguous.
+
+When you genuinely need two families on the same chart, use `survey_assignments`. It pays that multiplication explicitly — one row per combination — and answers it with distinct response counts, so a response mentioning three keywords across two departments is still counted once per cell. That is also why the grain publishes counting measures only: `cls/sum` and `cls/average` would be weighted by each response's combination count and are absent by design. For a single family, keep using its own grain, which is both cheaper and exact.
 
 ### Shared query concepts
 
@@ -247,6 +250,110 @@ It validates the pair with the same resolver used by query execution and
 returns `allowed_dimensions`, `filter_members` with typed operators,
 `allowed_time_dimensions`, `result_type`, and `warnings`. This is the canonical
 way for a query builder to discover which breakdowns remain meaningful.
+
+## Chart builder endpoints
+
+These three endpoints are a column-first facade over the same goal-first
+contract. They exist because a user thinks in terms of what they want to see,
+not which row grain can answer it: the server resolves the grain, so the caller
+never selects `semantic_view` at all. The steps may be answered in any order.
+
+```text
+what to measure -> break it down by -> and by (or over time) -> aggregate -> draw as
+```
+
+### `GET /analytics/builder/measures`
+
+Lists everything a chart can measure, flattened across grains, with enum
+dimensions already expanded into one entry per value:
+
+```json
+{
+  "model_version": 8,
+  "count": 25,
+  "measures": [
+    {
+      "key": "topic_sentiment:MIXED",
+      "label": "Topic Sentiment is MIXED",
+      "field": "topic_sentiment",
+      "enum_value": "MIXED",
+      "semantic_views": ["survey_responses", "survey_assignments"],
+      "aggregations": [
+        {"method": "count", "label": "Mixed Topic Sentiment Responses", "result_type": "number"}
+      ],
+      "result_type": "number",
+      "supports_cross_assignment": true
+    }
+  ]
+}
+```
+
+`supports_cross_assignment` is `false` for a response-level sum or average such
+as `cls`, which cannot survive the combination grain's fan-out. A frontend can
+grey out those crossings before the user tries them.
+
+### `POST /analytics/builder/options`
+
+Accepts a partial selection and reports what is still selectable. Send `{}` to
+populate the first screen; every field is optional.
+
+```json
+{
+  "measure": {"field": "topic_sentiment", "enum_value": "MIXED"},
+  "aggregation": "count",
+  "breakdown": "keyword",
+  "series": {"dimension": "department"},
+  "chart_type": "grouped_bar"
+}
+```
+
+`series` is either one `dimension` or one `time`, never both:
+
+```json
+{"series": {"time": {"field": "reported_at", "interval": "week"}}}
+```
+
+The response resolves the grain and narrows every remaining choice:
+
+```json
+{
+  "model_version": 8,
+  "semantic_view": "survey_assignments",
+  "grain": "one survey-to-(keyword, department, topic) assignment combination",
+  "selection_complete": true,
+  "available_measures": [],
+  "available_aggregations": [{"method": "count", "label": "…", "result_type": "number"}],
+  "available_breakdowns": [
+    {"slug": "keyword", "label": "Keyword", "data_type": "string", "scope": "assignment", "enum_values": []}
+  ],
+  "available_series_dimensions": [],
+  "available_time_fields": [],
+  "available_intervals": ["day", "week", "month", "quarter", "year"],
+  "compatible_chart_types": ["table", "stacked_bar", "grouped_bar", "heatmap"],
+  "query": {"semantic_view": "survey_assignments", "dimensions": ["keyword", "department"], "metric": "topic_sentiment_mixed", "aggregation": "count"},
+  "warnings": []
+}
+```
+
+Before anything is selected, `semantic_view` is `null` and the dimension lists
+are the union across grains, so `keyword`, `department`, and `topic` are all
+visible on first load. Once a measure is chosen, a dimension that would move the
+query to a grain the measure cannot survive is removed from
+`available_series_dimensions`, and `warnings` explains why. `query` is the exact
+body that `POST /analytics/query` would accept, and is `null` until the
+selection is both complete and valid.
+
+### `POST /analytics/builder/query`
+
+Takes a complete selection plus the same optional `order`, `limit`,
+`series_limit`, and `fill_empty` fields, resolves the narrowest grain that
+answers it, and runs it. The response is the standard aggregate envelope,
+including `schema.layout`, plus `semantic_view_reason` naming the chosen grain.
+
+A selection no grain can answer returns `422` with the reason rather than a
+misleading number. Averaging CLS per keyword and department is the canonical
+example: the crossing forces the combination grain, where a response repeats
+once per combination and the average would be silently weighted.
 
 ### `GET /analytics/query-combinations`
 

@@ -799,3 +799,206 @@ test('catalog version rejects changed metadata at an unchanged version', async (
     }
   }
 });
+
+test('the combination grain counts distinct responses rather than fanned rows', () => {
+  const core = (slug, dataType) => ({
+    slug,
+    label: slug,
+    semanticView: 'survey_assignments',
+    dataType,
+    sourceKind: 'core',
+    sourceKey: null,
+    visibility: 'viewer',
+  });
+  const fields = new Map([
+    ['topic_sentiment', core('topic_sentiment', 'string')],
+    ['survey_id', core('survey_id', 'string')],
+  ]);
+  const definition = compileMeasure({
+    slug: 'mixed_surveys',
+    label: 'Mixed surveys',
+    semanticView: 'survey_assignments',
+    operation: 'filtered_distinct_count',
+    sourceField: 'topic_sentiment',
+    parameters: {
+      filter: { operator: 'equals', value: 'MIXED' },
+      distinctField: 'survey_id',
+    },
+    visibility: 'viewer',
+  }, fields);
+
+  assert.match(definition, /type: number/);
+  // The match is projected onto the response key, so a response that fans out
+  // into many assignment combinations is still counted once.
+  assert.match(
+    definition,
+    /COUNT\(DISTINCT CASE WHEN \{CUBE\}\.topic_sentiment = \$analytics_field\$MIXED\$analytics_field\$ THEN \{CUBE\}\.survey_id END\)/,
+  );
+  assert.doesNotMatch(definition, /SUM\(CASE WHEN/);
+});
+
+test('a distinct field is required by, and reserved for, filtered distinct counts', () => {
+  const filteredDistinct = {
+    slug: 'mixed_surveys',
+    label: 'Mixed surveys',
+    semanticView: 'survey_assignments',
+    operation: 'filtered_distinct_count',
+    sourceField: 'topic_sentiment',
+    parameters: { filter: { operator: 'equals', value: 'MIXED' } },
+    visibility: 'viewer',
+  };
+
+  assert.throws(
+    () => validateCatalog(catalog({ metrics: [filteredDistinct] }), profile),
+    /requires a distinct field/,
+  );
+  assert.throws(
+    () => validateCatalog(catalog({
+      metrics: [{
+        ...filteredDistinct,
+        parameters: {
+          filter: { operator: 'equals', value: 'MIXED' },
+          distinctField: 'no_such_field',
+        },
+      }],
+    }), profile),
+    /Unknown distinct field/,
+  );
+  assert.throws(
+    () => validateCatalog(catalog({
+      metrics: [{
+        slug: 'plain_count',
+        label: 'Plain count',
+        semanticView: 'survey_responses',
+        operation: 'count',
+        parameters: { distinctField: 'survey_id' },
+        visibility: 'viewer',
+      }],
+    }), profile),
+    /does not accept a distinct field/,
+  );
+  assert.doesNotThrow(() => validateCatalog(catalog({
+    metrics: [{
+      ...filteredDistinct,
+      parameters: {
+        filter: { operator: 'equals', value: 'MIXED' },
+        distinctField: 'survey_id',
+      },
+    }],
+  }), profile));
+});
+
+test('the combination grain accepts catalog members and its core measures', () => {
+  const local = catalog({
+    fields: [
+      {
+        slug: 'survey_weight',
+        label: 'Survey weight',
+        semanticView: 'survey_assignments',
+        dataType: 'number',
+        sourceKind: 'raw_json',
+        sourceKey: 'Survey Weight',
+        visibility: 'viewer',
+      },
+    ],
+    metrics: [
+      {
+        slug: 'weight_sum',
+        label: 'Weight sum',
+        semanticView: 'survey_assignments',
+        operation: 'sum',
+        sourceField: 'survey_weight',
+        visibility: 'viewer',
+      },
+    ],
+    rollups: [
+      {
+        name: 'assignment_matrix_daily',
+        semanticView: 'survey_assignments',
+        measures: ['survey_count', 'topic_sentiment_mixed_survey_count'],
+        dimensions: ['keyword', 'department'],
+        timeDimension: 'reported_at',
+        granularity: 'day',
+        partitionGranularity: 'month',
+        nonAdditive: true,
+      },
+    ],
+  });
+
+  assert.doesNotThrow(() => validateCatalog(local, profile));
+  const rollup = compileRollup(local.rollups[0], local.metrics);
+  assert.match(rollup, /- keyword/);
+  assert.match(rollup, /- department/);
+  assert.match(rollup, /- topic_sentiment_mixed_survey_count/);
+});
+
+test('the combination grain still may not be joined to a single-assignment grain', async () => {
+  const previousFetch = global.fetch;
+  const previousEnvironment = {
+    ANALYTICS_METADATA_URL: process.env.ANALYTICS_METADATA_URL,
+    ANALYTICS_METADATA_SECRET: process.env.ANALYTICS_METADATA_SECRET,
+    ANALYTICS_PROFILE: process.env.ANALYTICS_PROFILE,
+  };
+  process.env.ANALYTICS_METADATA_URL = 'http://backend/internal/analytics/catalog';
+  process.env.ANALYTICS_METADATA_SECRET = 'metadata-secret';
+  process.env.ANALYTICS_PROFILE = profile;
+  global.fetch = async () => new Response(
+    JSON.stringify(catalog({ catalogVersion: 31 })),
+    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  );
+
+  try {
+    // The combination grain exists so that assignment families can be crossed
+    // inside one cube, not so that cubes may be joined.
+    await assert.rejects(
+      enforceSecurityContext({
+        dimensions: ['survey_assignments.keyword', 'survey_keywords.keyword'],
+        measures: ['survey_assignments.survey_count'],
+      }, { securityContext: { profile, role: 'viewer' } }),
+      /exactly one semantic view/,
+    );
+    const scoped = {
+      dimensions: ['survey_assignments.keyword', 'survey_assignments.department'],
+      measures: ['survey_assignments.topic_sentiment_mixed_survey_count'],
+    };
+    assert.equal(
+      await enforceSecurityContext(scoped, {
+        securityContext: { profile, role: 'viewer' },
+      }),
+      scoped,
+    );
+  } finally {
+    global.fetch = previousFetch;
+    for (const [name, value] of Object.entries(previousEnvironment)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+});
+
+test('the combination grain resolves its own assignment sentiment columns', () => {
+  assert.match(
+    compileDimension({
+      slug: 'keyword_sentiment',
+      label: 'Keyword sentiment',
+      semanticView: 'survey_assignments',
+      dataType: 'string',
+      sourceKind: 'core',
+      sourceKey: null,
+      visibility: 'viewer',
+    }),
+    /sql: "\{CUBE\}\.keyword_sentiment"/,
+  );
+  assert.match(
+    compileDimension({
+      slug: 'department',
+      label: 'Department',
+      semanticView: 'survey_assignments',
+      dataType: 'string',
+      sourceKind: 'core',
+      sourceKey: null,
+      visibility: 'viewer',
+    }),
+    /sql: "\{CUBE\}\.department_name"/,
+  );
+});
