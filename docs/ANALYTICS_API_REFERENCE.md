@@ -41,7 +41,7 @@ Roles are enforced at the API boundary:
 | Admin | Viewer access plus candidate discovery, governance definitions, publication, and all export jobs. |
 | Cube service | The private internal catalog endpoint only, authenticated by profile-bound HMAC. It is not a browser endpoint. |
 
-The supported semantic views are `survey_responses`, `survey_topics`, `survey_departments`, `survey_keywords`, and `survey_assignments`. Each is a separate grain. A request always names exactly one view, so cubes are never joined. Crossing two assignment families is expressed by the `survey_assignments` grain, which already holds all three, rather than by combining views.
+The supported semantic views are `survey_responses`, `survey_topics`, `survey_departments`, `survey_keywords`, and `survey_assignments`. Each is a separate grain. Aggregate callers supply a logical metric plus dimensions, time, and filters; the server selects the narrowest grain that can answer that combination. Cube queries still use exactly one view, so cubes are never joined. Crossing two assignment families is expressed by the `survey_assignments` grain, which already holds all three, rather than by combining views.
 
 ### Semantic-view grains and sentiment mapping
 
@@ -69,14 +69,14 @@ When you genuinely need two families on the same chart, use `survey_assignments`
 *slugs*, never raw SQL, Cube member names, or governed metric slugs. Every
 aggregate selects one logical business target as `metric` and one
 `aggregation`; the server maps that pair to exactly one published governed
-Cube measure for the selected fact grain.
+Cube measure for the resolved fact grain.
 
 | Property | Rule |
 | --- | --- |
-| `semantic_view` | One of the four views above. |
-| `dimensions` | Up to three published dimension slugs for an ad-hoc query. |
-| `metric` | Exactly one logical target from `metric_targets` for the selected view. |
-| `aggregation` | Exactly one method published inside the selected target's `aggregations` array. Use `average`, not `avg`. |
+| `semantic_view` | Deprecated compatibility field. If sent, it is ignored; the response reports the grain actually selected. |
+| `dimensions` | Up to three published dimension slugs for an ad-hoc query. Together with filters/time, these select the grain. |
+| `metric` | Exactly one logical target the resolved grain can answer. |
+| `aggregation` | Exactly one method published for that target at the resolved grain. Use `average`, not `avg`. |
 | `filters` | Up to 20 typed filters. Operators are `equals`, `not_equals`, `contains`, `not_contains`, `starts_with`, `ends_with`, comparison operators, `in`, `not_in`, `set`, `not_set`, and `between`, when compatible with the member type. |
 | `time_dimension` | A published date/time dimension. It may be paired with `time_range` and `time_granularity`; do not also include it as an ordinary dimension. |
 | `time_range` | Two ISO-8601 date/datetime values, each at most 64 characters, with start no later than end. |
@@ -95,7 +95,7 @@ Allowed operations by source-field type are:
 
 The type table governs which methods may be published, but it is not an
 allowlist by itself. The exact logical `(metric, aggregation)` pair must appear
-in the active catalog's `metric_targets` for the selected semantic view.
+in the active catalog's `metric_targets` for the server-resolved semantic view.
 Missing and ambiguous pairs are rejected with `422`.
 
 A successful aggregate response has this shape:
@@ -142,7 +142,7 @@ Swagger/ReDoc marks required JSON fields from the OpenAPI schema. The following 
 
 | Request model | Required fields | Optional fields / rules | Example |
 | --- | --- | --- | --- |
-| Aggregate query | `semantic_view`, `metric`, `aggregation` | `dimensions` (0–3), `filters`, time controls, `timezone`, `order`, `limit`. `time_range`/`time_granularity` require `time_dimension`. The removed `metrics` field is rejected. | `{ "semantic_view": "survey_responses", "dimensions": ["store_format"], "metric": "survey", "aggregation": "count", "timezone": "Asia/Hong_Kong" }` |
+| Aggregate query | `metric`, `aggregation` | `dimensions` (0–3), `filters`, time controls, `timezone`, `order`, `limit`. `time_range`/`time_granularity` require `time_dimension`. Legacy `semantic_view` is accepted but ignored; the removed `metrics` field is rejected. | `{ "dimensions": ["store_format"], "metric": "survey", "aggregation": "count", "timezone": "Asia/Hong_Kong" }` |
 | Filter | `member`, `operator` | `value` is required for scalar comparisons; `values` is required for `in`, `not_in`, and `between`; neither is used for `set`/`not_set`. | `{ "member": "topic_sentiment", "operator": "equals", "value": "NEGATIVE" }` |
 | Drilldown | None: defaults select common response fields | `semantic_view` is fixed to `survey_responses`; choose `fields` (1–50), `filters` (0–20), `cursor`, `limit` (1–250), and optional `timezone` for local timestamp filters/display. | `{ "fields": ["survey_id", "respondent_id", "store_key", "reported_at", "comment", "topic_sentiment", "cls"], "limit": 100, "timezone": "Asia/Hong_Kong" }` |
 | Create field | `slug`, `label`, `data_type`, `source_key` | `semantic_view` defaults to `survey_responses`; `source_kind` is fixed to `raw_json`; `description` and `visibility` are optional. | `{ "slug": "overall_score", "label": "Overall score", "data_type": "number", "source_key": "Overall Score" }` |
@@ -277,7 +277,7 @@ dimensions already expanded into one entry per value:
       "label": "Topic Sentiment is MIXED",
       "field": "topic_sentiment",
       "enum_value": "MIXED",
-      "semantic_views": ["survey_responses", "survey_assignments"],
+      "semantic_views": ["survey_responses", "survey_topics", "survey_departments", "survey_keywords", "survey_assignments"],
       "aggregations": [
         {"method": "count", "label": "Mixed Topic Sentiment Responses", "result_type": "number"}
       ],
@@ -529,11 +529,10 @@ For more than 1,000 values, use `next_cursor` from the response as the next requ
 
 ### `POST /analytics/query`
 
-Runs one governed aggregate query against a single semantic view. The request body is the shared query shape:
+Runs one governed aggregate query. The server selects a single safe semantic view from the metric and selected members; the response names that resolved view. The request body is:
 
 ```json
 {
-  "semantic_view": "survey_responses",
   "dimensions": ["store_name_english", "store_format"],
   "metric": "cls",
   "aggregation": "average",
@@ -547,7 +546,8 @@ Runs one governed aggregate query against a single semantic view. The request bo
 }
 ```
 
-The server validates visibility, member types, limits, filter operators, and
+The server validates visibility, member types, limits, filter operators, the
+inferred grain, and
 that the selected `(metric, aggregation)` resolves to exactly one active
 governed measure before sending a short-lived role/profile token to private
 Cube. Missing `metric`/`aggregation`, the removed `metrics` array, more than
@@ -653,7 +653,6 @@ Creates an asynchronous CSV or XLSX export. The body uses **exactly one** of an 
 {
   "export_format": "xlsx",
   "query": {
-    "semantic_view": "survey_responses",
     "dimensions": ["region"],
     "metric": "survey",
     "aggregation": "count"

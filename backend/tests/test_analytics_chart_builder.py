@@ -171,6 +171,17 @@ def test_routing_prefers_the_narrowest_grain_that_answers_the_selection(
         catalog,
     )[0] == "survey_topics"
 
+    # Response-level enum counts remain correct at one assignment-family grain,
+    # which avoids the larger cross-assignment view.
+    assert _resolved(
+        {
+            "measure": {"field": "topic_sentiment", "enum_value": "MIXED"},
+            "aggregation": "count",
+            "breakdown": "keyword",
+        },
+        catalog,
+    )[0] == "survey_keywords"
+
     # Two families cannot coexist anywhere else.
     assert _resolved(
         {
@@ -181,6 +192,38 @@ def test_routing_prefers_the_narrowest_grain_that_answers_the_selection(
         },
         catalog,
     )[0] == "survey_assignments"
+
+
+def test_raw_query_infers_its_view_and_ignores_legacy_view_hint(catalog) -> None:
+    payload = {
+        "dimensions": ("keyword",),
+        "metric": "topic_sentiment_mixed",
+        "aggregation": "count",
+    }
+
+    inferred = validate_query(QuerySpec(**payload), catalog, "viewer")
+    legacy_hint = validate_query(
+        QuerySpec(semantic_view="survey_responses", **payload), catalog, "viewer"
+    )
+
+    assert inferred.semantic_view == "survey_keywords"
+    assert legacy_hint == inferred
+    assert compile_cube_query(inferred, catalog, "viewer")["measures"] == [
+        "survey_keywords.topic_sentiment_mixed_survey_count"
+    ]
+
+    filter_scoped = validate_query(
+        QuerySpec(
+            metric="survey",
+            aggregation="count",
+            filters=(
+                {"member": "keyword", "operator": "equals", "value": "staff"},
+            ),
+        ),
+        catalog,
+        "viewer",
+    )
+    assert filter_scoped.semantic_view == "survey_keywords"
 
 
 def test_example_one_crosses_keyword_with_department_on_deduplicated_counts(

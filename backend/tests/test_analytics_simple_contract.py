@@ -265,29 +265,32 @@ def test_catalog_metric_targets_exclude_complex_hidden_and_ambiguous_pairs(
 
 
 @pytest.mark.parametrize(
-    "semantic_view,expected_measure",
+    "legacy_semantic_view",
     [
-        ("survey_responses", "survey_responses.survey_count"),
-        ("survey_topics", "survey_topics.survey_count"),
-        ("survey_departments", "survey_departments.survey_count"),
-        ("survey_keywords", "survey_keywords.survey_count"),
+        None,
+        "survey_responses",
+        "survey_topics",
+        "survey_departments",
+        "survey_keywords",
     ],
 )
-def test_survey_count_target_resolves_at_each_fact_grain(
-    semantic_view: str, expected_measure: str
+def test_survey_count_query_ignores_legacy_semantic_view(
+    legacy_semantic_view: str | None,
 ) -> None:
     from routers.analytics import _catalog_from_records
 
     public_catalog = _catalog_from_records([], [])
+    payload = {
+        "metric": "survey",
+        "aggregation": "count",
+    }
+    if legacy_semantic_view is not None:
+        payload["semantic_view"] = legacy_semantic_view
     compiled = compile_cube_query(
-        QuerySpec(
-            semantic_view=semantic_view,
-            metric="survey",
-            aggregation="count",
-        ),
+        QuerySpec(**payload),
         public_catalog,
     )
-    assert compiled["measures"] == [expected_measure]
+    assert compiled["measures"] == ["survey_responses.survey_count"]
 
 
 @pytest.mark.parametrize("raw_metric", ["id", "assignment_id", "survey_id"])

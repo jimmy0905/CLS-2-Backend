@@ -32,6 +32,22 @@ cubes:
         sql: SUM(CASE WHEN {CUBE}.assignment_sentiment = 'NEUTRAL' THEN 1 ELSE 0 END)
         type: number
 
+      - name: topic_sentiment_positive_survey_count
+        sql: COUNT(DISTINCT CASE WHEN {CUBE}.topic_sentiment = 'POSITIVE' THEN {CUBE}.response_id END)
+        type: number
+
+      - name: topic_sentiment_negative_survey_count
+        sql: COUNT(DISTINCT CASE WHEN {CUBE}.topic_sentiment = 'NEGATIVE' THEN {CUBE}.response_id END)
+        type: number
+
+      - name: topic_sentiment_neutral_survey_count
+        sql: COUNT(DISTINCT CASE WHEN {CUBE}.topic_sentiment = 'NEUTRAL' THEN {CUBE}.response_id END)
+        type: number
+
+      - name: topic_sentiment_mixed_survey_count
+        sql: COUNT(DISTINCT CASE WHEN {CUBE}.topic_sentiment = 'MIXED' THEN {CUBE}.response_id END)
+        type: number
+
       # __LOCAL_MEASURES__
 
     dimensions:

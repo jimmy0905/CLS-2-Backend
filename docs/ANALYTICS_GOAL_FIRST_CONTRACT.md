@@ -7,16 +7,16 @@ This is the authoritative public aggregate-query contract from catalog version
 
 An aggregate query answers these questions in order:
 
-1. Which fact grain contains the question (`semantic_view`)?
-2. What business result should be measured (`metric`)?
-3. How should that target be calculated (`aggregation`)?
-4. How should the result be grouped (`dimensions` and optional time)?
-5. Which rows qualify (`filters`)?
+1. What business result should be measured (`metric`)?
+2. How should that target be calculated (`aggregation`)?
+3. How should the result be grouped (`dimensions` and optional time)?
+4. Which rows qualify (`filters`)?
+5. Which fact grain can answer it safely? The server infers this; the response reports it as `semantic_view`.
 
 `metric` is a logical target, not a database column. Users do not select
 `id`, `assignment_id`, `survey_id`, or `store_key` to count records. The server
 resolves a published `(metric, aggregation)` pair to one governed Cube measure
-at the selected view's grain.
+at the inferred view's grain.
 
 | Question | Semantic view | Public target | Method | Governed meaning |
 | --- | --- | --- | --- | --- |
@@ -67,9 +67,12 @@ exact.
 
 ## Discovery flow
 
-Load `GET /analytics/catalog`, choose one item in
-`metric_targets[semantic_view]`, and then choose exactly one item in that
-target's `aggregations` array. Next call:
+Load `GET /analytics/builder/measures`, choose one measurable target and one of
+its aggregations, then use `POST /analytics/builder/options` to discover the
+compatible dimensions. For a direct `POST /analytics/query`, send the same
+metric, aggregation, and selected members; the server resolves the grain.
+`GET /analytics/catalog` remains useful for governed metadata and the
+view-scoped administrative/discovery endpoints.
 
 ```http
 POST /analytics/query-capabilities
@@ -105,7 +108,6 @@ Count surveys whose response-level topic sentiment is `MIXED`:
 
 ```json
 {
-  "semantic_view": "survey_responses",
   "dimensions": [],
   "metric": "survey",
   "aggregation": "count",
@@ -123,7 +125,6 @@ assignments:
 
 ```json
 {
-  "semantic_view": "survey_keywords",
   "dimensions": ["sentiment"],
   "metric": "keyword_assignment",
   "aggregation": "count",
@@ -145,7 +146,6 @@ Count surveys by store format and response sentiment over time:
 
 ```json
 {
-  "semantic_view": "survey_responses",
   "dimensions": ["store_format", "topic_sentiment"],
   "metric": "survey",
   "aggregation": "count",
@@ -165,6 +165,8 @@ ordinary dimensions.
 
 - `dimensions` contains zero to three ordinary dimensions.
 - `metric` and `aggregation` are both required and singular.
+- `semantic_view` is no longer a query selector. Legacy clients may send it,
+  but the server ignores it and returns the actual inferred grain.
 - The removed `metrics` field is rejected with `422`.
 - Only pairs published under `metric_targets` are accepted.
 - `time_dimension` cannot also appear in `dimensions` and requires a

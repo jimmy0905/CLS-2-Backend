@@ -137,10 +137,10 @@ def test_query_model_enforces_breaking_contract_and_limits() -> None:
         )
 
 
-def test_query_validation_blocks_cross_view_and_bad_filter_values(
+def test_query_validation_blocks_unanswerable_grains_and_bad_filter_values(
     catalog: SemanticCatalog,
 ) -> None:
-    with pytest.raises(AnalyticsValidationError, match="semantic view"):
+    with pytest.raises(AnalyticsValidationError, match="not published at"):
         validate_query(
             QuerySpec(
                 semantic_view="survey_responses",
@@ -154,8 +154,8 @@ def test_query_validation_blocks_cross_view_and_bad_filter_values(
         validate_query(
             QuerySpec(
                 semantic_view="survey_responses",
-                metric="id",
-                aggregation="count",
+                    metric="score",
+                    aggregation="average",
                 filters=[
                     FilterSpec(member="score", operator="greater_than", value="1")
                 ],
@@ -166,8 +166,8 @@ def test_query_validation_blocks_cross_view_and_bad_filter_values(
         validate_query(
             QuerySpec(
                 semantic_view="survey_responses",
-                metric="id",
-                aggregation="count",
+                    metric="score",
+                    aggregation="average",
                 filters=[
                     FilterSpec(
                         member="store_name",

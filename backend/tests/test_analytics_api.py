@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import re
 from types import SimpleNamespace
 import sys
 
@@ -131,14 +132,57 @@ def test_core_dashboard_sentiment_metrics_are_queryable_without_publication() ->
             assert metric.query_target == f"sentiment_{sentiment}"
 
     # The combination grain must never count fanned-out rows.
+    combination_survey_count = metrics[("survey_assignments", "survey_count")]
+    assert combination_survey_count.aggregation is Aggregation.DISTINCT_COUNT
+    assert combination_survey_count.source_field == "distinct_survey_id"
+
     for sentiment in ("positive", "negative", "neutral", "mixed"):
         metric = metrics[
             ("survey_assignments", f"topic_sentiment_{sentiment}_survey_count")
         ]
         assert metric.aggregation is Aggregation.FILTERED_DISTINCT_COUNT
         assert metric.source_field == "topic_sentiment"
-        assert metric.parameters["distinctField"] == "survey_id"
+        assert metric.parameters["distinctField"] == "distinct_survey_id"
         assert metric.query_target == f"topic_sentiment_{sentiment}"
+
+    distinct_survey_id = next(
+        field
+        for field in catalog.fields
+        if field.semantic_view == "survey_assignments"
+        and field.slug == "distinct_survey_id"
+    )
+    assert distinct_survey_id.published is False
+    assert distinct_survey_id.filterable is False
+
+
+def test_distinct_metrics_match_their_core_cube_measures() -> None:
+    """Keep the API catalog deduplication key aligned with Cube SQL."""
+
+    catalog = analytics._catalog_from_records([], [])
+    core_dir = Path(__file__).resolve().parents[2] / "cube" / "model" / "core"
+    distinct_metrics = (
+        metric
+        for metric in catalog.metrics
+        if metric.aggregation
+        in {Aggregation.DISTINCT_COUNT, Aggregation.FILTERED_DISTINCT_COUNT}
+    )
+
+    for metric in distinct_metrics:
+        distinct_field = (
+            metric.parameters["distinctField"]
+            if metric.aggregation is Aggregation.FILTERED_DISTINCT_COUNT
+            else metric.source_field
+        )
+        assert isinstance(distinct_field, str)
+        model = (core_dir / f"{metric.semantic_view}.yml").read_text()
+        match = re.search(
+            rf"^\s+- name: {re.escape(metric.slug)}\n"
+            rf"\s+sql: (?P<sql>.+)$",
+            model,
+            flags=re.MULTILINE,
+        )
+        assert match is not None, metric.slug
+        assert distinct_field in match.group("sql"), metric.slug
 
 
 def test_published_chart_response_uses_active_snapshot_version() -> None:
@@ -182,11 +226,8 @@ def test_openapi_describes_every_analytics_endpoint() -> None:
             assert operation["description"]
 
     models = schema["components"]["schemas"]
-    assert models["QuerySpec"]["required"] == [
-        "semantic_view",
-        "metric",
-        "aggregation",
-    ]
+    assert models["QuerySpec"]["required"] == ["metric", "aggregation"]
+    assert models["QuerySpec"]["properties"]["semantic_view"]["deprecated"] is True
     assert models["QueryAggregation"]["enum"] == [
         "count",
         "distinct_count",
@@ -275,6 +316,17 @@ def test_query_capabilities_use_the_same_goal_first_resolver(monkeypatch) -> Non
         item for item in body["filter_members"] if item["field"] == "keyword"
     )
     assert "contains" in keyword_filter["operators"]
+
+    invalid = client.post(
+        "/analytics/query-capabilities",
+        json={
+            "semantic_view": "survey_keywords",
+            "metric": "cls",
+            "aggregation": "average",
+        },
+    )
+    assert invalid.status_code == 422
+    assert "not published" in invalid.json()["detail"]
 
     rejected = client.post(
         "/analytics/query-capabilities",
@@ -855,7 +907,6 @@ def test_query_compiles_catalog_members_and_returns_chart_ready_rows(monkeypatch
     response = _client(db).post(
         "/analytics/query",
         json={
-            "semantic_view": "survey_responses",
             "dimensions": ["store_name"],
             "metric": "survey",
             "aggregation": "count",
@@ -907,6 +958,8 @@ def test_query_compiles_catalog_members_and_returns_chart_ready_rows(monkeypatch
         "limit": 100,
     }
     assert cube.calls[0][1]["profile_id"] == "wtchk_cls"
+    assert db.added[0].semantic_view == "survey_responses"
+    assert db.added[0].request["semantic_view"] == "survey_responses"
     assert db.commits >= 2
 
 

@@ -180,6 +180,25 @@ FILTERED_METRIC_AGGREGATIONS = frozenset(
 )
 PUBLIC_METRIC_AGGREGATIONS = SIMPLE_AGGREGATIONS | FILTERED_METRIC_AGGREGATIONS
 
+# Queries choose the smallest grain that can answer their metric and selected
+# members. The combination grain is last because it has assignment fan-out.
+SEMANTIC_VIEW_PREFERENCE = (
+    "survey_responses",
+    "survey_topics",
+    "survey_departments",
+    "survey_keywords",
+    "survey_assignments",
+)
+ASSIGNMENT_DIMENSION_FAMILIES = {
+    "keyword": "keyword",
+    "keyword_sentiment": "keyword",
+    "department": "department",
+    "department_sentiment": "department",
+    "topic": "topic",
+    "topic_assignment_sentiment": "topic",
+}
+CROSS_ASSIGNMENT_DIMENSIONS = frozenset(ASSIGNMENT_DIMENSION_FAMILIES)
+
 
 def validate_identifier(value: str) -> str:
     """Validate the deliberately narrow identifier grammar used by the catalog."""
@@ -446,6 +465,74 @@ def metric_target_candidates(
     ]
 
 
+class SemanticViewResolution(BaseModel):
+    """The inferred grain plus details useful when no grain can answer a query."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    semantic_view: str | None = None
+    views_with_members: tuple[str, ...] = ()
+    assignment_families: tuple[str, ...] = ()
+
+    @property
+    def crosses_assignment_families(self) -> bool:
+        return len(self.assignment_families) > 1
+
+
+def resolve_semantic_view(
+    catalog: SemanticCatalog,
+    *,
+    target: str | None,
+    aggregation: QueryAggregation | None,
+    members: tuple[str, ...] | list[str] = (),
+    role: str = "viewer",
+) -> SemanticViewResolution:
+    """Choose the narrowest grain that can answer a logical aggregate query."""
+
+    if role not in {"viewer", "admin"}:
+        raise AnalyticsValidationError("Unknown analytics role")
+
+    members = tuple(members)
+    known_views = catalog.views
+    preferred_views = tuple(
+        view for view in SEMANTIC_VIEW_PREFERENCE if view in known_views
+    ) + tuple(sorted(known_views - set(SEMANTIC_VIEW_PREFERENCE)))
+    assignment_families = tuple(
+        sorted(
+            {
+                ASSIGNMENT_DIMENSION_FAMILIES[member]
+                for member in members
+                if member in ASSIGNMENT_DIMENSION_FAMILIES
+            }
+        )
+    )
+    views_with_members: list[str] = []
+    for semantic_view in preferred_views:
+        available = {
+            field.slug
+            for field in catalog.fields
+            if field.semantic_view == semantic_view and _visible(field, role)
+        }
+        if any(member not in available for member in members):
+            continue
+        views_with_members.append(semantic_view)
+        if target is None or aggregation is None:
+            return SemanticViewResolution(
+                semantic_view=semantic_view,
+                views_with_members=tuple(views_with_members),
+                assignment_families=assignment_families,
+            )
+        if metric_target_candidates(catalog, semantic_view, target, aggregation, role):
+            return SemanticViewResolution(
+                semantic_view=semantic_view,
+                views_with_members=tuple(views_with_members),
+                assignment_families=assignment_families,
+            )
+    return SemanticViewResolution(
+        views_with_members=tuple(views_with_members),
+        assignment_families=assignment_families,
+    )
+
 
 def resolve_query_metric(
     query: "QuerySpec",
@@ -454,6 +541,8 @@ def resolve_query_metric(
 ) -> CatalogMetric:
     """Resolve a logical metric target/method to one governed Cube measure."""
 
+    if query.semantic_view is None:
+        raise AnalyticsValidationError("A semantic view could not be resolved")
     matches = metric_target_candidates(
         catalog, query.semantic_view, query.metric, query.aggregation, role
     )
@@ -632,7 +721,6 @@ class QuerySpec(BaseModel):
         json_schema_extra={
             "examples": [
                 {
-                    "semantic_view": "survey_responses",
                     "dimensions": ["store_name_english", "store_format"],
                     "metric": "cls",
                     "aggregation": "average",
@@ -654,12 +742,13 @@ class QuerySpec(BaseModel):
         },
     )
 
-    semantic_view: str = Field(
+    semantic_view: str | None = Field(
+        default=None,
+        json_schema_extra={"deprecated": True},
         description=(
-            "Required row grain: survey_responses is one survey response; "
-            "survey_topics, survey_departments, and survey_keywords are one "
-            "assignment row each. In assignment views, sentiment is assignment "
-            "sentiment and topic_sentiment is the canonical surveys.topic_sentiment."
+            "Deprecated compatibility field. The server infers the row grain "
+            "from the metric, dimensions, time dimension, and filters; any "
+            "supplied value is ignored."
         )
     )
     dimensions: tuple[str, ...] = Field(default=(), max_length=MAX_DIMENSIONS)
@@ -713,8 +802,8 @@ class QuerySpec(BaseModel):
 
     @field_validator("semantic_view")
     @classmethod
-    def _view_identifier(cls, value: str) -> str:
-        return validate_identifier(value)
+    def _view_identifier(cls, value: str | None) -> str | None:
+        return validate_identifier(value) if value is not None else None
 
     @field_validator("dimensions")
     @classmethod
@@ -1031,8 +1120,40 @@ def validate_query(
     role: str = "viewer",
 ) -> QuerySpec:
     query = query if isinstance(query, QuerySpec) else QuerySpec.model_validate(query)
+    members = (
+        *query.dimensions,
+        *(filter_spec.member for filter_spec in query.filters),
+        *((query.time_dimension,) if query.time_dimension is not None else ()),
+    )
+    resolution = resolve_semantic_view(
+        catalog,
+        target=query.metric,
+        aggregation=query.aggregation,
+        members=members,
+        role=role,
+    )
+    if resolution.semantic_view is None:
+        if resolution.crosses_assignment_families:
+            raise AnalyticsValidationError(
+                "Crossing assignment families repeats a response once per "
+                "combination, so this metric cannot be reported honestly at "
+                "that grain. Use a response-level breakdown or a counting metric."
+            )
+        if resolution.views_with_members:
+            raise AnalyticsValidationError(
+                f"Metric target {query.metric}/{query.aggregation.value} is not "
+                f"published at the {resolution.views_with_members[0]} grain that "
+                f"{', '.join(members)} requires."
+            )
+        raise AnalyticsValidationError(
+            "No semantic view contains every selected dimension, time dimension, "
+            "and filter member"
+        )
+    # semantic_view is a deprecated client compatibility field. Always replace it
+    # with the resolved grain before validation, compilation, logging, or output.
+    query = query.model_copy(update={"semantic_view": resolution.semantic_view})
     validate_query_fields(
-        semantic_view=query.semantic_view,
+        semantic_view=resolution.semantic_view,
         dimensions=query.dimensions,
         filters=query.filters,
         catalog=catalog,
@@ -1055,7 +1176,7 @@ def validate_query(
             query.metric,
             query.aggregation,
             catalog,
-            semantic_view=query.semantic_view,
+            semantic_view=resolution.semantic_view,
             time_dimension=query.time_dimension,
             time_granularity=query.time_granularity,
             role=role,
@@ -1118,10 +1239,16 @@ def compile_cube_query(
     query: QuerySpec | dict[str, Any],
     catalog: SemanticCatalog,
     role: str = "viewer",
+    *,
+    _validated: bool = False,
 ) -> dict[str, Any]:
     """Validate and compile a governed request into Cube's JSON query format."""
 
-    query = validate_query(query, catalog, role)
+    if _validated:
+        if not isinstance(query, QuerySpec) or query.semantic_view is None:
+            raise ValueError("Validated Cube compilation requires a resolved query")
+    else:
+        query = validate_query(query, catalog, role)
     prefix = f"{query.semantic_view}."
     metric = resolve_query_metric(query, catalog, role)
     result: dict[str, Any] = {

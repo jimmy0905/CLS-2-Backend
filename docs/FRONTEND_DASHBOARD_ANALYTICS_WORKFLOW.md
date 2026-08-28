@@ -105,7 +105,7 @@ sequenceDiagram
 | `GET /analytics/charts/published` | The governed dashboard cards visible to the caller. Store both `id` (for the data URL) and `slug` (stable frontend lookup). |
 | `POST /analytics/filter-options` | Non-null dropdown values for one available dimension. Send already selected compatible filters to implement dependent selectors and follow `next_cursor` while `has_more` is true. |
 | `POST /analytics/charts/{chart_id}/data` | Preferred path for a predefined dashboard card. Dimensions and the one metric/aggregation pair stay governed; the frontend may override filters, time range/granularity, timezone, order, and limit. |
-| `POST /analytics/query` | For guided exploration, post the goal-first query assembled from the catalog and capability response. Curated templates remain available from `GET /analytics/query-combinations`. |
+| `POST /analytics/query` | Post the goal-first query with its metric, aggregation, dimensions, filters, and optional time controls. Do not send `semantic_view`: the response reports the resolved grain. Curated templates remain available from `GET /analytics/query-combinations`. |
 
 Catalog membership and data availability are different: a field may be
 published in the catalog but have `available: false` for the current BU. The
@@ -116,17 +116,24 @@ appear in assignment views, but then every metric uses that assignment view's
 row grain. Always take the final member list from the selected view's catalog
 entry.
 
-## Ad-hoc query selector flow
+## View-scoped catalog workflow
 
-The recommended selector order is:
+The recommended free-form selector is the chart builder flow below. The older
+view-scoped catalog endpoints remain useful for availability, capabilities, and
+curated templates, but `semantic_view` is internal routing state there—not a
+field in a `POST /analytics/query` payload. The server is authoritative for
+selecting the final grain.
+
+When using the view-scoped discovery endpoints, their legacy selector order is:
 
 ```text
 What does one row mean? -> What should be measured? -> How?        -> Group/filter by?
 Semantic View           -> Logical target           -> Aggregation -> Capabilities
 ```
 
-Do not make users guess from the raw semantic-view names. Present the row grain
-as the business choice and store its corresponding `semantic_view` internally:
+Do not present raw semantic-view names as a required query choice. If the UI
+uses this legacy discovery flow, it may retain the corresponding
+`semantic_view` internally only to call its view-scoped endpoints:
 
 | User-facing choice | `semantic_view` | One fact row | Default target + aggregation |
 | --- | --- | --- | --- |
@@ -366,7 +373,6 @@ function buildQuery() {
   }
 
   return {
-    semantic_view: view,
     dimensions,
     metric: state.metric,
     aggregation: state.aggregation,
@@ -384,7 +390,7 @@ function buildQuery() {
 ```
 
 `order[].member` must be one of the selected dimensions, the fixed key `value`,
-or the selected time dimension. A `time_dimension` must be a date/time field from the same view;
+or the selected time dimension. A `time_dimension` must be a date/time field from the resolved view;
 `time_range` and `time_granularity` are invalid without it.
 
 ### 6. Choose a chart from the query shape

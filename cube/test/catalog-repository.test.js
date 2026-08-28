@@ -812,7 +812,7 @@ test('the combination grain counts distinct responses rather than fanned rows', 
   });
   const fields = new Map([
     ['topic_sentiment', core('topic_sentiment', 'string')],
-    ['survey_id', core('survey_id', 'string')],
+    ['distinct_survey_id', core('distinct_survey_id', 'number')],
   ]);
   const definition = compileMeasure({
     slug: 'mixed_surveys',
@@ -822,7 +822,7 @@ test('the combination grain counts distinct responses rather than fanned rows', 
     sourceField: 'topic_sentiment',
     parameters: {
       filter: { operator: 'equals', value: 'MIXED' },
-      distinctField: 'survey_id',
+      distinctField: 'distinct_survey_id',
     },
     visibility: 'viewer',
   }, fields);
@@ -832,7 +832,7 @@ test('the combination grain counts distinct responses rather than fanned rows', 
   // into many assignment combinations is still counted once.
   assert.match(
     definition,
-    /COUNT\(DISTINCT CASE WHEN \{CUBE\}\.topic_sentiment = \$analytics_field\$MIXED\$analytics_field\$ THEN \{CUBE\}\.survey_id END\)/,
+    /COUNT\(DISTINCT CASE WHEN \{CUBE\}\.topic_sentiment = \$analytics_field\$MIXED\$analytics_field\$ THEN \{CUBE\}\.distinct_survey_id END\)/,
   );
   assert.doesNotMatch(definition, /SUM\(CASE WHEN/);
 });
@@ -977,6 +977,18 @@ test('the combination grain still may not be joined to a single-assignment grain
 });
 
 test('the combination grain resolves its own assignment sentiment columns', () => {
+  assert.match(
+    compileDimension({
+      slug: 'distinct_survey_id',
+      label: 'Distinct survey ID',
+      semanticView: 'survey_assignments',
+      dataType: 'number',
+      sourceKind: 'core',
+      sourceKey: null,
+      visibility: 'admin',
+    }),
+    /sql: "\{CUBE\}\.distinct_survey_id"/,
+  );
   assert.match(
     compileDimension({
       slug: 'keyword_sentiment',

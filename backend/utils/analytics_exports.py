@@ -264,17 +264,19 @@ async def _execute_export_job(job_id: str) -> None:
         db.commit()
 
         if mode == "query":
-            from utils.analytics import QuerySpec, compile_cube_query
+            from utils.analytics import QuerySpec, compile_cube_query, validate_query
             from utils.analytics_results import (
                 augment_cube_query_with_supports,
                 format_query_result,
             )
 
-            semantic_query = QuerySpec.model_validate(request.get("semantic_query"))
+            semantic_query = validate_query(
+                QuerySpec.model_validate(request.get("semantic_query")), catalog, role
+            )
             # Recompile at execution time so a revoked/changed member cannot be
             # smuggled through a previously persisted Cube payload.
             cube_query = augment_cube_query_with_supports(
-                compile_cube_query(semantic_query, catalog, role),
+                compile_cube_query(semantic_query, catalog, role, _validated=True),
                 semantic_query,
                 catalog,
                 role,

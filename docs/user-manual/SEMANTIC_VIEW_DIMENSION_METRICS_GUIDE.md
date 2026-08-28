@@ -5,16 +5,16 @@
 > keyword `A` 範例請參閱
 > [Goal-first analytics query contract](../ANALYTICS_GOAL_FIRST_CONTRACT.md)。
 
-本手冊說明 CLSense governed analytics 中 `semantic_view`、Dimension 和
-Metric 的組合規則。它同時區分三種情況：
+本手冊說明 CLSense governed analytics 中 Dimension 和 Metric 的組合規則，
+以及伺服器如何在內部推導 `semantic_view`。它同時區分三種情況：
 
 1. API 語法是否合法；
 2. 組合的分析意義是否正確；
 3. 組合是否符合指定 Chart 類型的形狀要求。
 
-最重要的選擇次序是：
+最重要的使用者選擇次序是：
 
-> 先選資料粒度 Semantic View，再選原始 Metric Field 與 Aggregation，最後才選分組方式 Dimension。
+> 先選想量測的 Metric 與 Aggregation，再選分組 Dimension／時間與 Filters；伺服器最後自動選擇正確的資料粒度。
 
 相關文件：
 
@@ -229,16 +229,16 @@ assignment_id, response_id, sentiment, keyword_id, keyword
 對 `POST /analytics/query` 而言，一個基本查詢可以包含：
 
 ```text
-一個 Semantic View
-+ 同一 View 的 0–3 個 Dimensions
-+ 同一 View 的剛好一個 Metric Field
+0–3 個 Dimensions
++ 剛好一個 Metric Field
 + 剛好一個 Aggregation
-+ 同一 View 的 0–20 個 Filters
++ 0–20 個 Filters
 ```
 
 舊 `metrics: []` 格式已移除；缺少 `metric` 或 `aggregation`，或仍傳入
 `metrics`，都會回傳 `422`。`aggregation` 使用完整名稱 `average`，不接受
-`avg`。
+`avg`。`semantic_view` 已不再是 query selector；相容舊客戶端仍可傳入，但
+伺服器會忽略它，並在 response 回傳實際推導出的 grain。
 
 欄位型別容許的 Aggregations：
 
@@ -248,15 +248,14 @@ assignment_id, response_id, sentiment, keyword_id, keyword
 | number | `count`, `distinct_count`, `sum`, `average`, `min`, `max`, `median` |
 | date / time | `count`, `distinct_count`, `min`, `max` |
 
-此外，該 `(logical metric target, aggregation)` 必須出現在目前 catalog 的
-`metric_targets[semantic_view]`。型別合法但未發布，或同一 pair 對應多個
-governed measure，都會回傳 `422`。
+此外，該 `(logical metric target, aggregation)` 必須能在伺服器依
+Dimensions／Filters／時間所推導的 grain 中找到。型別合法但未發布，或同一
+pair 對應多個 governed measure，都會回傳 `422`。
 
-以下組合合法，因為所有成員都屬於 `survey_responses`：
+以下組合合法；伺服器會推導為 `survey_responses`：
 
 ```json
 {
-  "semantic_view": "survey_responses",
   "dimensions": ["store_format", "topic_sentiment"],
   "metric": "survey",
   "aggregation": "count"
@@ -267,7 +266,6 @@ governed measure，都會回傳 `422`。
 
 ```json
 {
-  "semantic_view": "survey_topics",
   "dimensions": ["topic", "department"],
   "metric": "topic_assignment",
   "aggregation": "count"
@@ -670,8 +668,8 @@ Survey-level score 應優先在 `survey_responses` 計算。
 
 | 想問的問題 | Metric target | Aggregation | 實際計算 |
 | --- | --- | --- | --- |
-| 這一格有幾份 Survey？ | `survey` | `count` | `COUNT(DISTINCT survey_id)` |
-| 這一格有幾份 MIXED Survey？ | `topic_sentiment_mixed` | `count` | `COUNT(DISTINCT CASE WHEN topic_sentiment = 'MIXED' THEN survey_id END)` |
+| 這一格有幾份 Survey？ | `survey` | `count` | `COUNT(DISTINCT distinct_survey_id)` |
+| 這一格有幾份 MIXED Survey？ | `topic_sentiment_mixed` | `count` | `COUNT(DISTINCT CASE WHEN topic_sentiment = 'MIXED' THEN distinct_survey_id END)` |
 
 如果改用「數行數」，同一格會從 526 變成 18,239 — 這正是第 12 節加權
 問題的同一個陷阱，只是放大了 35 倍。因此 `cls/sum` 與 `cls/average`
@@ -687,7 +685,6 @@ metric target，命名為 `<field>_<value>`：
 
 ```json
 {
-  "semantic_view": "survey_responses",
   "metric": "topic_sentiment_mixed",
   "aggregation": "count"
 }
@@ -710,7 +707,7 @@ Enum target **只提供 `count`**。情緒是字串，加總或平均它沒有�
 
 | 欄位 | 值 | 出現的 View |
 | --- | --- | --- |
-| `topic_sentiment` | `POSITIVE`, `NEGATIVE`, `NEUTRAL`, `MIXED` | 全部 |
+| `topic_sentiment` | `POSITIVE`, `NEGATIVE`, `NEUTRAL`, `MIXED` | 全部五個 views；單一 assignment view 會對 response 去重 |
 | `sentiment` | `POSITIVE`, `NEGATIVE`, `NEUTRAL` | 三個單一 assignment views |
 | `keyword_sentiment` / `department_sentiment` / `topic_assignment_sentiment` | `POSITIVE`, `NEGATIVE`, `NEUTRAL` | `survey_assignments` |
 
@@ -738,7 +735,6 @@ Enum target **只提供 `count`**。情緒是字串，加總或平均它沒有�
 
 ```json
 {
-  "semantic_view": "survey_responses",
   "dimensions": ["store_format", "region"],
   "metric": "survey",
   "aggregation": "count"
@@ -786,9 +782,12 @@ Table、Stacked Bar、Grouped Bar 或 Heatmap。
 
 ## 14. 實際選擇流程
 
-### 第一步：選擇計算單位
+### 伺服器如何推導計算單位
 
-| 想計算的單位 | Semantic View |
+不需要由使用者選 Semantic View。伺服器會根據 metric、Dimensions、Filters 與
+時間欄位使用以下 grain：
+
+| 想計算的單位 | 伺服器使用的 Semantic View |
 | --- | --- |
 | Survey Responses | `survey_responses` |
 | Topic assignments | `survey_topics` |
@@ -796,7 +795,7 @@ Table、Stacked Bar、Grouped Bar 或 Heatmap。
 | Keyword assignments | `survey_keywords` |
 | 兩種 assignment 的交叉組合 | `survey_assignments` |
 
-### 第二步：選擇 Metric Target 與 Aggregation
+### 第一步：選擇 Metric Target 與 Aggregation
 
 | 問題 | Metric Target + Aggregation |
 | --- | --- |
@@ -805,7 +804,7 @@ Table、Stacked Bar、Grouped Bar 或 Heatmap。
 | 有多少份 Survey Responses？ | `survey` + `count` |
 | Assignment sentiment 數量 | 加入 `sentiment` Dimension，再使用對應的 assignment target + `count` |
 
-### 第三步：選擇分類角度
+### 第二步：選擇分類角度
 
 這才是 Dimension，例如：
 

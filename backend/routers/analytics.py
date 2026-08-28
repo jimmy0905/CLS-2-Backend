@@ -36,6 +36,7 @@ from models.AnalyticsQueryLog import AnalyticsQueryLog
 from models.User import User
 from models.enum.Sentiment import Sentiment, TopicSentiment
 from utils.analytics import (
+    ASSIGNMENT_DIMENSION_FAMILIES,
     Aggregation,
     AnalyticsValidationError,
     CatalogField,
@@ -50,6 +51,7 @@ from utils.analytics import (
     OrderSpec,
     QueryAggregation,
     QuerySpec,
+    SEMANTIC_VIEW_PREFERENCE,
     SemanticCatalog,
     Visibility,
     allowed_filter_operators,
@@ -60,6 +62,7 @@ from utils.analytics import (
     metric_target_candidates,
     metric_targets,
     resolve_query_metric,
+    resolve_semantic_view,
     shape_chart_rows,
     validate_chart_definition,
     validate_identifier,
@@ -637,6 +640,15 @@ for _view, _assignment_members in {
         _core_field("assignment_id", FieldType.NUMBER, _view),
         _core_field("response_id", FieldType.NUMBER, _view),
         _core_field("sentiment", FieldType.STRING, _view),
+        CatalogField(
+            slug="distinct_survey_id",
+            label="Distinct Survey ID",
+            semantic_view=_view,
+            data_type=FieldType.NUMBER,
+            visibility=Visibility.ADMIN,
+            published=False,
+            filterable=False,
+        ),
     )
     _CORE_FIELDS += tuple(
         _core_field(slug, data_type, _view)
@@ -653,6 +665,15 @@ for _view, _assignment_members in {
 _CORE_FIELDS += (
     _core_field("combination_id", FieldType.STRING, "survey_assignments"),
     _core_field("response_id", FieldType.NUMBER, "survey_assignments"),
+    CatalogField(
+        slug="distinct_survey_id",
+        label="Distinct Survey ID",
+        semantic_view="survey_assignments",
+        data_type=FieldType.NUMBER,
+        visibility=Visibility.ADMIN,
+        published=False,
+        filterable=False,
+    ),
 )
 _CORE_FIELDS += tuple(
     _core_field(slug, data_type, "survey_assignments")
@@ -854,7 +875,7 @@ for _view in ("survey_topics", "survey_departments", "survey_keywords"):
         _core_metric(
             "survey_count",
             Aggregation.DISTINCT_COUNT,
-            "survey_id",
+            "distinct_survey_id",
             semantic_view=_view,
             query_target="survey",
             public_aggregation=QueryAggregation.COUNT,
@@ -877,6 +898,23 @@ for _view in ("survey_topics", "survey_departments", "survey_keywords"):
             )
             for sentiment in enum_dimension_values("sentiment")
         ),
+        *(
+            _core_metric(
+                f"topic_sentiment_{sentiment.lower()}_survey_count",
+                Aggregation.FILTERED_DISTINCT_COUNT,
+                "topic_sentiment",
+                semantic_view=_view,
+                parameters={
+                    "filter": {"operator": "equals", "value": sentiment},
+                    "distinctField": "response_id",
+                },
+                query_target=enum_metric_target("topic_sentiment", sentiment),
+                public_aggregation=QueryAggregation.COUNT,
+                entity="survey",
+                label=f"{sentiment.title()} Topic Sentiment Surveys",
+            )
+            for sentiment in enum_dimension_values("topic_sentiment")
+        ),
     )
 
 # The combination grain fans a response out once per assignment product, so every
@@ -886,7 +924,7 @@ _CORE_METRICS += (
     _core_metric(
         "survey_count",
         Aggregation.DISTINCT_COUNT,
-        "survey_id",
+        "distinct_survey_id",
         semantic_view="survey_assignments",
         query_target="survey",
         public_aggregation=QueryAggregation.COUNT,
@@ -918,7 +956,7 @@ for _enum_field in (
             semantic_view="survey_assignments",
             parameters={
                 "filter": {"operator": "equals", "value": _value},
-                "distinctField": "survey_id",
+                "distinctField": "distinct_survey_id",
             },
             query_target=enum_metric_target(_enum_field, _value),
             public_aggregation=QueryAggregation.COUNT,
@@ -1956,6 +1994,7 @@ def _field_availability(
             field
             for field in catalog.fields
             if field.semantic_view == semantic_view
+            and field.published
             and (role == "admin" or field.visibility is Visibility.VIEWER)
         ),
         key=lambda field: field.slug,
@@ -2179,7 +2218,10 @@ async def _execute_query(
             catalog = pinned_catalog
             if _version_id(_active_model_version(db)) != _version_id(version):
                 raise _AnalyticsCatalogChangedError
-        cube_query = cube_query_override or compile_cube_query(query, catalog, role)
+        query = validate_query(query, catalog, role)
+        cube_query = cube_query_override or compile_cube_query(
+            query, catalog, role, _validated=True
+        )
         cube_query = augment_cube_query_with_supports(cube_query, query, catalog, role)
     except _AnalyticsCatalogChangedError as error:
         raise HTTPException(
@@ -2292,21 +2334,6 @@ async def _execute_query(
 
 
 _BUILDER_INTERVALS = ("day", "week", "month", "quarter", "year")
-# Narrowest grain first. Routing prefers the earliest view that holds every
-# selected member, so a single-family request never pays the combination
-# grain's assignment fan-out.
-_BUILDER_VIEW_PREFERENCE = (
-    "survey_responses",
-    "survey_topics",
-    "survey_departments",
-    "survey_keywords",
-    "survey_assignments",
-)
-# Selecting two of these forces the combination grain, where a response repeats
-# once per assignment combination.
-_CROSS_ASSIGNMENT_DIMENSIONS = frozenset(
-    {"keyword", "department", "topic", *_COMBINATION_ASSIGNMENT_SENTIMENTS.values()}
-)
 
 
 def _builder_measure_key(field_slug: str, enum_value: str | None) -> str:
@@ -2366,7 +2393,7 @@ def _builder_measures(
     """
 
     by_key: dict[str, dict[str, Any]] = {}
-    for semantic_view in _BUILDER_VIEW_PREFERENCE:
+    for semantic_view in SEMANTIC_VIEW_PREFERENCE:
         for target in metric_targets(catalog, semantic_view, role):
             field_slug, _, enum_value = _split_enum_target(target.metric)
             key = _builder_measure_key(field_slug, enum_value)
@@ -2451,40 +2478,24 @@ def _resolve_builder_view(
     if target is None and not members:
         return None, warnings
 
-    known_views = {field.semantic_view for field in catalog.fields}
-    holds_members: list[str] = []
-    for semantic_view in _BUILDER_VIEW_PREFERENCE:
-        if semantic_view not in known_views:
-            continue
-        available = {
-            field.slug
-            for field in catalog.fields
-            if field.semantic_view == semantic_view
-            and (role == "admin" or field.visibility is Visibility.VIEWER)
-        }
-        if any(member not in available for member in members):
-            continue
-        holds_members.append(semantic_view)
-        if target is not None and selection.aggregation is not None:
-            if not metric_target_candidates(
-                catalog, semantic_view, target, selection.aggregation, role
-            ):
-                continue
-        return semantic_view, warnings
-
+    resolution = resolve_semantic_view(
+        catalog,
+        target=target,
+        aggregation=selection.aggregation,
+        members=members,
+        role=role,
+    )
+    if resolution.semantic_view is not None:
+        return resolution.semantic_view, warnings
     if target is None or selection.aggregation is None:
         return None, warnings
-
-    crossed = [
-        member for member in members if member in _CROSS_ASSIGNMENT_DIMENSIONS
-    ]
-    if len(crossed) > 1:
+    if resolution.crosses_assignment_families:
         warnings.append(
             "Crossing assignment families repeats a response once per "
             "combination, so this measure cannot be reported honestly at that "
             "grain. Use a response-level breakdown or a counting measure."
         )
-    elif holds_members:
+    elif resolution.views_with_members:
         # Some grain holds the breakdowns, but none of those grains publishes
         # this goal. Naming the grain is what makes the refusal actionable.
         assert selection.measure is not None
@@ -2493,7 +2504,7 @@ def _resolve_builder_view(
         )
         warnings.append(
             f"{selection.aggregation.value} of {label} is not published at the "
-            f"{holds_members[0]} grain that {', '.join(members)} requires."
+            f"{resolution.views_with_members[0]} grain that {', '.join(members)} requires."
         )
     return None, warnings
 
@@ -2593,17 +2604,18 @@ def _breakdown_is_honest(
     repetition, so it is not offered.
     """
 
-    if field.slug not in _CROSS_ASSIGNMENT_DIMENSIONS:
+    family = ASSIGNMENT_DIMENSION_FAMILIES.get(field.slug)
+    if family is None:
         return True
     if selection.measure is None or selection.aggregation is None:
         return True
 
-    already = {
-        member
+    existing_families = {
+        ASSIGNMENT_DIMENSION_FAMILIES[member]
         for member in _selected_members(selection)
-        if member in _CROSS_ASSIGNMENT_DIMENSIONS
+        if member in ASSIGNMENT_DIMENSION_FAMILIES
     }
-    if not already or field.slug in already:
+    if not existing_families or family in existing_families:
         return True
     try:
         target = _measure_target(selection.measure)
@@ -2644,16 +2656,16 @@ def _builder_options(
     chart_types: tuple[str, ...] = ()
     query: QuerySpec | None = None
 
-    # Before a grain is pinned, offer what any grain could answer so the first
-    # screen is not silently narrowed to response-level dimensions.
-    scoped_views = (
-        (semantic_view,) if semantic_view is not None else _BUILDER_VIEW_PREFERENCE
-    )
+    # Offer dimensions from every grain. A current narrow selection can still
+    # add another assignment family when the metric survives the combination
+    # grain; _breakdown_is_honest filters unsafe additions below.
+    scoped_views = SEMANTIC_VIEW_PREFERENCE
     chartable = _distinct_by_slug(
         field
         for view in scoped_views
         for field in catalog.fields
         if field.semantic_view == view
+            and field.published
         and field.usage == "chart"
         and (role == "admin" or field.visibility is Visibility.VIEWER)
     )
@@ -2680,6 +2692,7 @@ def _builder_options(
             for view in scoped_views
             for field in catalog.fields
             if field.semantic_view == view
+            and field.published
             and field.time_dimension
             and (role == "admin" or field.visibility is Visibility.VIEWER)
         )
@@ -2824,26 +2837,43 @@ def _query_capabilities_response(
     model_version: int,
     role: str,
 ) -> QueryCapabilitiesResponse:
-    query = validate_query(
-        QuerySpec(
-            semantic_view=payload.semantic_view,
-            metric=payload.metric,
-            aggregation=payload.aggregation,
-            limit=1,
-        ),
-        catalog,
-        role,
-    )
-    governed = resolve_query_metric(query, catalog, role)
-    result_type = metric_result_type(governed, catalog)
     targets = {
         target.metric: target
         for target in metric_targets(catalog, payload.semantic_view, role)
     }
-    target = targets[payload.metric]
+    target = targets.get(payload.metric)
+    if target is None:
+        raise AnalyticsValidationError(
+            f"Metric target {payload.metric}/{payload.aggregation.value} is not "
+            f"published at the {payload.semantic_view} grain"
+        )
     aggregation = next(
-        item for item in target.aggregations if item.method is payload.aggregation
+        (
+            item
+            for item in target.aggregations
+            if item.method is payload.aggregation
+        ),
+        None,
     )
+    if aggregation is None:
+        raise AnalyticsValidationError(
+            f"Metric target {payload.metric}/{payload.aggregation.value} is not "
+            f"published at the {payload.semantic_view} grain"
+        )
+    governed_candidates = metric_target_candidates(
+        catalog,
+        payload.semantic_view,
+        payload.metric,
+        payload.aggregation,
+        role,
+    )
+    if len(governed_candidates) != 1:
+        raise AnalyticsValidationError(
+            f"Metric target {payload.metric}/{payload.aggregation.value} is "
+            f"ambiguous at the {payload.semantic_view} grain"
+        )
+    governed = validate_metric(governed_candidates[0], catalog)
+    result_type = metric_result_type(governed, catalog)
     fields = tuple(
         sorted(
             (
@@ -3022,7 +3052,8 @@ def _chart_query(
         # the accurate total from the follow-up query in the endpoint.
         chart_type=chart["chart_type"],
     )
-    return query, compile_cube_query(query, catalog, role)
+    query = validate_query(query, catalog, role)
+    return query, compile_cube_query(query, catalog, role, _validated=True)
 
 
 def _shape_chart_rows(
@@ -4885,17 +4916,19 @@ async def create_analytics_export(
     try:
         catalog = _catalog_from_version(version, role)
         if payload.query is not None:
-            semantic_view = payload.query.semantic_view
+            semantic_query = validate_query(payload.query, catalog, role)
+            semantic_view = semantic_query.semantic_view
+            assert semantic_view is not None
             cube_query = augment_cube_query_with_supports(
-                compile_cube_query(payload.query, catalog, role),
-                payload.query,
+                compile_cube_query(semantic_query, catalog, role, _validated=True),
+                semantic_query,
                 catalog,
                 role,
             )
             request_payload = {
                 "mode": "query",
                 "role": role,
-                "semantic_query": payload.query.model_dump(mode="json"),
+                "semantic_query": semantic_query.model_dump(mode="json"),
                 "cube_query": cube_query,
             }
         else:
