@@ -195,6 +195,28 @@ def test_cube_models_keep_assignment_grains_separate_and_use_stable_percentiles(
         assert dimensions["sentiment"]["sql"] == "assignment_sentiment"
 
 
+def test_cube_primary_key_dimensions_are_public():
+    model_dir = ROOT / "cube" / "model" / "core"
+    expected_primary_keys = {
+        "survey_departments.assignment_id",
+        "survey_keywords.assignment_id",
+        "survey_responses.id",
+        "survey_topics.assignment_id",
+    }
+    public_by_primary_key = {}
+
+    for model_path in sorted(model_dir.glob("*.yml")):
+        cube = yaml.safe_load(model_path.read_text())["cubes"][0]
+        for dimension in cube["dimensions"]:
+            if dimension.get("primary_key") is True:
+                member = f"{cube['name']}.{dimension['name']}"
+                public_by_primary_key[member] = dimension.get("public")
+
+    assert public_by_primary_key == {
+        member: True for member in expected_primary_keys
+    }
+
+
 def test_catalog_contract_is_structured_and_versioned():
     contract = json.loads(
         (ROOT / "cube" / "contracts" / "catalog.schema.json").read_text()

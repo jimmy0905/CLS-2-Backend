@@ -31,6 +31,7 @@ cubes:
         sql: assignment_id
         type: number
         primary_key: true
+        public: true
 
       - name: survey_id
         sql: survey_id
