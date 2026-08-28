@@ -30,11 +30,15 @@ Content-Type: application/json
 
 ## 1. Built-in dashboard metric pack
 
-The built-in catalog already provides `response_count`, `cls_average`,
+The built-in catalog already provides `response_count`, `responding_store_count`, `cls_average`,
 `topic_sentiment_score_average`, the four response-level
 `topic_sentiment_*_count` metrics, `assignment_count`, `distinct_survey_count`,
 and the topic/department/keyword `*_assignment_*_count` metrics. The standard
 dashboard metric pack is built in and requires no per-BU publication.
+
+`responding_store_count` is `countDistinct(store_key)` over matching response
+rows. It counts stores represented in the current response filters and date
+range; it intentionally does not count stores with zero matching responses.
 
 ### Response-level sentiment counts
 

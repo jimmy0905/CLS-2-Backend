@@ -15,6 +15,10 @@ cubes:
         sql: id
         type: count_distinct
 
+      - name: responding_store_count
+        sql: store_key
+        type: count_distinct
+
       - name: cls_sum
         sql: cls
         type: sum

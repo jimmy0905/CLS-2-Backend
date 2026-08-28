@@ -168,6 +168,14 @@ def test_cube_models_keep_assignment_grains_separate_and_use_stable_percentiles(
     assert "type: number" in models["survey_responses"]
     assert "number_agg" not in "\n".join(models.values())
     response_cube = yaml.safe_load(models["survey_responses"])["cubes"][0]
+    response_measures = {
+        item["name"]: item for item in response_cube["measures"]
+    }
+    assert response_measures["responding_store_count"] == {
+        "name": "responding_store_count",
+        "sql": "store_key",
+        "type": "count_distinct",
+    }
     response_dimensions = {
         item["name"]: item for item in response_cube["dimensions"]
     }

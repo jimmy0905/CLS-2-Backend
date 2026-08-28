@@ -583,6 +583,23 @@ test('published chart rollups preserve their exact dimensions and month partitio
   assert.doesNotMatch(compiled, /rollup_join|number_agg/);
 });
 
+test('responding store count is accepted as a fixed response-view measure', () => {
+  const withRespondingStores = catalog({
+    rollups: [{
+      name: 'chart_43_responding_stores',
+      semanticView: 'survey_responses',
+      measures: ['responding_store_count'],
+      dimensions: ['region'],
+      timeDimension: null,
+      granularity: null,
+      partitionGranularity: null,
+      nonAdditive: true,
+    }],
+  });
+
+  assert.equal(validateCatalog(withRespondingStores, profile).rollups.length, 1);
+});
+
 test('pre-aggregation refresh interval is injected into core and chart rollups', () => {
   const core = [
     '    refresh_key:',

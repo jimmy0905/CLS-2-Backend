@@ -87,6 +87,11 @@ def test_core_dashboard_sentiment_metrics_are_queryable_without_publication() ->
     catalog = analytics._catalog_from_records([], [])
     metrics = {metric.slug: metric for metric in catalog.metrics}
 
+    responding_stores = metrics["responding_store_count"]
+    assert responding_stores.semantic_view == "survey_responses"
+    assert responding_stores.aggregation is Aggregation.DISTINCT_COUNT
+    assert responding_stores.source_field == "store_key"
+
     for sentiment in ("positive", "negative", "neutral", "mixed"):
         metric = metrics[f"topic_sentiment_{sentiment}_count"]
         assert metric.aggregation is Aggregation.FILTERED_COUNT
@@ -293,6 +298,9 @@ def test_query_combinations_return_finite_executable_templates(monkeypatch) -> N
         "responses_total",
         "responses_by_day",
         "responses_by_sentiment_by_day",
+        "responding_stores_total",
+        "responding_stores_by_region",
+        "responding_stores_by_store_format",
         "topic_assignments_by_topic",
         "department_assignments_by_department",
         "keyword_assignments_by_keyword",
@@ -315,6 +323,15 @@ def test_query_combinations_return_finite_executable_templates(monkeypatch) -> N
     assert daily["query"]["time_granularity"] == "day"
     assert "reported_at" not in daily["query"]["dimensions"]
     assert "time_range" in daily["allowed_overrides"]
+
+    responding_stores = next(
+        item
+        for item in payload["combinations"]
+        if item["slug"] == "responding_stores_by_region"
+    )
+    assert responding_stores["query"]["semantic_view"] == "survey_responses"
+    assert responding_stores["query"]["dimensions"] == ["region"]
+    assert responding_stores["query"]["metrics"] == ["responding_store_count"]
 
 
 def test_query_combinations_can_be_filtered_by_semantic_view(monkeypatch) -> None:

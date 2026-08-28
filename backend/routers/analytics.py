@@ -269,6 +269,41 @@ _QUERY_COMBINATION_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "allowed_overrides": _COMMON_QUERY_OVERRIDES,
     },
     {
+        "slug": "responding_stores_total",
+        "label": "Total responding stores",
+        "description": "Count distinct stores having at least one matching response.",
+        "query": {
+            "semantic_view": "survey_responses",
+            "metrics": ["responding_store_count"],
+            "limit": 100,
+        },
+        "allowed_overrides": _COMMON_QUERY_OVERRIDES,
+    },
+    {
+        "slug": "responding_stores_by_region",
+        "label": "Responding stores by region",
+        "description": "Count distinct responding stores by region.",
+        "query": {
+            "semantic_view": "survey_responses",
+            "dimensions": ["region"],
+            "metrics": ["responding_store_count"],
+            "limit": 100,
+        },
+        "allowed_overrides": _COMMON_QUERY_OVERRIDES,
+    },
+    {
+        "slug": "responding_stores_by_store_format",
+        "label": "Responding stores by store format",
+        "description": "Count distinct responding stores by store format.",
+        "query": {
+            "semantic_view": "survey_responses",
+            "dimensions": ["store_format"],
+            "metrics": ["responding_store_count"],
+            "limit": 100,
+        },
+        "allowed_overrides": _COMMON_QUERY_OVERRIDES,
+    },
+    {
         "slug": "responses_by_channel",
         "label": "Responses by channel",
         "description": "Count responses by channel.",
@@ -503,6 +538,11 @@ def _core_metric(
 _CORE_METRICS: tuple[CatalogMetric, ...] = (
     _core_metric("response_count", Aggregation.COUNT),
     _core_metric("distinct_survey_count", Aggregation.DISTINCT_COUNT, "id"),
+    _core_metric(
+        "responding_store_count",
+        Aggregation.DISTINCT_COUNT,
+        "store_key",
+    ),
     _core_metric("cls_sum", Aggregation.SUM, "cls"),
     _core_metric("cls_average", Aggregation.AVERAGE, "cls"),
     _core_metric(

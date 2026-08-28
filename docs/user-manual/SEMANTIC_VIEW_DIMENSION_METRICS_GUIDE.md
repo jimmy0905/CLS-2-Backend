@@ -59,6 +59,7 @@ survey_responses + topic + response_count
 | --- | --- |
 | `response_count` | 問卷回覆數量 |
 | `distinct_survey_count` | 不同 response `id` 數量，通常與 `response_count` 相同 |
+| `responding_store_count` | 符合目前 response filters／日期範圍、且至少有一份回覆的不同 `store_key` 數量；不包括零回覆 Store |
 | `cls_sum` | CLS 總和 |
 | `cls_average` | CLS 平均值 |
 | `topic_sentiment_score_sum` | Topic sentiment score 總和 |

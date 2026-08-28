@@ -153,6 +153,7 @@ const CORE_MEASURES = {
   survey_responses: new Set([
     'response_count',
     'distinct_survey_count',
+    'responding_store_count',
     'cls_sum',
     'cls_average',
     'topic_sentiment_score_sum',

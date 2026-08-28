@@ -44,7 +44,7 @@ The only supported semantic views are `survey_responses`, `survey_topics`, `surv
 
 | Semantic view | One row represents | Database source | Canonical response sentiment | Assignment sentiment | Use it for |
 | --- | --- | --- | --- | --- | --- |
-| `survey_responses` | One non-deleted survey response | `surveys`, joined to `stores`, `channels`, and `delivery_services` | `topic_sentiment` = `surveys.topic_sentiment`; score = `surveys.topic_sentiment_score` | None. The legacy `surveys.sentiment` is intentionally not a public semantic field. | Overall response volume, CLS, store/channel analysis, and response-level sentiment. `response_count` counts survey rows. |
+| `survey_responses` | One non-deleted survey response | `surveys`, joined to `stores`, `channels`, and `delivery_services` | `topic_sentiment` = `surveys.topic_sentiment`; score = `surveys.topic_sentiment_score` | None. The legacy `surveys.sentiment` is intentionally not a public semantic field. | Overall response volume, CLS, store/channel analysis, and response-level sentiment. `response_count` counts survey rows; `responding_store_count` counts distinct `store_key` values represented by matching response rows. |
 | `survey_topics` | One topic assigned to a survey | `survey_topics` joined to the survey facts and `topics` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_topics.sentiment` | Topic analysis: group by `topic`, use `assignment_count` for topic assignments, or `distinct_survey_count` for unique surveys. |
 | `survey_departments` | One department assigned to a survey | `survey_departments` joined to the survey facts and `departments` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_departments.sentiment` | Department analysis: group by `department`, then use assignment or distinct-survey counts as appropriate. |
 | `survey_keywords` | One keyword assigned to a survey | `survey_keywords` joined to the survey facts and `keywords` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_keywords.sentiment` | Keyword analysis: group/filter by `keyword`, then use assignment or distinct-survey counts. |
@@ -222,9 +222,27 @@ template's time grain remain fixed. Add, for example,
 `"timezone": "Asia/Hong_Kong"` before posting the selected query.
 
 The built-in finite collection covers response totals, response sentiment,
-store format, channel, daily trends, average CLS, and topic/department/keyword
-assignment counts and distinct-survey views. `count` is the number of templates
-returned after semantic-view and role filtering.
+responding-store totals and breakdowns, store format, channel, daily trends,
+average CLS, and topic/department/keyword assignment counts and distinct-survey
+views. `count` is the number of templates returned after semantic-view and role
+filtering.
+
+For example, `responding_stores_by_region` returns this query:
+
+```json
+{
+  "semantic_view": "survey_responses",
+  "dimensions": ["region"],
+  "metrics": ["responding_store_count"],
+  "limit": 100
+}
+```
+
+This counts distinct stores having at least one matching response. A response
+date range therefore means “stores responding during that period”; stores with
+zero matching responses cannot appear in a response-grain semantic view. Use
+the governed `stores` record resource when the UI needs the full store master
+list rather than survey analytics.
 
 ### `GET /analytics/catalog/availability`
 
