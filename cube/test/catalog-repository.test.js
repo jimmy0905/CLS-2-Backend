@@ -583,6 +583,51 @@ test('published chart rollups preserve their exact dimensions and month partitio
   assert.doesNotMatch(compiled, /rollup_join|number_agg/);
 });
 
+test('pre-aggregation refresh interval is injected into core and chart rollups', () => {
+  const core = [
+    '    refresh_key:',
+    '      every: __PRE_AGGREGATION_REFRESH_EVERY__',
+    '      # __LOCAL_DIMENSIONS__',
+    '      # __LOCAL_MEASURES__',
+    '      # __LOCAL_PREAGGREGATIONS__',
+  ].join('\n');
+  const localCatalog = validateCatalog(catalog({
+    rollups: [{
+      name: 'chart_42_responses',
+      semanticView: 'survey_responses',
+      measures: ['response_count'],
+      dimensions: ['store_key'],
+      timeDimension: null,
+      granularity: null,
+      partitionGranularity: null,
+      nonAdditive: false,
+    }],
+  }), profile);
+
+  const compiled = injectCatalog(core, localCatalog, 'survey_responses', '5 minute');
+
+  assert.doesNotMatch(compiled, /__PRE_AGGREGATION_REFRESH_EVERY__/);
+  assert.equal((compiled.match(/every: 5 minute/g) || []).length, 2);
+});
+
+test('pre-aggregation refresh interval rejects unsafe Cube schema content', () => {
+  const rollup = {
+    name: 'chart_42_responses',
+    semanticView: 'survey_responses',
+    measures: ['response_count'],
+    dimensions: ['store_key'],
+    timeDimension: null,
+    granularity: null,
+    partitionGranularity: null,
+    nonAdditive: false,
+  };
+
+  assert.throws(
+    () => compileRollup(rollup, [], '15 minute\n      sql: SELECT pg_sleep(10)'),
+    /Invalid pre-aggregation refresh interval/,
+  );
+});
+
 test('chart rollups materialize confidence and data-quality supporting measures', () => {
   const rollup = {
     name: 'chart_42_weighted_score',

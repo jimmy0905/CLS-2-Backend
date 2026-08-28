@@ -27,7 +27,9 @@ from utils.analytics import (
     CatalogField,
     CatalogMetric,
     FieldType,
+    QuerySpec,
     SemanticCatalog,
+    validate_query,
 )
 from utils.analytics_cube import CubeQueryError, CubeUnavailableError
 from utils.analytics_metadata_auth import sign_metadata_request
@@ -148,6 +150,14 @@ def test_openapi_describes_every_analytics_endpoint() -> None:
     models = schema["components"]["schemas"]
     assert models["QuerySpec"]["required"] == ["semantic_view"]
     for name in (
+        "AnalyticsCatalogResponse",
+        "CatalogCombinationsOutput",
+        "SemanticViewCombinationOutput",
+        "ChartCombinationOutput",
+    ):
+        assert name in models
+
+    for name in (
         "FilterSpec",
         "OrderSpec",
         "QuerySpec",
@@ -167,6 +177,207 @@ def test_openapi_describes_every_analytics_endpoint() -> None:
     assert "/admin/analytics/fields" not in schema["paths"]
     assert "/admin/analytics/metrics" not in schema["paths"]
     assert "/admin/analytics/catalog/publish" not in schema["paths"]
+
+    catalog_response = schema["paths"]["/analytics/catalog"]["get"]["responses"]["200"]
+    assert catalog_response["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/AnalyticsCatalogResponse"
+    }
+    combinations_response = schema["paths"]["/analytics/query-combinations"]["get"][
+        "responses"
+    ]["200"]
+    assert combinations_response["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/QueryCombinationsResponse"
+    }
+
+
+def test_catalog_exposes_machine_readable_member_and_chart_combinations(
+    monkeypatch,
+) -> None:
+    db = FakeDb()
+    catalog = analytics._catalog_from_records([], [])
+    monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
+    monkeypatch.setattr(analytics, "_catalog", lambda db, role: catalog)
+    monkeypatch.setattr(analytics, "_active_model_version", lambda db: None)
+
+    response = _client(db).get("/analytics/catalog")
+
+    assert response.status_code == 200
+    payload = response.json()
+    combinations = payload["combinations"]
+    assert combinations["query"] == {
+        "max_dimensions": 3,
+        "max_metrics": 5,
+        "max_filters": 20,
+        "requires_single_semantic_view": True,
+        "members_must_belong_to_semantic_view": True,
+        "order_members_must_be_selected": True,
+        "time_dimension_must_not_be_dimension": True,
+    }
+
+    fields_by_view = {
+        semantic_view: {
+            field["slug"]
+            for field in payload["fields"]
+            if field["semantic_view"] == semantic_view
+        }
+        for semantic_view in payload["semantic_views"]
+    }
+    metrics_by_view = {
+        semantic_view: {
+            metric["slug"]
+            for metric in payload["metrics"]
+            if metric["semantic_view"] == semantic_view
+        }
+        for semantic_view in payload["semantic_views"]
+    }
+    view_rules = {
+        item["semantic_view"]: item
+        for item in combinations["semantic_views"]
+    }
+    assert set(view_rules) == set(payload["semantic_views"])
+    for semantic_view, rule in view_rules.items():
+        assert set(rule["dimensions"]) == fields_by_view[semantic_view]
+        assert set(rule["metrics"]) == metrics_by_view[semantic_view]
+        assert rule["distinct_survey_metric"] == "distinct_survey_count"
+        assert rule["response_sentiment_dimension"] == "topic_sentiment"
+
+    assert view_rules["survey_responses"]["default_count_metric"] == "response_count"
+    assert view_rules["survey_responses"]["assignment_dimension"] is None
+    assert view_rules["survey_responses"]["assignment_sentiment_dimension"] is None
+    assert "topic" not in view_rules["survey_responses"]["dimensions"]
+    assert "assignment_count" not in view_rules["survey_responses"]["metrics"]
+
+    assert view_rules["survey_topics"]["default_count_metric"] == "assignment_count"
+    assert view_rules["survey_topics"]["assignment_dimension"] == "topic"
+    assert view_rules["survey_topics"]["assignment_sentiment_dimension"] == "sentiment"
+    assert "topic" in view_rules["survey_topics"]["dimensions"]
+    assert "response_count" not in view_rules["survey_topics"]["metrics"]
+
+    chart_rules = {
+        item["chart_type"]: item for item in combinations["charts"]
+    }
+    assert set(chart_rules) == set(payload["chart_types"])
+    assert chart_rules["kpi"]["min_dimensions"] == 0
+    assert chart_rules["kpi"]["max_metrics"] == 1
+    assert chart_rules["line"]["allows_time_dimension"] is True
+    assert chart_rules["pie"]["min_dimensions"] == 1
+    assert chart_rules["pie"]["max_dimensions"] == 1
+    assert chart_rules["pie"]["min_metrics"] == 1
+    assert chart_rules["pie"]["max_metrics"] == 1
+    assert set(chart_rules["store_map"]["required_dimensions"]) == {
+        "store_key",
+        "store_name",
+        "latitude",
+        "longitude",
+    }
+
+
+def test_query_combinations_return_finite_executable_templates(monkeypatch) -> None:
+    db = FakeDb()
+    catalog = analytics._catalog_from_records([], [])
+    monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
+    monkeypatch.setattr(analytics, "_catalog", lambda db, role: catalog)
+    monkeypatch.setattr(analytics, "_active_model_version", lambda db: None)
+
+    response = _client(db).get("/analytics/query-combinations")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["model_version"] == 0
+    assert payload["count"] == len(payload["combinations"])
+    assert 1 <= payload["count"] <= 50
+
+    slugs = [item["slug"] for item in payload["combinations"]]
+    assert len(slugs) == len(set(slugs))
+    assert {
+        "responses_total",
+        "responses_by_day",
+        "responses_by_sentiment_by_day",
+        "topic_assignments_by_topic",
+        "department_assignments_by_department",
+        "keyword_assignments_by_keyword",
+    }.issubset(slugs)
+
+    for item in payload["combinations"]:
+        query = QuerySpec.model_validate(item["query"])
+        assert validate_query(query, catalog) == query
+        assert item["semantic_view"] == query.semantic_view
+        assert item["compatible_chart_types"]
+        assert set(item["allowed_overrides"]).issubset(
+            {"filters", "time_range", "timezone", "order", "limit"}
+        )
+
+    daily = next(
+        item for item in payload["combinations"] if item["slug"] == "responses_by_day"
+    )
+    assert daily["query"]["dimensions"] == []
+    assert daily["query"]["time_dimension"] == "reported_at"
+    assert daily["query"]["time_granularity"] == "day"
+    assert "reported_at" not in daily["query"]["dimensions"]
+    assert "time_range" in daily["allowed_overrides"]
+
+
+def test_query_combinations_can_be_filtered_by_semantic_view(monkeypatch) -> None:
+    db = FakeDb()
+    catalog = analytics._catalog_from_records([], [])
+    monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
+    monkeypatch.setattr(analytics, "_catalog", lambda db, role: catalog)
+    monkeypatch.setattr(analytics, "_active_model_version", lambda db: None)
+
+    response = _client(db).get(
+        "/analytics/query-combinations",
+        params={"semantic_view": "survey_topics"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] > 0
+    assert {
+        item["semantic_view"] for item in payload["combinations"]
+    } == {"survey_topics"}
+    assert all(
+        item["query"]["semantic_view"] == "survey_topics"
+        for item in payload["combinations"]
+    )
+
+
+def test_daily_query_combination_can_be_posted_without_time_dimension_duplication(
+    monkeypatch,
+) -> None:
+    db = FakeDb()
+    cube = FakeCube({"data": []})
+    catalog = analytics._catalog_from_records([], [])
+    monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
+    monkeypatch.setattr(config, "DEPLOYMENT_PROFILE", "wtchk_cls")
+    monkeypatch.setattr(analytics, "_catalog", lambda db, role: catalog)
+    monkeypatch.setattr(analytics, "_active_model_version", lambda db: None)
+    monkeypatch.setattr(analytics, "_cube_client", lambda: cube)
+    client = _client(db)
+
+    combinations = client.get(
+        "/analytics/query-combinations",
+        params={"semantic_view": "survey_responses"},
+    ).json()["combinations"]
+    query = next(
+        item["query"] for item in combinations if item["slug"] == "responses_by_day"
+    )
+    query["timezone"] = "Asia/Hong_Kong"
+
+    response = client.post("/analytics/query", json=query)
+
+    assert response.status_code == 200
+    assert cube.calls[0][0] == {
+        "dimensions": [],
+        "measures": ["survey_responses.response_count"],
+        "timeDimensions": [
+            {
+                "dimension": "survey_responses.reported_at",
+                "granularity": "day",
+            }
+        ],
+        "timezone": "Asia/Hong_Kong",
+        "limit": 100,
+    }
 
 
 def test_field_availability_reports_non_null_data_for_visible_fields(monkeypatch) -> None:
@@ -513,6 +724,53 @@ def test_query_compiles_catalog_members_and_returns_chart_ready_rows(monkeypatch
     }
     assert cube.calls[0][1]["profile_id"] == "wtchk_cls"
     assert db.commits >= 2
+
+
+def test_response_sentiment_query_with_hong_kong_timezone_reaches_cube(
+    monkeypatch,
+) -> None:
+    db = FakeDb()
+    cube = FakeCube(
+        {
+            "data": [
+                {
+                    "survey_responses.topic_sentiment": "POSITIVE",
+                    "survey_responses.response_count": "6",
+                }
+            ]
+        }
+    )
+    monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
+    monkeypatch.setattr(config, "DEPLOYMENT_PROFILE", "wtchk_cls")
+    monkeypatch.setattr(
+        analytics,
+        "_catalog",
+        lambda db, role: analytics._catalog_from_records([], []),
+    )
+    monkeypatch.setattr(analytics, "_active_model_version", lambda db: None)
+    monkeypatch.setattr(analytics, "_cube_client", lambda: cube)
+
+    response = _client(db).post(
+        "/analytics/query",
+        json={
+            "semantic_view": "survey_responses",
+            "dimensions": ["topic_sentiment"],
+            "metrics": ["response_count"],
+            "timezone": "Asia/Hong_Kong",
+            "limit": 100,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["rows"] == [
+        {"topic_sentiment": "POSITIVE", "response_count": 6}
+    ]
+    assert cube.calls[0][0] == {
+        "dimensions": ["survey_responses.topic_sentiment"],
+        "measures": ["survey_responses.response_count"],
+        "timezone": "Asia/Hong_Kong",
+        "limit": 100,
+    }
 
 
 def test_cube_unavailable_is_isolated_to_an_analytics_503(monkeypatch) -> None:

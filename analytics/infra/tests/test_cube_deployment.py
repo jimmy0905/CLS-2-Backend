@@ -78,6 +78,16 @@ def test_compose_has_private_api_and_refresh_worker_for_every_profile():
             f"cubestore-router-shard-{entry['cube_store_shard']}"
         )
         assert refresh["environment"]["CUBEJS_REFRESH_WORKER"] == "true"
+        assert api["environment"]["ANALYTICS_PRE_AGGREGATION_REFRESH_EVERY"] == (
+            "${ANALYTICS_PRE_AGGREGATION_REFRESH_EVERY:-15 minute}"
+        )
+        assert refresh["environment"]["ANALYTICS_PRE_AGGREGATION_REFRESH_EVERY"] == (
+            "${ANALYTICS_PRE_AGGREGATION_REFRESH_EVERY:-15 minute}"
+        )
+        assert "ANALYTICS_SCHEDULED_REFRESH_INTERVAL_SECONDS" not in api["environment"]
+        assert refresh["environment"][
+            "ANALYTICS_SCHEDULED_REFRESH_INTERVAL_SECONDS"
+        ] == "${ANALYTICS_SCHEDULED_REFRESH_INTERVAL_SECONDS:-30}"
         env_prefix = profile.upper()
         assert backend["environment"]["ANALYTICS_ENABLED"] == (
             f"${{{env_prefix}_ANALYTICS_ENABLED:-false}}"

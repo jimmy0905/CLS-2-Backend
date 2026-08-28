@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 const IDENTIFIER = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
+const REFRESH_INTERVAL = /^[1-9][0-9]* (?:seconds?|minutes?|hours?|days?|weeks?)$/;
 const SUPPORTED_FIELD_TYPES = new Set(['string', 'number', 'boolean', 'date', 'time']);
 const SUPPORTED_OPERATIONS = new Set([
   'count',
@@ -814,7 +815,18 @@ function metricSupportSuffixes(metric) {
   return suffixes;
 }
 
-function compileRollup(rollup, metrics = []) {
+function preAggregationRefreshEvery(
+  value = process.env.ANALYTICS_PRE_AGGREGATION_REFRESH_EVERY || '15 minute',
+) {
+  const normalized = String(value).trim();
+  if (!REFRESH_INTERVAL.test(normalized)) {
+    throw new Error('Invalid pre-aggregation refresh interval');
+  }
+  return normalized;
+}
+
+function compileRollup(rollup, metrics = [], refreshEvery = undefined) {
+  const refreshInterval = preAggregationRefreshEvery(refreshEvery);
   const metricBySlug = new Map(metrics.map((metric) => [metric.slug, metric]));
   const materializedMeasures = rollup.measures.flatMap((member) => {
     const metric = metricBySlug.get(member);
@@ -845,12 +857,18 @@ function compileRollup(rollup, metrics = []) {
   result.push(
     '        scheduled_refresh: true',
     '        refresh_key:',
-    '          every: 15 minute',
+    `          every: ${refreshInterval}`,
   );
   return result.join('\n');
 }
 
-function injectCatalog(core, catalog, semanticView = 'survey_responses') {
+function injectCatalog(
+  core,
+  catalog,
+  semanticView = 'survey_responses',
+  refreshEvery = undefined,
+) {
+  const refreshInterval = preAggregationRefreshEvery(refreshEvery);
   const fields = compileFieldMap(catalog, semanticView);
   const dimensions = catalog.fields
     .filter((field) => field.semanticView === semanticView && field.sourceKind === 'raw_json')
@@ -865,9 +883,11 @@ function injectCatalog(core, catalog, semanticView = 'survey_responses') {
     .map((rollup) => compileRollup(
       rollup,
       catalog.metrics.filter((metric) => metric.semanticView === semanticView),
+      refreshInterval,
     ))
     .join('\n');
   return core
+    .replaceAll('__PRE_AGGREGATION_REFRESH_EVERY__', refreshInterval)
     .replace('      # __LOCAL_DIMENSIONS__', dimensions || '      # no published local dimensions')
     .replace('      # __LOCAL_MEASURES__', measures || '      # no published local measures')
     .replace('      # __LOCAL_PREAGGREGATIONS__', rollups || '      # no published chart rollups');
@@ -993,6 +1013,7 @@ module.exports = {
   compileRollup,
   enforceSecurityContext,
   injectCatalog,
+  preAggregationRefreshEvery,
   signature,
   sqlLiteral,
   validateCatalog,

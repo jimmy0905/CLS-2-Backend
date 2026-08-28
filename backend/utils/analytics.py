@@ -810,22 +810,136 @@ def compile_cube_query(
     return result
 
 
-_CHART_TYPES = frozenset(
+CHART_COMBINATION_RULES: tuple[dict[str, Any], ...] = (
     {
-        "kpi",
-        "table",
-        "bar",
-        "column",
-        "stacked_bar",
-        "line",
-        "area",
-        "pie",
-        "donut",
-        "scatter",
-        "heatmap",
-        "store_map",
-    }
+        "chart_type": "kpi",
+        "min_dimensions": 0,
+        "max_dimensions": 0,
+        "min_metrics": 1,
+        "max_metrics": 1,
+        "allows_time_dimension": False,
+        "numeric_metrics_required": False,
+        "requires_at_least_one_member": False,
+        "required_dimensions": (),
+    },
+    {
+        "chart_type": "table",
+        "min_dimensions": 0,
+        "max_dimensions": MAX_DIMENSIONS,
+        "min_metrics": 0,
+        "max_metrics": MAX_METRICS,
+        "allows_time_dimension": False,
+        "numeric_metrics_required": False,
+        "requires_at_least_one_member": True,
+        "required_dimensions": (),
+    },
+    *(
+        {
+            "chart_type": chart_type,
+            "min_dimensions": 1,
+            "max_dimensions": MAX_DIMENSIONS,
+            "min_metrics": 1,
+            "max_metrics": MAX_METRICS,
+            "allows_time_dimension": False,
+            "numeric_metrics_required": True,
+            "requires_at_least_one_member": False,
+            "required_dimensions": (),
+        }
+        for chart_type in ("bar", "column")
+    ),
+    {
+        "chart_type": "stacked_bar",
+        "min_dimensions": 2,
+        "max_dimensions": 2,
+        "min_metrics": 1,
+        "max_metrics": MAX_METRICS,
+        "allows_time_dimension": False,
+        "numeric_metrics_required": True,
+        "requires_at_least_one_member": False,
+        "required_dimensions": (),
+    },
+    *(
+        {
+            "chart_type": chart_type,
+            "min_dimensions": 1,
+            "max_dimensions": MAX_DIMENSIONS,
+            "min_metrics": 1,
+            "max_metrics": MAX_METRICS,
+            "allows_time_dimension": True,
+            "numeric_metrics_required": True,
+            "requires_at_least_one_member": False,
+            "required_dimensions": (),
+        }
+        for chart_type in ("line", "area")
+    ),
+    *(
+        {
+            "chart_type": chart_type,
+            "min_dimensions": 1,
+            "max_dimensions": 1,
+            "min_metrics": 1,
+            "max_metrics": 1,
+            "allows_time_dimension": False,
+            "numeric_metrics_required": True,
+            "requires_at_least_one_member": False,
+            "required_dimensions": (),
+        }
+        for chart_type in ("pie", "donut")
+    ),
+    {
+        "chart_type": "scatter",
+        "min_dimensions": 0,
+        "max_dimensions": 1,
+        "min_metrics": 2,
+        "max_metrics": 2,
+        "allows_time_dimension": False,
+        "numeric_metrics_required": True,
+        "requires_at_least_one_member": False,
+        "required_dimensions": (),
+    },
+    {
+        "chart_type": "heatmap",
+        "min_dimensions": 2,
+        "max_dimensions": 2,
+        "min_metrics": 1,
+        "max_metrics": 1,
+        "allows_time_dimension": False,
+        "numeric_metrics_required": True,
+        "requires_at_least_one_member": False,
+        "required_dimensions": (),
+    },
+    {
+        "chart_type": "store_map",
+        "min_dimensions": 4,
+        "max_dimensions": 4,
+        "min_metrics": 1,
+        "max_metrics": 1,
+        "allows_time_dimension": False,
+        "numeric_metrics_required": True,
+        "requires_at_least_one_member": False,
+        "required_dimensions": (
+            "store_key",
+            "store_name",
+            "latitude",
+            "longitude",
+        ),
+    },
 )
+_CHART_RULES_BY_TYPE = {
+    rule["chart_type"]: rule for rule in CHART_COMBINATION_RULES
+}
+
+
+def chart_combination_rules() -> tuple[dict[str, Any], ...]:
+    """Return defensive copies of the chart contract used by validation."""
+
+    return tuple(
+        {
+            **rule,
+            "required_dimensions": tuple(rule["required_dimensions"]),
+        }
+        for rule in CHART_COMBINATION_RULES
+    )
 
 
 def validate_chart_definition(
@@ -840,7 +954,8 @@ def validate_chart_definition(
 ) -> None:
     """Validate chart arity before a definition can be published."""
 
-    if chart_type not in _CHART_TYPES:
+    rule = _CHART_RULES_BY_TYPE.get(chart_type)
+    if rule is None:
         raise AnalyticsValidationError("Unsupported chart type")
     for member in (*dimensions, *metrics):
         validate_identifier(member)
@@ -850,45 +965,22 @@ def validate_chart_definition(
             raise AnalyticsValidationError(
                 "Granular time dimensions must not be duplicated as ordinary dimensions"
             )
-        if chart_type not in {"line", "area"}:
+        if not rule["allows_time_dimension"]:
             raise AnalyticsValidationError(
                 "Time dimensions are supported only by line and area charts"
             )
     dimension_count = len(dimensions) + (1 if time_dimension is not None else 0)
     metric_count = len(metrics)
 
-    valid = False
-    if chart_type == "kpi":
-        valid = dimension_count == 0 and metric_count == 1
-    elif chart_type == "table":
-        valid = (
-            dimension_count <= MAX_DIMENSIONS
-            and metric_count <= MAX_METRICS
-            and dimension_count + metric_count > 0
-        )
-    elif chart_type in {"bar", "column"}:
-        valid = (
-            1 <= dimension_count <= MAX_DIMENSIONS
-            and time_dimension is None
-            and 1 <= metric_count <= MAX_METRICS
-        )
-    elif chart_type in {"line", "area"}:
-        valid = 1 <= dimension_count <= MAX_DIMENSIONS and 1 <= metric_count <= MAX_METRICS
-    elif chart_type == "stacked_bar":
-        valid = dimension_count == 2 and 1 <= metric_count <= MAX_METRICS
-    elif chart_type in {"pie", "donut"}:
-        valid = dimension_count == 1 and metric_count == 1
-    elif chart_type == "scatter":
-        valid = dimension_count <= 1 and metric_count == 2
-    elif chart_type == "heatmap":
-        valid = dimension_count == 2 and metric_count == 1
-    elif chart_type == "store_map":
-        valid = (
-            set(dimensions)
-            == {"store_key", "store_name", "latitude", "longitude"}
-            and dimension_count == 4
-            and metric_count == 1
-        )
+    valid = (
+        rule["min_dimensions"] <= dimension_count <= rule["max_dimensions"]
+        and rule["min_metrics"] <= metric_count <= rule["max_metrics"]
+    )
+    if rule["requires_at_least_one_member"]:
+        valid = valid and dimension_count + metric_count > 0
+    required_dimensions = tuple(rule["required_dimensions"])
+    if required_dimensions:
+        valid = valid and set(dimensions) == set(required_dimensions)
     if not valid:
         raise AnalyticsValidationError(
             f"Chart type {chart_type} requires a compatible dimension/metric shape"
@@ -908,7 +1000,7 @@ def validate_chart_definition(
             member = catalog.metric(slug, semantic_view)
             _ensure_query_member(member, semantic_view, role)
             validate_metric(member, catalog)
-            if chart_type not in {"kpi", "table"}:
+            if rule["numeric_metrics_required"]:
                 source = (
                     catalog.field(member.source_field, semantic_view)
                     if member.source_field is not None

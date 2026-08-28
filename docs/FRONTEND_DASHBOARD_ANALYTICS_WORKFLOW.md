@@ -16,6 +16,8 @@ flowchart TD
     B --> C{Request succeeded?}
     C -- No --> C1[Show authentication, disabled-feature, or retry state]
     C -- Yes --> D[Keep model_version and group fields and metrics by semantic_view]
+    D --> V[GET /analytics/query-combinations]
+    V --> V1[Render only finite validated query templates]
 
     D --> E[GET /analytics/catalog/availability?semantic_view=...]
     E --> F{field.available?}
@@ -35,7 +37,8 @@ flowchart TD
 
     M --> N{Published dashboard card?}
     N -- Yes --> O[POST /analytics/charts/chart_id/data]
-    N -- No, ad-hoc exploration --> P[POST /analytics/query]
+    N -- No, guided exploration --> V1
+    V1 --> P[Apply allowed overrides and POST template to /analytics/query]
     O --> Q[Read rows, columns, warnings, freshness_time, model_version]
     P --> Q
     Q --> R[Render chart or KPI]
@@ -61,6 +64,8 @@ sequenceDiagram
     User->>FE: Open dashboard
     FE->>API: GET /analytics/catalog
     API-->>FE: model_version, semantic_views, fields, metrics
+    FE->>API: GET /analytics/query-combinations
+    API-->>FE: finite validated templates and compatible chart types
 
     loop Each semantic view used by the page
         FE->>API: GET /analytics/catalog/availability?semantic_view=view
@@ -89,12 +94,13 @@ sequenceDiagram
 
 | Call | Frontend use |
 | --- | --- |
-| `GET /analytics/catalog` | The allowlist of role-visible semantic views, dimensions, metrics, and chart types. Only send slugs returned by this response. |
+| `GET /analytics/catalog` | The allowlist of role-visible semantic views, dimensions, metrics, and chart types. Its `combinations` object supplies query limits, per-view member compatibility, grain meaning, and chart shapes. Only send slugs returned by this response. |
+| `GET /analytics/query-combinations?semantic_view=...` | A finite collection of directly executable, active-catalog-validated query templates. Use this for guided exploration; preserve dimensions, metrics, time dimension, and grain, and change only the listed `allowed_overrides`. |
 | `GET /analytics/catalog/availability?semantic_view=...` | Whether each catalog field has at least one non-null value in that view. Show fields where `available` is `true`; an availability rate below 1 still means the field can be used. |
 | `GET /analytics/charts/published` | The governed dashboard cards visible to the caller. Store both `id` (for the data URL) and `slug` (stable frontend lookup). |
 | `POST /analytics/filter-options` | Non-null dropdown values for one available dimension. Send already selected compatible filters to implement dependent selectors and follow `next_cursor` while `has_more` is true. |
 | `POST /analytics/charts/{chart_id}/data` | Preferred path for a predefined dashboard card. The dimensions and metrics stay governed; the frontend may override filters, time range/granularity, timezone, order, and limit. |
-| `POST /analytics/query` | Use only for an ad-hoc explorer whose dimensions and metrics were selected from the catalog. |
+| `POST /analytics/query` | For guided exploration, post a template returned by `GET /analytics/query-combinations`. Reserve free member selection from the catalog for an explicitly advanced ad-hoc explorer. |
 
 Catalog membership and data availability are different: a field may be
 published in the catalog but have `available: false` for the current BU. The

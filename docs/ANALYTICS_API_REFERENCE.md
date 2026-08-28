@@ -118,6 +118,114 @@ Returns the active immutable catalog the current role is allowed to use. It incl
 
 Use this endpoint before building an exploration UI. A client should only send slugs returned here to the query endpoints.
 
+The response also includes a machine-readable `combinations` contract so a
+frontend does not need to maintain a separate handwritten compatibility table:
+
+```json
+{
+  "combinations": {
+    "query": {
+      "max_dimensions": 3,
+      "max_metrics": 5,
+      "max_filters": 20,
+      "requires_single_semantic_view": true,
+      "members_must_belong_to_semantic_view": true,
+      "order_members_must_be_selected": true,
+      "time_dimension_must_not_be_dimension": true
+    },
+    "semantic_views": [
+      {
+        "semantic_view": "survey_topics",
+        "grain": "one survey-to-topic assignment",
+        "dimensions": ["assignment_id", "survey_id", "topic", "sentiment"],
+        "metrics": ["assignment_count", "distinct_survey_count"],
+        "default_count_metric": "assignment_count",
+        "distinct_survey_metric": "distinct_survey_count",
+        "assignment_dimension": "topic",
+        "response_sentiment_dimension": "topic_sentiment",
+        "assignment_sentiment_dimension": "sentiment"
+      }
+    ],
+    "charts": [
+      {
+        "chart_type": "pie",
+        "min_dimensions": 1,
+        "max_dimensions": 1,
+        "min_metrics": 1,
+        "max_metrics": 1,
+        "allows_time_dimension": false,
+        "dimension_count_includes_time_dimension": true,
+        "numeric_metrics_required": true,
+        "requires_at_least_one_member": false,
+        "required_dimensions": []
+      }
+    ]
+  }
+}
+```
+
+The example arrays are abbreviated. The real response lists every role-visible
+dimension and metric in each semantic view, including published local members.
+The `charts` rules are generated from the same definitions used by server-side
+chart validation.
+
+### `GET /analytics/query-combinations`
+
+Returns a finite, curated collection of aggregate query templates. Use this
+endpoint when the frontend should offer only known-good combinations instead of
+building arbitrary permutations from `GET /analytics/catalog`.
+
+The optional `semantic_view` query parameter limits the collection to one view:
+
+```text
+GET /analytics/query-combinations?semantic_view=survey_responses
+```
+
+Through the local frontend BFF, the corresponding URL is:
+
+```text
+GET http://localhost:3000/api/bff/analytics/query-combinations?semantic_view=survey_responses
+```
+
+Each returned `query` is a directly executable `POST /analytics/query` body and
+has already passed the same active-catalog, member-visibility, semantic-view,
+time-dimension, and metric validation used by the query endpoint. Templates
+whose members are not visible to the caller are omitted.
+
+Example response item:
+
+```json
+{
+  "slug": "responses_by_day",
+  "label": "Daily response trend",
+  "description": "Count responses in daily reported-at buckets.",
+  "semantic_view": "survey_responses",
+  "grain": "one non-deleted survey response",
+  "query": {
+    "semantic_view": "survey_responses",
+    "dimensions": [],
+    "metrics": ["response_count"],
+    "filters": [],
+    "time_dimension": "reported_at",
+    "time_granularity": "day",
+    "order": [],
+    "limit": 100
+  },
+  "compatible_chart_types": ["line", "area"],
+  "allowed_overrides": ["filters", "time_range", "timezone", "order", "limit"]
+}
+```
+
+Notice that `reported_at` is not repeated in `dimensions`. The frontend may
+change only fields listed in `allowed_overrides`; member selection and the
+template's time grain remain fixed. Add, for example,
+`"timezone": "Asia/Hong_Kong"` before posting the selected query.
+
+The built-in finite collection covers response totals, response sentiment,
+store format, channel, daily trends, average CLS, and topic/department/keyword
+assignment counts and distinct-survey views. `count` is the number of templates
+returned after semantic-view and role filtering.
+
 ### `GET /analytics/catalog/availability`
 
 Returns which visible fields actually contain data for one semantic view. It is the intended way for a frontend to hide fields that are entirely null instead of guessing from the catalog definition.

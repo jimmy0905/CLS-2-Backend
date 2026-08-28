@@ -19,6 +19,7 @@ from utils.analytics import (
     QuerySpec,
     SemanticCatalog,
     allowed_aggregations,
+    chart_combination_rules,
     compile_cube_query,
     escape_spreadsheet_formula,
     validate_chart_definition,
@@ -320,6 +321,20 @@ def test_chart_compatibility_accepts_supported_shapes(
     chart_type: str, dimensions: list[str], metrics: list[str]
 ) -> None:
     validate_chart_definition(chart_type, dimensions, metrics)
+
+
+def test_machine_readable_chart_rules_are_accepted_by_validator() -> None:
+    for rule in chart_combination_rules():
+        dimensions = list(rule["required_dimensions"]) or [
+            f"dimension_{index}"
+            for index in range(rule["min_dimensions"])
+        ]
+        metric_count = rule["min_metrics"]
+        if rule["requires_at_least_one_member"] and not dimensions and not metric_count:
+            metric_count = 1
+        metrics = [f"metric_{index}" for index in range(metric_count)]
+
+        validate_chart_definition(rule["chart_type"], dimensions, metrics)
 
 
 @pytest.mark.parametrize(

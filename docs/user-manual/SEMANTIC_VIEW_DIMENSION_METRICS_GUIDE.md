@@ -678,6 +678,32 @@ allowlist：
 GET /analytics/catalog
 ```
 
+Catalog response 的 `combinations` 是正式、機器可讀的組合合約：
+
+```text
+combinations.query          = query 數量及同 View 限制
+combinations.semantic_views = 每個 View 的 grain、Dimensions 和 Metrics
+combinations.charts         = 每種 Chart 的 Dimension／Metric shape
+```
+
+前端應直接使用這個結構建立選擇器。例如選定 `survey_topics` 後，只顯示
+該項目的 `dimensions` 和 `metrics`；不要在前端再維護另一份手寫清單。
+
+如果產品只希望提供有限、已驗證的查詢，而不是讓使用者自由排列所有
+members，應使用：
+
+```http
+GET /analytics/query-combinations
+GET /analytics/query-combinations?semantic_view=survey_responses
+```
+
+每個項目的 `query` 都可以直接送到 `POST /analytics/query`，並附有
+`compatible_chart_types` 和 `allowed_overrides`。前端只應修改
+`allowed_overrides` 列出的 filters、日期範圍、timezone、order 或 limit；
+不要自行把 time dimension 再加入 `dimensions`。例如每日趨勢模板會使用
+`time_dimension=reported_at` 和 `time_granularity=day`，而
+`dimensions` 明確保持為空陣列。
+
 一個成員出現在 catalog，只代表它已發布及可查詢。要確認該 BU 是否真的
 有非空資料，應再查詢：
 

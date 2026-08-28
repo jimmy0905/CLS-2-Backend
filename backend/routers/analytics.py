@@ -41,14 +41,19 @@ from utils.analytics import (
     CatalogMetric,
     FieldType,
     FilterSpec,
+    MAX_DIMENSIONS,
+    MAX_FILTERS,
+    MAX_METRICS,
     OrderSpec,
     QuerySpec,
     SemanticCatalog,
     Visibility,
+    chart_combination_rules,
     compile_cube_query,
     validate_chart_definition,
     validate_identifier,
     validate_metric,
+    validate_query,
 )
 from utils.analytics_cube import CubeClient, CubeQueryError, CubeUnavailableError
 from utils.analytics_drilldown import (
@@ -75,19 +80,8 @@ _SEMANTIC_VIEWS = {
     "survey_keywords",
 }
 _PROFILE = re.compile(r"^[a-z0-9]+_(?:cls|ecls)$")
-_CHART_TYPES = (
-    "kpi",
-    "table",
-    "bar",
-    "column",
-    "stacked_bar",
-    "line",
-    "area",
-    "pie",
-    "donut",
-    "scatter",
-    "heatmap",
-    "store_map",
+_CHART_TYPES = tuple(
+    rule["chart_type"] for rule in chart_combination_rules()
 )
 
 # OpenAPI descriptions deliberately mirror the public analytics contract.  The
@@ -95,11 +89,16 @@ _CHART_TYPES = (
 # frontend and integration clients without exposing Cube member names or SQL.
 _ENDPOINT_DESCRIPTIONS = {
     "viewer_catalog": "Return the active immutable catalog visible to the current role. "
-    "Only published viewer-visible fields, metrics, and chart types are returned; "
-    "draft definitions, source keys, and raw payload fields are never exposed.",
+    "It includes published fields and metrics plus machine-readable semantic-view, "
+    "query-limit, and chart-shape combination rules. Draft definitions, source keys, "
+    "and raw payload fields are never exposed.",
     "viewer_availability": "Report field-level non-null counts and availability rates "
     "for one semantic view. Results include only fields visible to the current role "
     "and are cached for up to 15 minutes to avoid repeated reporting scans.",
+    "viewer_query_combinations": "Return a finite, curated collection of executable "
+    "aggregate query templates. Every template is validated against the active, "
+    "role-visible catalog and includes compatible chart types plus the request fields "
+    "that a frontend may safely override.",
     "viewer_filter_options": "Return distinct non-null values for one published "
     "dimension, with matching-row counts. Optional governed filters and string search "
     "narrow the list for a frontend filter control; use cursor to page beyond 1,000 values.",
@@ -211,6 +210,179 @@ _FILTER_OPTION_COUNT_METRICS = {
     "survey_departments": "assignment_count",
     "survey_keywords": "assignment_count",
 }
+_SEMANTIC_VIEW_GRAINS = {
+    "survey_responses": "one non-deleted survey response",
+    "survey_topics": "one survey-to-topic assignment",
+    "survey_departments": "one survey-to-department assignment",
+    "survey_keywords": "one survey-to-keyword assignment",
+}
+_ASSIGNMENT_DIMENSIONS = {
+    "survey_responses": None,
+    "survey_topics": "topic",
+    "survey_departments": "department",
+    "survey_keywords": "keyword",
+}
+
+_COMMON_QUERY_OVERRIDES = ("filters", "timezone", "order", "limit")
+_TIME_QUERY_OVERRIDES = (
+    "filters",
+    "time_range",
+    "timezone",
+    "order",
+    "limit",
+)
+
+_QUERY_COMBINATION_DEFINITIONS: tuple[dict[str, Any], ...] = (
+    {
+        "slug": "responses_total",
+        "label": "Total responses",
+        "description": "Count non-deleted survey responses.",
+        "query": {
+            "semantic_view": "survey_responses",
+            "metrics": ["response_count"],
+            "limit": 100,
+        },
+        "allowed_overrides": _COMMON_QUERY_OVERRIDES,
+    },
+    {
+        "slug": "responses_by_sentiment",
+        "label": "Responses by sentiment",
+        "description": "Count responses by the response-level topic sentiment.",
+        "query": {
+            "semantic_view": "survey_responses",
+            "dimensions": ["topic_sentiment"],
+            "metrics": ["response_count"],
+            "limit": 100,
+        },
+        "allowed_overrides": _COMMON_QUERY_OVERRIDES,
+    },
+    {
+        "slug": "responses_by_store_format",
+        "label": "Responses by store format",
+        "description": "Count responses by store format.",
+        "query": {
+            "semantic_view": "survey_responses",
+            "dimensions": ["store_format"],
+            "metrics": ["response_count"],
+            "limit": 100,
+        },
+        "allowed_overrides": _COMMON_QUERY_OVERRIDES,
+    },
+    {
+        "slug": "responses_by_channel",
+        "label": "Responses by channel",
+        "description": "Count responses by channel.",
+        "query": {
+            "semantic_view": "survey_responses",
+            "dimensions": ["channel_name"],
+            "metrics": ["response_count"],
+            "limit": 100,
+        },
+        "allowed_overrides": _COMMON_QUERY_OVERRIDES,
+    },
+    {
+        "slug": "responses_by_day",
+        "label": "Daily response trend",
+        "description": "Count responses in daily reported-at buckets.",
+        "query": {
+            "semantic_view": "survey_responses",
+            "dimensions": [],
+            "metrics": ["response_count"],
+            "time_dimension": "reported_at",
+            "time_granularity": "day",
+            "limit": 100,
+        },
+        "allowed_overrides": _TIME_QUERY_OVERRIDES,
+    },
+    {
+        "slug": "responses_by_sentiment_by_day",
+        "label": "Daily response sentiment trend",
+        "description": "Count responses by response sentiment and reported-at day.",
+        "query": {
+            "semantic_view": "survey_responses",
+            "dimensions": ["topic_sentiment"],
+            "metrics": ["response_count"],
+            "time_dimension": "reported_at",
+            "time_granularity": "day",
+            "limit": 100,
+        },
+        "allowed_overrides": _TIME_QUERY_OVERRIDES,
+    },
+    {
+        "slug": "average_cls_by_store_format",
+        "label": "Average CLS by store format",
+        "description": "Compare response-level average CLS across store formats.",
+        "query": {
+            "semantic_view": "survey_responses",
+            "dimensions": ["store_format"],
+            "metrics": ["cls_average"],
+            "limit": 100,
+        },
+        "allowed_overrides": _COMMON_QUERY_OVERRIDES,
+    },
+    *tuple(
+        combination
+        for semantic_view, singular, dimension in (
+            ("survey_topics", "topic", "topic"),
+            ("survey_departments", "department", "department"),
+            ("survey_keywords", "keyword", "keyword"),
+        )
+        for combination in (
+            {
+                "slug": f"{singular}_assignments_by_{singular}",
+                "label": f"{singular.title()} assignments by {singular}",
+                "description": f"Count {singular} assignment rows by {singular}.",
+                "query": {
+                    "semantic_view": semantic_view,
+                    "dimensions": [dimension],
+                    "metrics": ["assignment_count"],
+                    "limit": 100,
+                },
+                "allowed_overrides": _COMMON_QUERY_OVERRIDES,
+            },
+            {
+                "slug": f"{singular}_assignments_by_sentiment",
+                "label": f"{singular.title()} assignments by sentiment",
+                "description": f"Count {singular} assignments by assignment sentiment.",
+                "query": {
+                    "semantic_view": semantic_view,
+                    "dimensions": ["sentiment"],
+                    "metrics": ["assignment_count"],
+                    "limit": 100,
+                },
+                "allowed_overrides": _COMMON_QUERY_OVERRIDES,
+            },
+            {
+                "slug": f"distinct_surveys_by_{singular}",
+                "label": f"Distinct surveys by {singular}",
+                "description": (
+                    f"Count surveys having at least one matching {singular} assignment."
+                ),
+                "query": {
+                    "semantic_view": semantic_view,
+                    "dimensions": [dimension],
+                    "metrics": ["distinct_survey_count"],
+                    "limit": 100,
+                },
+                "allowed_overrides": _COMMON_QUERY_OVERRIDES,
+            },
+            {
+                "slug": f"{singular}_assignments_by_day",
+                "label": f"Daily {singular} assignment trend",
+                "description": f"Count {singular} assignments by reported-at day.",
+                "query": {
+                    "semantic_view": semantic_view,
+                    "dimensions": [],
+                    "metrics": ["assignment_count"],
+                    "time_dimension": "reported_at",
+                    "time_granularity": "day",
+                    "limit": 100,
+                },
+                "allowed_overrides": _TIME_QUERY_OVERRIDES,
+            },
+        )
+    ),
+)
 
 
 def _core_field(
@@ -392,6 +564,95 @@ for _view in ("survey_topics", "survey_departments", "survey_keywords"):
 
 class _StrictInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class _StrictOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class CatalogFieldOutput(_StrictOutput):
+    slug: str
+    label: str
+    semantic_view: str
+    data_type: FieldType
+    visibility: Visibility
+
+
+class CatalogMetricOutput(_StrictOutput):
+    slug: str
+    label: str
+    semantic_view: str
+    operation: Aggregation
+    visibility: Visibility
+
+
+class QueryCombinationRulesOutput(_StrictOutput):
+    max_dimensions: int
+    max_metrics: int
+    max_filters: int
+    requires_single_semantic_view: bool
+    members_must_belong_to_semantic_view: bool
+    order_members_must_be_selected: bool
+    time_dimension_must_not_be_dimension: bool
+
+
+class SemanticViewCombinationOutput(_StrictOutput):
+    semantic_view: str
+    grain: str
+    dimensions: tuple[str, ...]
+    metrics: tuple[str, ...]
+    default_count_metric: str | None
+    distinct_survey_metric: str | None
+    assignment_dimension: str | None
+    response_sentiment_dimension: str
+    assignment_sentiment_dimension: str | None
+
+
+class ChartCombinationOutput(_StrictOutput):
+    chart_type: str
+    min_dimensions: int
+    max_dimensions: int
+    min_metrics: int
+    max_metrics: int
+    allows_time_dimension: bool
+    dimension_count_includes_time_dimension: bool
+    numeric_metrics_required: bool
+    requires_at_least_one_member: bool
+    required_dimensions: tuple[str, ...]
+
+
+class CatalogCombinationsOutput(_StrictOutput):
+    query: QueryCombinationRulesOutput
+    semantic_views: tuple[SemanticViewCombinationOutput, ...]
+    charts: tuple[ChartCombinationOutput, ...]
+
+
+class AnalyticsCatalogResponse(_StrictOutput):
+    model_version: int
+    semantic_views: tuple[str, ...]
+    fields: tuple[CatalogFieldOutput, ...]
+    metrics: tuple[CatalogMetricOutput, ...]
+    chart_types: tuple[str, ...]
+    combinations: CatalogCombinationsOutput
+
+
+class QueryCombinationOutput(_StrictOutput):
+    slug: str
+    label: str
+    description: str
+    semantic_view: str
+    grain: str
+    query: QuerySpec
+    compatible_chart_types: tuple[str, ...]
+    allowed_overrides: tuple[
+        Literal["filters", "time_range", "timezone", "order", "limit"], ...
+    ]
+
+
+class QueryCombinationsResponse(_StrictOutput):
+    model_version: int
+    count: int
+    combinations: tuple[QueryCombinationOutput, ...]
 
 
 class FieldInput(_StrictInput):
@@ -1389,32 +1650,145 @@ async def _execute_query(
     }
 
 
-def _catalog_response(catalog: SemanticCatalog, model_version: int) -> dict[str, Any]:
-    return {
-        "model_version": model_version,
-        "semantic_views": sorted(catalog.views),
-        "fields": [
-            {
-                "slug": field.slug,
-                "label": field.label,
-                "semantic_view": field.semantic_view,
-                "data_type": field.data_type.value,
-                "visibility": field.visibility.value,
-            }
-            for field in catalog.fields
-        ],
-        "metrics": [
-            {
-                "slug": metric.slug,
-                "label": metric.label,
-                "semantic_view": metric.semantic_view,
-                "operation": metric.aggregation.value,
-                "visibility": metric.visibility.value,
-            }
-            for metric in catalog.metrics
-        ],
-        "chart_types": list(_CHART_TYPES),
-    }
+def _semantic_view_combination(
+    catalog: SemanticCatalog, semantic_view: str
+) -> SemanticViewCombinationOutput:
+    dimensions = tuple(
+        field.slug for field in catalog.fields if field.semantic_view == semantic_view
+    )
+    metrics = tuple(
+        metric.slug
+        for metric in catalog.metrics
+        if metric.semantic_view == semantic_view
+    )
+    default_count_metric = _FILTER_OPTION_COUNT_METRICS[semantic_view]
+    return SemanticViewCombinationOutput(
+        semantic_view=semantic_view,
+        grain=_SEMANTIC_VIEW_GRAINS[semantic_view],
+        dimensions=dimensions,
+        metrics=metrics,
+        default_count_metric=(
+            default_count_metric if default_count_metric in metrics else None
+        ),
+        distinct_survey_metric=(
+            "distinct_survey_count" if "distinct_survey_count" in metrics else None
+        ),
+        assignment_dimension=_ASSIGNMENT_DIMENSIONS[semantic_view],
+        response_sentiment_dimension="topic_sentiment",
+        assignment_sentiment_dimension=(
+            "sentiment" if semantic_view != "survey_responses" else None
+        ),
+    )
+
+
+def _catalog_response(
+    catalog: SemanticCatalog, model_version: int
+) -> AnalyticsCatalogResponse:
+    fields = tuple(
+        CatalogFieldOutput(
+            slug=field.slug,
+            label=field.label,
+            semantic_view=field.semantic_view,
+            data_type=field.data_type,
+            visibility=field.visibility,
+        )
+        for field in catalog.fields
+    )
+    metrics = tuple(
+        CatalogMetricOutput(
+            slug=metric.slug,
+            label=metric.label,
+            semantic_view=metric.semantic_view,
+            operation=metric.aggregation,
+            visibility=metric.visibility,
+        )
+        for metric in catalog.metrics
+    )
+    semantic_view_combinations = tuple(
+        _semantic_view_combination(catalog, semantic_view)
+        for semantic_view in sorted(catalog.views)
+    )
+    chart_rules = tuple(
+        ChartCombinationOutput(
+            **rule,
+            dimension_count_includes_time_dimension=True,
+        )
+        for rule in chart_combination_rules()
+    )
+    return AnalyticsCatalogResponse(
+        model_version=model_version,
+        semantic_views=tuple(sorted(catalog.views)),
+        fields=fields,
+        metrics=metrics,
+        chart_types=_CHART_TYPES,
+        combinations=CatalogCombinationsOutput(
+            query=QueryCombinationRulesOutput(
+                max_dimensions=MAX_DIMENSIONS,
+                max_metrics=MAX_METRICS,
+                max_filters=MAX_FILTERS,
+                requires_single_semantic_view=True,
+                members_must_belong_to_semantic_view=True,
+                order_members_must_be_selected=True,
+                time_dimension_must_not_be_dimension=True,
+            ),
+            semantic_views=semantic_view_combinations,
+            charts=chart_rules,
+        ),
+    )
+
+
+def _query_combinations_response(
+    catalog: SemanticCatalog,
+    model_version: int,
+    role: str,
+    semantic_view: str | None = None,
+) -> QueryCombinationsResponse:
+    combinations: list[QueryCombinationOutput] = []
+    for definition in _QUERY_COMBINATION_DEFINITIONS:
+        query = QuerySpec.model_validate(definition["query"])
+        if semantic_view is not None and query.semantic_view != semantic_view:
+            continue
+        try:
+            query = validate_query(query, catalog, role)
+        except AnalyticsValidationError:
+            # A catalog may hide or retire a member for this role. Never advertise
+            # a combination that the same caller cannot send to POST /query.
+            continue
+
+        compatible_chart_types: list[str] = []
+        for chart_type in _CHART_TYPES:
+            try:
+                validate_chart_definition(
+                    chart_type,
+                    query.dimensions,
+                    query.metrics,
+                    catalog,
+                    semantic_view=query.semantic_view,
+                    time_dimension=query.time_dimension,
+                    role=role,
+                )
+            except AnalyticsValidationError:
+                continue
+            compatible_chart_types.append(chart_type)
+
+        combinations.append(
+            QueryCombinationOutput(
+                slug=definition["slug"],
+                label=definition["label"],
+                description=definition["description"],
+                semantic_view=query.semantic_view,
+                grain=_SEMANTIC_VIEW_GRAINS[query.semantic_view],
+                query=query,
+                compatible_chart_types=tuple(compatible_chart_types),
+                allowed_overrides=definition["allowed_overrides"],
+            )
+        )
+
+    return QueryCombinationsResponse(
+        model_version=model_version,
+        count=len(combinations),
+        combinations=tuple(combinations),
+    )
 
 
 def _snapshot_charts(version: AnalyticsModelVersion | None, role: str) -> list[dict[str, Any]]:
@@ -2034,18 +2408,59 @@ internal_router = APIRouter(
 
 
 @viewer_router.get(
-    "/catalog", summary="Get the active analytics catalog", description=_ENDPOINT_DESCRIPTIONS["viewer_catalog"]
+    "/catalog",
+    summary="Get the active analytics catalog",
+    description=_ENDPOINT_DESCRIPTIONS["viewer_catalog"],
+    response_model=AnalyticsCatalogResponse,
 )
 async def get_catalog(
     db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
-) -> dict[str, Any]:
+) -> AnalyticsCatalogResponse:
     role = _role(current_user)
     try:
         catalog = _catalog(db, role)
     except (AnalyticsValidationError, ValueError) as error:
-        raise HTTPException(status_code=503, detail="Analytics catalog is invalid") from error
+        raise HTTPException(
+            status_code=503,
+            detail="Analytics catalog is invalid",
+        ) from error
     version = _active_model_version(db)
     return _catalog_response(catalog, version.catalog_version if version else 0)
+
+
+@viewer_router.get(
+    "/query-combinations",
+    summary="List finite analytics query combinations",
+    description=_ENDPOINT_DESCRIPTIONS["viewer_query_combinations"],
+    response_model=QueryCombinationsResponse,
+    response_model_exclude_none=True,
+)
+async def get_query_combinations(
+    semantic_view: Literal[
+        "survey_responses",
+        "survey_topics",
+        "survey_departments",
+        "survey_keywords",
+    ]
+    | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> QueryCombinationsResponse:
+    role = _role(current_user)
+    try:
+        catalog = _catalog(db, role)
+        version = _active_model_version(db)
+        return _query_combinations_response(
+            catalog,
+            version.catalog_version if version else 0,
+            role,
+            semantic_view,
+        )
+    except (AnalyticsValidationError, ValueError) as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Analytics catalog is invalid",
+        ) from error
 
 
 @viewer_router.get(

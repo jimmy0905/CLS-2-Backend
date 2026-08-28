@@ -5,7 +5,7 @@ cubes:
     sql_table: analytics_survey_facts
 
     refresh_key:
-      every: 15 minute
+      every: __PRE_AGGREGATION_REFRESH_EVERY__
 
     measures:
       - name: response_count
@@ -291,7 +291,7 @@ cubes:
         partition_granularity: month
         scheduled_refresh: true
         refresh_key:
-          every: 15 minute
+          every: __PRE_AGGREGATION_REFRESH_EVERY__
 
       - name: monthly_core
         measures:
@@ -308,6 +308,6 @@ cubes:
         partition_granularity: year
         scheduled_refresh: true
         refresh_key:
-          every: 15 minute
+          every: __PRE_AGGREGATION_REFRESH_EVERY__
 
       # __LOCAL_PREAGGREGATIONS__

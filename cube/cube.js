@@ -4,6 +4,7 @@ const {
   contextToApiScopes,
   enforceSecurityContext,
 } = require('./lib/catalog-repository');
+const { scheduledRefreshTimer } = require('./lib/refresh-config');
 
 const appId = process.env.CUBEJS_APP_ID;
 const orchestratorId = process.env.CUBEJS_ORCHESTRATOR_ID;
@@ -26,6 +27,7 @@ module.exports = {
   schemaVersion: catalogVersion,
   queryRewrite: enforceSecurityContext,
   contextToApiScopes,
+  scheduledRefreshTimer: scheduledRefreshTimer(),
   scheduledRefreshContexts: async () => [
     {
       securityContext: {

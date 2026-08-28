@@ -264,6 +264,6 @@ cubes:
         partition_granularity: month
         scheduled_refresh: true
         refresh_key:
-          every: 15 minute
+          every: __PRE_AGGREGATION_REFRESH_EVERY__
 
       # __LOCAL_PREAGGREGATIONS__

@@ -86,6 +86,18 @@ while Cube runs shadow queries. Set it to `true` only after the comparison gate.
 Rollback sets the flag back to `false`; the ordinary health, upload, survey, and
 dashboard paths have no dependency on Cube health.
 
+The Compose overlay exposes two global refresh settings with production-safe
+defaults:
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `ANALYTICS_PRE_AGGREGATION_REFRESH_EVERY` | `15 minute` | The Cube `refresh_key.every` value compiled into core and published-chart rollups. |
+| `ANALYTICS_SCHEDULED_REFRESH_INTERVAL_SECONDS` | `30` | How often each refresh-worker container starts a scheduled-refresh cycle. API containers always keep the timer disabled. |
+
+Set overrides in the root `.env` before creating the Compose services. Changing
+the pre-aggregation refresh value changes the compiled Cube schema and requires
+the affected partitions to be rebuilt.
+
 ## Dynamic catalog contract
 
 At compile time Cube calls the profile backend's
