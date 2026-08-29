@@ -1,0 +1,447 @@
+[
+  {
+    "method": "GET",
+    "operation_id": "list_charts_admin_analytics_charts_get",
+    "path": "/admin/analytics/charts"
+  },
+  {
+    "method": "POST",
+    "operation_id": "create_chart_admin_analytics_charts_post",
+    "path": "/admin/analytics/charts"
+  },
+  {
+    "method": "DELETE",
+    "operation_id": "delete_chart_admin_analytics_charts__chart_id__delete",
+    "path": "/admin/analytics/charts/{chart_id}"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_chart_admin_analytics_charts__chart_id__get",
+    "path": "/admin/analytics/charts/{chart_id}"
+  },
+  {
+    "method": "PUT",
+    "operation_id": "update_chart_admin_analytics_charts__chart_id__put",
+    "path": "/admin/analytics/charts/{chart_id}"
+  },
+  {
+    "method": "POST",
+    "operation_id": "publish_chart_admin_analytics_charts__chart_id__publish_post",
+    "path": "/admin/analytics/charts/{chart_id}/publish"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_builder_measures_analytics_builder_measures_get",
+    "path": "/analytics/builder/measures"
+  },
+  {
+    "method": "POST",
+    "operation_id": "post_builder_options_analytics_builder_options_post",
+    "path": "/analytics/builder/options"
+  },
+  {
+    "method": "POST",
+    "operation_id": "post_builder_query_analytics_builder_query_post",
+    "path": "/analytics/builder/query"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_catalog_analytics_catalog_get",
+    "path": "/analytics/catalog"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_catalog_availability_analytics_catalog_availability_get",
+    "path": "/analytics/catalog/availability"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_published_charts_analytics_charts_published_get",
+    "path": "/analytics/charts/published"
+  },
+  {
+    "method": "POST",
+    "operation_id": "get_published_chart_data_analytics_charts__chart_id__data_post",
+    "path": "/analytics/charts/{chart_id}/data"
+  },
+  {
+    "method": "POST",
+    "operation_id": "drilldown_analytics_analytics_drilldown_post",
+    "path": "/analytics/drilldown"
+  },
+  {
+    "method": "POST",
+    "operation_id": "create_analytics_export_analytics_exports_post",
+    "path": "/analytics/exports"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_analytics_export_analytics_exports__job_id__get",
+    "path": "/analytics/exports/{job_id}"
+  },
+  {
+    "method": "GET",
+    "operation_id": "download_analytics_export_analytics_exports__job_id__download_get",
+    "path": "/analytics/exports/{job_id}/download"
+  },
+  {
+    "method": "POST",
+    "operation_id": "get_filter_options_analytics_filter_options_post",
+    "path": "/analytics/filter-options"
+  },
+  {
+    "method": "POST",
+    "operation_id": "query_analytics_analytics_query_post",
+    "path": "/analytics/query"
+  },
+  {
+    "method": "POST",
+    "operation_id": "get_query_capabilities_analytics_query_capabilities_post",
+    "path": "/analytics/query-capabilities"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_query_combinations_analytics_query_combinations_get",
+    "path": "/analytics/query-combinations"
+  },
+  {
+    "method": "POST",
+    "operation_id": "query_analytics_records_analytics_records_query_post",
+    "path": "/analytics/records/query"
+  },
+  {
+    "method": "GET",
+    "operation_id": "azure_callback_auth_azure_callback_get",
+    "path": "/auth/azure/callback"
+  },
+  {
+    "method": "GET",
+    "operation_id": "azure_login_auth_azure_login_get",
+    "path": "/auth/azure/login"
+  },
+  {
+    "method": "POST",
+    "operation_id": "renew_token_auth_renew_token_post",
+    "path": "/auth/renew-token"
+  },
+  {
+    "method": "POST",
+    "operation_id": "token_auth_token_post",
+    "path": "/auth/token"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_channels_channels__get",
+    "path": "/channels/"
+  },
+  {
+    "method": "POST",
+    "operation_id": "create_channel_channels__post",
+    "path": "/channels/"
+  },
+  {
+    "method": "DELETE",
+    "operation_id": "delete_channel_channels__channel_id__delete",
+    "path": "/channels/{channel_id}"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_channel_channels__channel_id__get",
+    "path": "/channels/{channel_id}"
+  },
+  {
+    "method": "PUT",
+    "operation_id": "update_channel_channels__channel_id__put",
+    "path": "/channels/{channel_id}"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_channel_and_delivery_service_distribution_dashboard_channel_and_delivery_service_distribution_get",
+    "path": "/dashboard/channel-and-delivery-service-distribution"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_data_coverage_dashboard_data_coverage_get",
+    "path": "/dashboard/data-coverage"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_department_distribution_dashboard_department_distribution_get",
+    "path": "/dashboard/department-distribution"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_keyword_analysis_dashboard_keyword_analysis_get",
+    "path": "/dashboard/keyword-analysis"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_last_updated_date_dashboard_last_updated_date_get",
+    "path": "/dashboard/last-updated-date"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_sentiment_distribution_dashboard_sentiment_distribution_get",
+    "path": "/dashboard/sentiment-distribution"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_store_column_sentiment_distribution_dashboard_store_column_sentiment_distribution_get",
+    "path": "/dashboard/store-column-sentiment-distribution"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_store_distribution_dashboard_store_distribution_get",
+    "path": "/dashboard/store-distribution"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_topic_distribution_dashboard_topic_distribution_get",
+    "path": "/dashboard/topic-distribution"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_topic_sentiment_score_dashboard_topic_sentiment_score_get",
+    "path": "/dashboard/topic-sentiment-score"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_delivery_services_delivery_services__get",
+    "path": "/delivery_services/"
+  },
+  {
+    "method": "POST",
+    "operation_id": "create_delivery_service_delivery_services__post",
+    "path": "/delivery_services/"
+  },
+  {
+    "method": "DELETE",
+    "operation_id": "delete_delivery_service_delivery_services__delivery_service_id__delete",
+    "path": "/delivery_services/{delivery_service_id}"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_delivery_service_delivery_services__delivery_service_id__get",
+    "path": "/delivery_services/{delivery_service_id}"
+  },
+  {
+    "method": "PUT",
+    "operation_id": "update_delivery_service_delivery_services__delivery_service_id__put",
+    "path": "/delivery_services/{delivery_service_id}"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_departments_departments__get",
+    "path": "/departments/"
+  },
+  {
+    "method": "POST",
+    "operation_id": "create_department_departments__post",
+    "path": "/departments/"
+  },
+  {
+    "method": "DELETE",
+    "operation_id": "delete_department_departments__department_id__delete",
+    "path": "/departments/{department_id}"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_department_departments__department_id__get",
+    "path": "/departments/{department_id}"
+  },
+  {
+    "method": "PUT",
+    "operation_id": "update_department_departments__department_id__put",
+    "path": "/departments/{department_id}"
+  },
+  {
+    "method": "GET",
+    "operation_id": "health_check_health_get",
+    "path": "/health"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_internal_catalog_internal_analytics_catalog_get",
+    "path": "/internal/analytics/catalog"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_stores_stores__get",
+    "path": "/stores/"
+  },
+  {
+    "method": "POST",
+    "operation_id": "create_store_stores__post",
+    "path": "/stores/"
+  },
+  {
+    "method": "GET",
+    "operation_id": "export_stores_csv_stores_export_get",
+    "path": "/stores/export"
+  },
+  {
+    "method": "POST",
+    "operation_id": "upsert_stores_from_csv_stores_upsert_stores_from_csv_post",
+    "path": "/stores/upsert_stores_from_csv"
+  },
+  {
+    "method": "DELETE",
+    "operation_id": "delete_store_stores__store_key__delete",
+    "path": "/stores/{store_key}"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_store_stores__store_key__get",
+    "path": "/stores/{store_key}"
+  },
+  {
+    "method": "POST",
+    "operation_id": "get_top_k_performance_channels_by_ids_strategy_get_strategy_for_channel_by_ids_post",
+    "path": "/strategy/get_strategy_for_channel_by_ids"
+  },
+  {
+    "method": "POST",
+    "operation_id": "get_strategy_for_column_by_value_strategy_get_strategy_for_column_by_values_post",
+    "path": "/strategy/get_strategy_for_column_by_values"
+  },
+  {
+    "method": "POST",
+    "operation_id": "get_top_k_performance_delivery_services_by_ids_strategy_get_strategy_for_delivery_service_by_ids_post",
+    "path": "/strategy/get_strategy_for_delivery_service_by_ids"
+  },
+  {
+    "method": "POST",
+    "operation_id": "get_strategy_for_store_by_ids_strategy_get_strategy_for_store_by_ids_post",
+    "path": "/strategy/get_strategy_for_store_by_ids"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_strategy_v2_strategy_get_strategy_v2_get",
+    "path": "/strategy/get_strategy_v2"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_top_k_performance_channels_strategy_get_top_k_performance_channels_get",
+    "path": "/strategy/get_top_k_performance_channels"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_top_k_performance_columns_strategy_get_top_k_performance_columns_get",
+    "path": "/strategy/get_top_k_performance_columns"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_top_k_performance_delivery_services_strategy_get_top_k_performance_delivery_services_get",
+    "path": "/strategy/get_top_k_performance_delivery_services"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_top_k_performance_stores_strategy_get_top_k_performance_stores_get",
+    "path": "/strategy/get_top_k_performance_stores"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_surveys_surveys_get",
+    "path": "/surveys"
+  },
+  {
+    "method": "POST",
+    "operation_id": "create_survey_surveys__post",
+    "path": "/surveys/"
+  },
+  {
+    "method": "GET",
+    "operation_id": "download_surveys_surveys_download_get",
+    "path": "/surveys/download"
+  },
+  {
+    "method": "DELETE",
+    "operation_id": "delete_survey_surveys__survey_id__delete",
+    "path": "/surveys/{survey_id}"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_survey_surveys__survey_id__get",
+    "path": "/surveys/{survey_id}"
+  },
+  {
+    "method": "PUT",
+    "operation_id": "update_survey_surveys__survey_id__put",
+    "path": "/surveys/{survey_id}"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_upload_tasks_tasks_get",
+    "path": "/tasks"
+  },
+  {
+    "method": "GET",
+    "operation_id": "download_example_task_tasks_download_example_get",
+    "path": "/tasks/download/example"
+  },
+  {
+    "method": "GET",
+    "operation_id": "download_uploaded_task_tasks_download__upload_task_id__get",
+    "path": "/tasks/download/{upload_task_id}"
+  },
+  {
+    "method": "POST",
+    "operation_id": "upload_tasks_tasks_upload_tasks_post",
+    "path": "/tasks/upload_tasks"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_upload_task_tasks_upload_tasks__upload_task_id__get",
+    "path": "/tasks/upload_tasks/{upload_task_id}"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_topics_topics__get",
+    "path": "/topics/"
+  },
+  {
+    "method": "POST",
+    "operation_id": "create_topic_topics__post",
+    "path": "/topics/"
+  },
+  {
+    "method": "DELETE",
+    "operation_id": "delete_topic_topics__topic_id__delete",
+    "path": "/topics/{topic_id}"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_topic_topics__topic_id__get",
+    "path": "/topics/{topic_id}"
+  },
+  {
+    "method": "PUT",
+    "operation_id": "update_topic_topics__topic_id__put",
+    "path": "/topics/{topic_id}"
+  },
+  {
+    "method": "POST",
+    "operation_id": "translate_translator_translate_post",
+    "path": "/translator/translate"
+  },
+  {
+    "method": "GET",
+    "operation_id": "get_users_users__get",
+    "path": "/users/"
+  },
+  {
+    "method": "DELETE",
+    "operation_id": "delete_user_users__user_id__delete",
+    "path": "/users/{user_id}"
+  },
+  {
+    "method": "PUT",
+    "operation_id": "update_user_users__user_id__put",
+    "path": "/users/{user_id}"
+  },
+  {
+    "method": "PUT",
+    "operation_id": "update_user_password_users__user_id__password_put",
+    "path": "/users/{user_id}/password"
+  }
+]

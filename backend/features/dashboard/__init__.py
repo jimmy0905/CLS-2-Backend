@@ -1,0 +1,1 @@
+"""Legacy dashboard reporting capability."""

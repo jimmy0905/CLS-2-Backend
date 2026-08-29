@@ -17,8 +17,8 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from models.enum.Sentiment import TopicSentiment
-from routers import strategy
+from features.feedback.model.sentiment import TopicSentiment
+from features.strategy.endpoints import strategy
 
 
 class FakeQuery:

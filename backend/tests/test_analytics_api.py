@@ -20,9 +20,9 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import config
-from routers import analytics
-from utils.analytics import (
+import core.config as config
+from features.analytics.endpoints import analytics
+from features.analytics.model.semantic import (
     Aggregation,
     AnalyticsValidationError,
     CatalogField,
@@ -33,10 +33,10 @@ from utils.analytics import (
     SemanticCatalog,
     validate_query,
 )
-from utils.analytics_cube import CubeQueryError, CubeUnavailableError
-from utils.analytics_metadata_auth import sign_metadata_request
-from utils.database import get_db
-from utils.security import get_current_user, require_admin
+from infrastructure.integrations.cube import CubeQueryError, CubeUnavailableError
+from infrastructure.integrations.analytics_metadata_auth import sign_metadata_request
+from infrastructure.database.session import get_db
+from features.identity.service.security import get_current_user, require_admin
 
 
 class FakeDb:

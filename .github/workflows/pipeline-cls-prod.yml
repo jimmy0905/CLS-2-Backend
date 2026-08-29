@@ -14,8 +14,56 @@ env:
   DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/clsense-backend-prod
   IS_ECLS_ENABLED: false
 jobs:
+  quality:
+    name: Contract and quality gates
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_USER: test
+      DATABASE_PASSWORD: test
+      DATABASE_HOST: localhost
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: test
+      SESSION_SECRET_KEY: test-session-secret
+      JWT_SECRET_KEY: test-jwt-secret
+      ANALYTICS_E2E: "0"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install development dependencies
+        run: python -m pip install -r backend/requirements-dev.txt
+
+      - name: Verify dependencies
+        run: python -m pip check
+
+      - name: Run scoped formatting and lint checks
+        run: |
+          ruff format --check backend/app.py backend/core/errors.py backend/core/logging.py backend/core/openapi.py backend/features/master_data/dto.py backend/features/master_data/mapper.py backend/features/master_data/repository.py backend/features/master_data/service.py backend/features/identity/dto.py backend/features/identity/mapper.py backend/features/identity/repository.py backend/features/identity/service/users.py backend/features/translation/dto.py backend/features/translation/service.py backend/features/operations/lifecycle.py backend/features/operations/endpoint.py backend/features/operations/service.py
+          ruff check backend/app.py backend/core/errors.py backend/core/logging.py backend/core/openapi.py backend/features/master_data/dto.py backend/features/master_data/mapper.py backend/features/master_data/repository.py backend/features/master_data/service.py backend/features/identity/dto.py backend/features/identity/mapper.py backend/features/identity/repository.py backend/features/identity/service/users.py backend/features/translation/dto.py backend/features/translation/service.py backend/features/operations/lifecycle.py backend/features/operations/endpoint.py backend/features/operations/service.py
+          PYTHONPATH=backend mypy
+
+      - name: Run offline tests and infrastructure checks
+        run: |
+          ANALYTICS_E2E=0 python -m pytest -q -m "not analytics_e2e"
+          node --test cube/test/*.test.js
+          python scripts/validate_analytics_infra.py
+          PYTHONPATH=backend python scripts/verify_backend_contracts.py
+          python -m compileall -q backend
+          git diff --check
+
   build-image:
     name: Build Docker image
+    needs: quality
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

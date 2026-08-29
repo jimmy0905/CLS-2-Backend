@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from utils.analytics_statistics import (
+from features.analytics.model.statistics import (
     WeightDataQualityError,
     kish_effective_sample_size,
     mean_confidence_interval,

@@ -1,0 +1,2939 @@
+[
+  {
+    "columns": [
+      {
+        "default": null,
+        "name": "id",
+        "nullable": false,
+        "primary_key": true,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "actor_id",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "CHAR(36)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "action",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(64)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "resource_type",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(32)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "resource_id",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(64)",
+        "unique": null
+      },
+      {
+        "default": "callable:builtins.dict",
+        "name": "payload",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "JSON",
+        "unique": null
+      },
+      {
+        "default": "callable:core.time.utc_now",
+        "name": "created_at",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      }
+    ],
+    "constraints": [
+      {
+        "columns": [
+          "actor_id"
+        ],
+        "foreign_keys": [
+          "actor_id->users.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "id"
+        ],
+        "name": null,
+        "type": "PrimaryKeyConstraint"
+      }
+    ],
+    "foreign_keys": [
+      "actor_id->users.id"
+    ],
+    "indexes": [
+      [
+        "idx_analytics_audit_logs_created_at",
+        [
+          "created_at"
+        ],
+        false
+      ],
+      [
+        "ix_analytics_audit_logs_action",
+        [
+          "action"
+        ],
+        false
+      ]
+    ],
+    "name": "analytics_audit_logs"
+  },
+  {
+    "columns": [
+      {
+        "default": null,
+        "name": "id",
+        "nullable": false,
+        "primary_key": true,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "slug",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(64)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "title",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(160)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "description",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "TEXT",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "chart_type",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(16)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "semantic_view",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(32)",
+        "unique": null
+      },
+      {
+        "default": "callable:builtins.dict",
+        "name": "definition",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "JSON",
+        "unique": null
+      },
+      {
+        "default": "value:viewer",
+        "name": "visibility",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(16)",
+        "unique": null
+      },
+      {
+        "default": "value:draft",
+        "name": "status",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(16)",
+        "unique": null
+      },
+      {
+        "default": "callable:builtins.list",
+        "name": "validation_errors",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "JSON",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "created_by_id",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "CHAR(36)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "published_model_version_id",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": "callable:core.time.utc_now",
+        "name": "created_at",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": "callable:core.time.utc_now",
+        "name": "updated_at",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "validated_at",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "published_at",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "archived_at",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      }
+    ],
+    "constraints": [
+      {
+        "columns": [
+          "created_by_id"
+        ],
+        "foreign_keys": [
+          "created_by_id->users.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "published_model_version_id"
+        ],
+        "foreign_keys": [
+          "published_model_version_id->analytics_model_versions.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "id"
+        ],
+        "name": null,
+        "type": "PrimaryKeyConstraint"
+      }
+    ],
+    "foreign_keys": [
+      "created_by_id->users.id",
+      "published_model_version_id->analytics_model_versions.id"
+    ],
+    "indexes": [
+      [
+        "idx_analytics_charts_status_updated",
+        [
+          "status",
+          "updated_at"
+        ],
+        false
+      ],
+      [
+        "idx_analytics_charts_visibility_status",
+        [
+          "visibility",
+          "status"
+        ],
+        false
+      ],
+      [
+        "ix_analytics_charts_status",
+        [
+          "status"
+        ],
+        false
+      ],
+      [
+        "uq_analytics_charts_slug",
+        [
+          "slug"
+        ],
+        true
+      ]
+    ],
+    "name": "analytics_charts"
+  },
+  {
+    "columns": [
+      {
+        "default": "callable:infrastructure.database.dbo.AnalyticsExportJob.AnalyticsExportJob.<lambda>",
+        "name": "id",
+        "nullable": false,
+        "primary_key": true,
+        "server_default": null,
+        "type": "CHAR(36)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "requested_by_id",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "CHAR(36)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "query_log_id",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "CHAR(36)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "model_version_id",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": "callable:builtins.dict",
+        "name": "request",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "JSON",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "export_format",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(8)",
+        "unique": null
+      },
+      {
+        "default": "value:queued",
+        "name": "status",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(16)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "row_count",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "BIGINT",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "storage_path",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(500)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "content_type",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(120)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "error_message",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "TEXT",
+        "unique": null
+      },
+      {
+        "default": "callable:core.time.utc_now",
+        "name": "created_at",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "started_at",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "completed_at",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "expires_at",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "downloaded_at",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      }
+    ],
+    "constraints": [
+      {
+        "columns": [
+          "model_version_id"
+        ],
+        "foreign_keys": [
+          "model_version_id->analytics_model_versions.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "query_log_id"
+        ],
+        "foreign_keys": [
+          "query_log_id->analytics_query_logs.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "requested_by_id"
+        ],
+        "foreign_keys": [
+          "requested_by_id->users.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "id"
+        ],
+        "name": null,
+        "type": "PrimaryKeyConstraint"
+      }
+    ],
+    "foreign_keys": [
+      "model_version_id->analytics_model_versions.id",
+      "query_log_id->analytics_query_logs.id",
+      "requested_by_id->users.id"
+    ],
+    "indexes": [
+      [
+        "idx_analytics_export_jobs_expires_at",
+        [
+          "expires_at"
+        ],
+        false
+      ],
+      [
+        "idx_analytics_export_jobs_status_created",
+        [
+          "status",
+          "created_at"
+        ],
+        false
+      ]
+    ],
+    "name": "analytics_export_jobs"
+  },
+  {
+    "columns": [
+      {
+        "default": null,
+        "name": "id",
+        "nullable": false,
+        "primary_key": true,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "field_id",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "survey_id",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "value_text",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(500)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "value_number",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "FLOAT",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "value_date",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATE",
+        "unique": null
+      },
+      {
+        "default": "callable:core.time.utc_now",
+        "name": "refreshed_at",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      }
+    ],
+    "constraints": [
+      {
+        "columns": [
+          "field_id"
+        ],
+        "foreign_keys": [
+          "field_id->analytics_fields.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "survey_id"
+        ],
+        "foreign_keys": [
+          "survey_id->surveys.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "id"
+        ],
+        "name": null,
+        "type": "PrimaryKeyConstraint"
+      },
+      {
+        "columns": [
+          "field_id",
+          "survey_id"
+        ],
+        "name": "uq_analytics_field_value",
+        "type": "UniqueConstraint"
+      }
+    ],
+    "foreign_keys": [
+      "field_id->analytics_fields.id",
+      "survey_id->surveys.id"
+    ],
+    "indexes": [
+      [
+        "idx_analytics_field_values_date",
+        [
+          "field_id",
+          "value_date"
+        ],
+        false
+      ],
+      [
+        "idx_analytics_field_values_number",
+        [
+          "field_id",
+          "value_number"
+        ],
+        false
+      ],
+      [
+        "idx_analytics_field_values_text",
+        [
+          "field_id",
+          "value_text"
+        ],
+        false
+      ]
+    ],
+    "name": "analytics_field_values"
+  },
+  {
+    "columns": [
+      {
+        "default": null,
+        "name": "id",
+        "nullable": false,
+        "primary_key": true,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "slug",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(64)",
+        "unique": true
+      },
+      {
+        "default": null,
+        "name": "label",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(120)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "description",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "TEXT",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "data_type",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(16)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "source_kind",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(16)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "source_key",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(128)",
+        "unique": null
+      },
+      {
+        "default": "value:survey_responses",
+        "name": "semantic_view",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(32)",
+        "unique": null
+      },
+      {
+        "default": "callable:builtins.dict",
+        "name": "definition",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "JSON",
+        "unique": null
+      },
+      {
+        "default": "value:draft",
+        "name": "status",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(16)",
+        "unique": null
+      },
+      {
+        "default": "value:False",
+        "name": "is_promoted",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "BOOLEAN",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "created_by_id",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "CHAR(36)",
+        "unique": null
+      },
+      {
+        "default": "callable:core.time.utc_now",
+        "name": "created_at",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": "callable:core.time.utc_now",
+        "name": "updated_at",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "promoted_at",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "inferred_data_type",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(16)",
+        "unique": null
+      },
+      {
+        "default": "callable:builtins.list",
+        "name": "type_conflicts",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "JSON",
+        "unique": null
+      },
+      {
+        "default": "callable:builtins.list",
+        "name": "sample_values",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "JSON",
+        "unique": null
+      },
+      {
+        "default": "value:viewer",
+        "name": "visibility",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(16)",
+        "unique": null
+      },
+      {
+        "default": "value:0",
+        "name": "occurrence_count",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "BIGINT",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "last_seen_at",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "published_at",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "archived_at",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      }
+    ],
+    "constraints": [
+      {
+        "columns": [
+          "created_by_id"
+        ],
+        "foreign_keys": [
+          "created_by_id->users.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "id"
+        ],
+        "name": null,
+        "type": "PrimaryKeyConstraint"
+      }
+    ],
+    "foreign_keys": [
+      "created_by_id->users.id"
+    ],
+    "indexes": [
+      [
+        "idx_analytics_fields_source",
+        [
+          "source_kind",
+          "source_key"
+        ],
+        false
+      ],
+      [
+        "idx_analytics_fields_status_updated",
+        [
+          "status",
+          "updated_at"
+        ],
+        false
+      ],
+      [
+        "idx_analytics_fields_view_visibility_status",
+        [
+          "semantic_view",
+          "visibility",
+          "status"
+        ],
+        false
+      ],
+      [
+        "ix_analytics_fields_slug",
+        [
+          "slug"
+        ],
+        true
+      ],
+      [
+        "ix_analytics_fields_status",
+        [
+          "status"
+        ],
+        false
+      ]
+    ],
+    "name": "analytics_fields"
+  },
+  {
+    "columns": [
+      {
+        "default": null,
+        "name": "id",
+        "nullable": false,
+        "primary_key": true,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "slug",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(64)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "label",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(120)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "description",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "TEXT",
+        "unique": null
+      },
+      {
+        "default": "value:survey_responses",
+        "name": "semantic_view",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(32)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "field_id",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "source_member",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(64)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "operation",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(32)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "weight_field_id",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "weight_member",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(64)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "confidence_level",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "FLOAT",
+        "unique": null
+      },
+      {
+        "default": "callable:builtins.dict",
+        "name": "definition",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "JSON",
+        "unique": null
+      },
+      {
+        "default": "value:viewer",
+        "name": "visibility",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(16)",
+        "unique": null
+      },
+      {
+        "default": "value:draft",
+        "name": "status",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(16)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "created_by_id",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "CHAR(36)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "published_model_version_id",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": "callable:core.time.utc_now",
+        "name": "created_at",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": "callable:core.time.utc_now",
+        "name": "updated_at",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "published_at",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "archived_at",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      }
+    ],
+    "constraints": [
+      {
+        "columns": [
+          "created_by_id"
+        ],
+        "foreign_keys": [
+          "created_by_id->users.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "field_id"
+        ],
+        "foreign_keys": [
+          "field_id->analytics_fields.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "published_model_version_id"
+        ],
+        "foreign_keys": [
+          "published_model_version_id->analytics_model_versions.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "weight_field_id"
+        ],
+        "foreign_keys": [
+          "weight_field_id->analytics_fields.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "id"
+        ],
+        "name": null,
+        "type": "PrimaryKeyConstraint"
+      },
+      {
+        "columns": [
+          "slug"
+        ],
+        "name": "uq_analytics_metrics_slug",
+        "type": "UniqueConstraint"
+      }
+    ],
+    "foreign_keys": [
+      "created_by_id->users.id",
+      "field_id->analytics_fields.id",
+      "published_model_version_id->analytics_model_versions.id",
+      "weight_field_id->analytics_fields.id"
+    ],
+    "indexes": [
+      [
+        "idx_analytics_metrics_view_visibility_status",
+        [
+          "semantic_view",
+          "visibility",
+          "status"
+        ],
+        false
+      ],
+      [
+        "ix_analytics_metrics_status",
+        [
+          "status"
+        ],
+        false
+      ]
+    ],
+    "name": "analytics_metrics"
+  },
+  {
+    "columns": [
+      {
+        "default": null,
+        "name": "id",
+        "nullable": false,
+        "primary_key": true,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": "sequence:analytics_catalog_version_seq",
+        "name": "catalog_version",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": "value:<next sequence value: analytics_catalog_version_seq>",
+        "type": "BIGINT",
+        "unique": null
+      },
+      {
+        "default": "value:draft",
+        "name": "status",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(16)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "definition_hash",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(64)",
+        "unique": null
+      },
+      {
+        "default": "callable:builtins.dict",
+        "name": "catalog_snapshot",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "JSON",
+        "unique": null
+      },
+      {
+        "default": "callable:builtins.list",
+        "name": "validation_errors",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "JSON",
+        "unique": null
+      },
+      {
+        "default": "value:False",
+        "name": "is_active",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "BOOLEAN",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "created_by_id",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "CHAR(36)",
+        "unique": null
+      },
+      {
+        "default": "callable:core.time.utc_now",
+        "name": "created_at",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "published_at",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "activated_at",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "archived_at",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      }
+    ],
+    "constraints": [
+      {
+        "columns": [
+          "created_by_id"
+        ],
+        "foreign_keys": [
+          "created_by_id->users.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "id"
+        ],
+        "name": null,
+        "type": "PrimaryKeyConstraint"
+      },
+      {
+        "columns": [
+          "catalog_version"
+        ],
+        "name": "uq_analytics_model_versions_catalog_version",
+        "type": "UniqueConstraint"
+      }
+    ],
+    "foreign_keys": [
+      "created_by_id->users.id"
+    ],
+    "indexes": [
+      [
+        "ix_analytics_model_versions_status",
+        [
+          "status"
+        ],
+        false
+      ],
+      [
+        "uq_analytics_model_versions_one_active",
+        [
+          "is_active"
+        ],
+        true
+      ]
+    ],
+    "name": "analytics_model_versions"
+  },
+  {
+    "columns": [
+      {
+        "default": "callable:infrastructure.database.dbo.AnalyticsQueryLog.AnalyticsQueryLog.<lambda>",
+        "name": "id",
+        "nullable": false,
+        "primary_key": true,
+        "server_default": null,
+        "type": "CHAR(36)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "requested_by_id",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "CHAR(36)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "model_version_id",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "semantic_view",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(32)",
+        "unique": null
+      },
+      {
+        "default": "callable:builtins.dict",
+        "name": "request",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "JSON",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "cube_query",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "JSON",
+        "unique": null
+      },
+      {
+        "default": "value:pending",
+        "name": "status",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(16)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "row_count",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "duration_ms",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "error_message",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "TEXT",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "freshness_at",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": "callable:core.time.utc_now",
+        "name": "created_at",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "completed_at",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      }
+    ],
+    "constraints": [
+      {
+        "columns": [
+          "model_version_id"
+        ],
+        "foreign_keys": [
+          "model_version_id->analytics_model_versions.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "requested_by_id"
+        ],
+        "foreign_keys": [
+          "requested_by_id->users.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "id"
+        ],
+        "name": null,
+        "type": "PrimaryKeyConstraint"
+      }
+    ],
+    "foreign_keys": [
+      "model_version_id->analytics_model_versions.id",
+      "requested_by_id->users.id"
+    ],
+    "indexes": [
+      [
+        "idx_analytics_query_logs_created_at",
+        [
+          "created_at"
+        ],
+        false
+      ],
+      [
+        "idx_analytics_query_logs_status_created",
+        [
+          "status",
+          "created_at"
+        ],
+        false
+      ]
+    ],
+    "name": "analytics_query_logs"
+  },
+  {
+    "columns": [
+      {
+        "default": null,
+        "name": "id",
+        "nullable": false,
+        "primary_key": true,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "name",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "TEXT",
+        "unique": true
+      }
+    ],
+    "constraints": [
+      {
+        "columns": [
+          "id"
+        ],
+        "name": null,
+        "type": "PrimaryKeyConstraint"
+      },
+      {
+        "columns": [
+          "name"
+        ],
+        "name": null,
+        "type": "UniqueConstraint"
+      }
+    ],
+    "foreign_keys": [],
+    "indexes": [],
+    "name": "channels"
+  },
+  {
+    "columns": [
+      {
+        "default": null,
+        "name": "id",
+        "nullable": false,
+        "primary_key": true,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "name",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "TEXT",
+        "unique": true
+      }
+    ],
+    "constraints": [
+      {
+        "columns": [
+          "id"
+        ],
+        "name": null,
+        "type": "PrimaryKeyConstraint"
+      },
+      {
+        "columns": [
+          "name"
+        ],
+        "name": null,
+        "type": "UniqueConstraint"
+      }
+    ],
+    "foreign_keys": [],
+    "indexes": [],
+    "name": "delivery_services"
+  },
+  {
+    "columns": [
+      {
+        "default": null,
+        "name": "id",
+        "nullable": false,
+        "primary_key": true,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "name",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": true
+      }
+    ],
+    "constraints": [
+      {
+        "columns": [
+          "id"
+        ],
+        "name": null,
+        "type": "PrimaryKeyConstraint"
+      },
+      {
+        "columns": [
+          "name"
+        ],
+        "name": null,
+        "type": "UniqueConstraint"
+      }
+    ],
+    "foreign_keys": [],
+    "indexes": [
+      [
+        "idx_department_name",
+        [
+          "name"
+        ],
+        false
+      ]
+    ],
+    "name": "departments"
+  },
+  {
+    "columns": [
+      {
+        "default": null,
+        "name": "id",
+        "nullable": false,
+        "primary_key": true,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "keyword",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(200)",
+        "unique": true
+      }
+    ],
+    "constraints": [
+      {
+        "columns": [
+          "id"
+        ],
+        "name": null,
+        "type": "PrimaryKeyConstraint"
+      },
+      {
+        "columns": [
+          "keyword"
+        ],
+        "name": null,
+        "type": "UniqueConstraint"
+      }
+    ],
+    "foreign_keys": [],
+    "indexes": [],
+    "name": "keywords"
+  },
+  {
+    "columns": [
+      {
+        "default": null,
+        "name": "id",
+        "nullable": false,
+        "primary_key": true,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "user_id",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "CHAR(36)",
+        "unique": null
+      },
+      {
+        "default": "callable:core.time.utc_now",
+        "name": "login_time",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      }
+    ],
+    "constraints": [
+      {
+        "columns": [
+          "user_id"
+        ],
+        "foreign_keys": [
+          "user_id->users.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "id"
+        ],
+        "name": null,
+        "type": "PrimaryKeyConstraint"
+      }
+    ],
+    "foreign_keys": [
+      "user_id->users.id"
+    ],
+    "indexes": [],
+    "name": "login_records"
+  },
+  {
+    "columns": [
+      {
+        "default": null,
+        "name": "store_key",
+        "nullable": false,
+        "primary_key": true,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "store_name_english",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "store_name_local",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "bu_key",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "area_manager",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "store_format",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "store_type",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "operations_controller",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "regional_manager",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "px",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "csr",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "dr",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "mag_type",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "cf_grouping",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "store_brand",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "competitor",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "region",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "area",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "province",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "territory",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "toh",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "district",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "city",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "operations_manager",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "district_manager",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "sic",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "soc",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "tech_life_type",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "operation_manager_tl",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "region_manager_tl",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "relocation",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(100)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "latitude",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DOUBLE",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "longitude",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DOUBLE",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "store_open_date",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATE",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "store_close_date",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATE",
+        "unique": null
+      },
+      {
+        "default": "value:True",
+        "name": "is_closed",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "BOOLEAN",
+        "unique": null
+      }
+    ],
+    "constraints": [
+      {
+        "columns": [
+          "store_key"
+        ],
+        "name": null,
+        "type": "PrimaryKeyConstraint"
+      }
+    ],
+    "foreign_keys": [],
+    "indexes": [
+      [
+        "idx_store_name_english",
+        [
+          "store_name_english"
+        ],
+        false
+      ]
+    ],
+    "name": "stores"
+  },
+  {
+    "columns": [
+      {
+        "default": null,
+        "name": "id",
+        "nullable": false,
+        "primary_key": true,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "survey_id",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "department_id",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "sentiment",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(8)",
+        "unique": null
+      }
+    ],
+    "constraints": [
+      {
+        "columns": [
+          "department_id"
+        ],
+        "foreign_keys": [
+          "department_id->departments.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "survey_id"
+        ],
+        "foreign_keys": [
+          "survey_id->surveys.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "id"
+        ],
+        "name": null,
+        "type": "PrimaryKeyConstraint"
+      }
+    ],
+    "foreign_keys": [
+      "department_id->departments.id",
+      "survey_id->surveys.id"
+    ],
+    "indexes": [],
+    "name": "survey_departments"
+  },
+  {
+    "columns": [
+      {
+        "default": null,
+        "name": "id",
+        "nullable": false,
+        "primary_key": true,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "survey_id",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "keyword_id",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "sentiment",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(8)",
+        "unique": null
+      }
+    ],
+    "constraints": [
+      {
+        "columns": [
+          "keyword_id"
+        ],
+        "foreign_keys": [
+          "keyword_id->keywords.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "survey_id"
+        ],
+        "foreign_keys": [
+          "survey_id->surveys.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "id"
+        ],
+        "name": null,
+        "type": "PrimaryKeyConstraint"
+      }
+    ],
+    "foreign_keys": [
+      "keyword_id->keywords.id",
+      "survey_id->surveys.id"
+    ],
+    "indexes": [],
+    "name": "survey_keywords"
+  },
+  {
+    "columns": [
+      {
+        "default": null,
+        "name": "id",
+        "nullable": false,
+        "primary_key": true,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "survey_id",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "topic_id",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "sentiment",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(8)",
+        "unique": null
+      }
+    ],
+    "constraints": [
+      {
+        "columns": [
+          "survey_id"
+        ],
+        "foreign_keys": [
+          "survey_id->surveys.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "topic_id"
+        ],
+        "foreign_keys": [
+          "topic_id->topics.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "id"
+        ],
+        "name": null,
+        "type": "PrimaryKeyConstraint"
+      }
+    ],
+    "foreign_keys": [
+      "survey_id->surveys.id",
+      "topic_id->topics.id"
+    ],
+    "indexes": [],
+    "name": "survey_topics"
+  },
+  {
+    "columns": [
+      {
+        "default": null,
+        "name": "id",
+        "nullable": false,
+        "primary_key": true,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "survey_id",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "TEXT",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "respondent_id",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "TEXT",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "store_key",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "channel_id",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "delivery_service_id",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "comment",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "TEXT",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "sentiment",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(8)",
+        "unique": null
+      },
+      {
+        "default": "callable:core.time.utc_now",
+        "name": "reported_at",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": "callable:core.time.utc_now",
+        "name": "created_at",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": "callable:core.time.utc_now",
+        "name": "updated_at",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": "value:False",
+        "name": "is_deleted",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "BOOLEAN",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "topic_sentiment",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(8)",
+        "unique": null
+      },
+      {
+        "default": "value:0.0",
+        "name": "topic_sentiment_score",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "FLOAT",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "cls",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "FLOAT",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "raw_row_data",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "JSON",
+        "unique": null
+      }
+    ],
+    "constraints": [
+      {
+        "columns": [
+          "channel_id"
+        ],
+        "foreign_keys": [
+          "channel_id->channels.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "delivery_service_id"
+        ],
+        "foreign_keys": [
+          "delivery_service_id->delivery_services.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "store_key"
+        ],
+        "foreign_keys": [
+          "store_key->stores.store_key"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "id"
+        ],
+        "name": null,
+        "type": "PrimaryKeyConstraint"
+      }
+    ],
+    "foreign_keys": [
+      "channel_id->channels.id",
+      "delivery_service_id->delivery_services.id",
+      "store_key->stores.store_key"
+    ],
+    "indexes": [
+      [
+        "idx_survey_cls",
+        [
+          "cls"
+        ],
+        false
+      ],
+      [
+        "idx_survey_reported_at",
+        [
+          "reported_at"
+        ],
+        false
+      ],
+      [
+        "idx_survey_sentiment",
+        [
+          "sentiment"
+        ],
+        false
+      ]
+    ],
+    "name": "surveys"
+  },
+  {
+    "columns": [
+      {
+        "default": null,
+        "name": "id",
+        "nullable": false,
+        "primary_key": true,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "topic",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(200)",
+        "unique": true
+      }
+    ],
+    "constraints": [
+      {
+        "columns": [
+          "id"
+        ],
+        "name": null,
+        "type": "PrimaryKeyConstraint"
+      },
+      {
+        "columns": [
+          "topic"
+        ],
+        "name": null,
+        "type": "UniqueConstraint"
+      }
+    ],
+    "foreign_keys": [],
+    "indexes": [
+      [
+        "idx_topic_name",
+        [
+          "topic"
+        ],
+        false
+      ]
+    ],
+    "name": "topics"
+  },
+  {
+    "columns": [
+      {
+        "default": "callable:infrastructure.database.dbo.UploadTaskError.UploadTaskError.<lambda>",
+        "name": "id",
+        "nullable": false,
+        "primary_key": true,
+        "server_default": null,
+        "type": "CHAR(36)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "upload_task_id",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "CHAR(36)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "error_message",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "TEXT",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "input_store_key",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "input_comment",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "TEXT",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "input_reported_at",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "TEXT",
+        "unique": null
+      },
+      {
+        "default": "callable:core.time.utc_now",
+        "name": "created_at",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": "callable:core.time.utc_now",
+        "name": "updated_at",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "raw_row_data",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "JSON",
+        "unique": null
+      }
+    ],
+    "constraints": [
+      {
+        "columns": [
+          "upload_task_id"
+        ],
+        "foreign_keys": [
+          "upload_task_id->upload_tasks.id"
+        ],
+        "name": null,
+        "type": "ForeignKeyConstraint"
+      },
+      {
+        "columns": [
+          "id"
+        ],
+        "name": null,
+        "type": "PrimaryKeyConstraint"
+      }
+    ],
+    "foreign_keys": [
+      "upload_task_id->upload_tasks.id"
+    ],
+    "indexes": [],
+    "name": "upload_task_errors"
+  },
+  {
+    "columns": [
+      {
+        "default": "callable:infrastructure.database.dbo.UploadTask.UploadTask.<lambda>",
+        "name": "id",
+        "nullable": false,
+        "primary_key": true,
+        "server_default": null,
+        "type": "CHAR(36)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "file_name",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "file_path",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "status",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "total_rows",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "processed_rows",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "INTEGER",
+        "unique": null
+      },
+      {
+        "default": "callable:core.time.utc_now",
+        "name": "created_at",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": "callable:core.time.utc_now",
+        "name": "updated_at",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "analytics_affected_months",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "JSON",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "analytics_refresh_status",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(32)",
+        "unique": null
+      }
+    ],
+    "constraints": [
+      {
+        "columns": [
+          "id"
+        ],
+        "name": null,
+        "type": "PrimaryKeyConstraint"
+      }
+    ],
+    "foreign_keys": [],
+    "indexes": [],
+    "name": "upload_tasks"
+  },
+  {
+    "columns": [
+      {
+        "default": "callable:infrastructure.database.dbo.User.User.<lambda>",
+        "name": "id",
+        "nullable": false,
+        "primary_key": true,
+        "server_default": null,
+        "type": "CHAR(36)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "username",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(50)",
+        "unique": true
+      },
+      {
+        "default": null,
+        "name": "password",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(255)",
+        "unique": null
+      },
+      {
+        "default": "value:user",
+        "name": "role",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(50)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "oauth_provider",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(50)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "oauth_id",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(255)",
+        "unique": null
+      },
+      {
+        "default": "callable:core.time.utc_now",
+        "name": "created_at",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": "callable:core.time.utc_now",
+        "name": "updated_at",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "DATETIME",
+        "unique": null
+      },
+      {
+        "default": "value:False",
+        "name": "is_deleted",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "BOOLEAN",
+        "unique": null
+      }
+    ],
+    "constraints": [
+      {
+        "columns": [
+          "id"
+        ],
+        "name": null,
+        "type": "PrimaryKeyConstraint"
+      },
+      {
+        "columns": [
+          "oauth_provider",
+          "oauth_id"
+        ],
+        "name": "uq_oauth_provider_id",
+        "type": "UniqueConstraint"
+      }
+    ],
+    "foreign_keys": [],
+    "indexes": [
+      [
+        "ix_users_username",
+        [
+          "username"
+        ],
+        true
+      ]
+    ],
+    "name": "users"
+  }
+]

@@ -7,7 +7,7 @@ from openpyxl import load_workbook
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from utils.analytics_exports import (
+from features.analytics.service.exports import (
     authorize_export_role,
     build_export_path,
     cube_response_rows,

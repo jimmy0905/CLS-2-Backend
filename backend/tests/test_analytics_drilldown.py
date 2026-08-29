@@ -6,8 +6,12 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from utils.analytics import CatalogField, FieldType, FilterSpec, SemanticCatalog
-from utils.analytics_drilldown import DrilldownSpec, _json_value, build_drilldown_statement
+from features.analytics.model.semantic import CatalogField, FieldType, FilterSpec, SemanticCatalog
+from features.analytics.repository.drilldown import (
+    DrilldownSpec,
+    _json_value,
+    build_drilldown_statement,
+)
 
 
 def _catalog() -> SemanticCatalog:

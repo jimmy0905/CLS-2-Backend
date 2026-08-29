@@ -4,8 +4,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from utils.analytics import validate_identifier
-from utils.analytics_catalog import candidate_slug, infer_candidate
+from features.analytics.model.semantic import validate_identifier
+from features.analytics.service.catalog import candidate_slug, infer_candidate
 
 
 def test_candidate_inference_records_type_drift_and_safe_samples() -> None:

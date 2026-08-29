@@ -9,8 +9,8 @@ from sqlalchemy.sql import operators
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from utils.conditionFilter import build_survey_filter_conditions
-from utils.backgrounTaskHandler import parse_optional_cls
+from features.feedback.filtering import build_survey_filter_conditions
+from features.ingestion.service import parse_optional_cls
 
 
 class SurveyFilterDateRangeTests(unittest.TestCase):

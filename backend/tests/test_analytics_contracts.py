@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from utils.analytics import (
+from features.analytics.model.semantic import (
     Aggregation,
     AnalyticsValidationError,
     CatalogField,

@@ -2,10 +2,10 @@ from logging.config import fileConfig
 
 from alembic import context
 
-import models
-from config import SQLALCHEMY_DATABASE_URI
-from utils.database import Base, engine
-from utils.logger import logger
+from core.config import SQLALCHEMY_DATABASE_URI
+from core.logging import logger
+from infrastructure.database.registry import Base
+from infrastructure.database.session import engine
 
 config = context.config
 

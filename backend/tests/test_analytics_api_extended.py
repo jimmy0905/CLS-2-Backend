@@ -16,9 +16,9 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from routers.analytics import ExportInput, router
-from utils.analytics import QuerySpec
-from utils.analytics_drilldown import DrilldownSpec
+from features.analytics.endpoints.analytics import ExportInput, router
+from features.analytics.model.semantic import QuerySpec
+from features.analytics.repository.drilldown import DrilldownSpec
 
 
 def test_router_exposes_drilldown_and_export_lifecycle() -> None:
@@ -52,7 +52,7 @@ def test_export_requires_exactly_one_governed_request_kind() -> None:
 
 
 def test_metric_input_cannot_mix_core_and_promoted_sources() -> None:
-    from routers.analytics import MetricInput
+    from features.analytics.endpoints.analytics import MetricInput
 
     with pytest.raises(ValidationError, match="either field_id or source_member"):
         MetricInput(

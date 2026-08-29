@@ -25,17 +25,17 @@ os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret")
 os.environ.setdefault("SESSION_SECRET_KEY", "test-session-secret")
 
-import config
-from routers import analytics
-from utils.analytics import (
+import core.config as config
+from features.analytics.endpoints import analytics
+from features.analytics.model.semantic import (
     QuerySpec,
     chart_layout,
     compile_cube_query,
     shape_chart_rows,
     validate_query,
 )
-from utils.database import get_db
-from utils.security import get_current_user, require_admin
+from infrastructure.database.session import get_db
+from features.identity.service.security import get_current_user, require_admin
 
 
 class FakeDb:

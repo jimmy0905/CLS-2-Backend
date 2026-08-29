@@ -4,15 +4,13 @@ import time
 import uuid
 from contextlib import asynccontextmanager, suppress
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from fastapi_pagination import add_pagination
-from sqlalchemy import text
-from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
-from config import (
+from core.config import (
     COOKIE_SECURE,
     CORS_ORIGINS,
     DEPLOYMENT_PROFILE,
@@ -22,34 +20,39 @@ from config import (
     FASTAPI_ROOT_PATH,
     LOG_SERVICE_NAME,
 )
-from routers import (
-    analytics,
-    auth,
+from core.errors import ApplicationError
+from core.logging import bind_request_id, configure_logging, logger, reset_request_id
+from core.openapi import install_openapi_component_compatibility
+from features.analytics.endpoints import analytics
+from features.dashboard.endpoints import dashboard
+from features.feedback.endpoint import surveys
+from features.identity.endpoints import auth, users
+from features.ingestion.endpoints import tasks
+from features.master_data.endpoints import (
     channels,
-    dashboard,
     delivery_services,
     departments,
     stores,
-    strategy,
-    surveys,
-    tasks,
     topics,
-    translator,
-    users,
 )
-from utils.database import (
-    check_tables_exist,
-    ensure_default_user,
-    get_db,
-    usable_user_exists,
-    users_table_exists,
+from features.operations.endpoint import router as operations_router
+from features.operations.lifecycle import (
+    reset_analytics_export_jobs,
+    reset_processing_upload_tasks,
 )
-from utils.database_migrations import (
+from features.operations.service import retention_loop, run_retention
+from features.strategy.endpoints import strategy
+from features.translation.endpoints import translator
+from infrastructure.database.migrations import (
     bootstrap_single_metric_analytics_defaults,
     run_database_migrations,
 )
-from utils.logger import bind_request_id, configure_logging, logger, reset_request_id
-from utils.retention import retention_loop, run_retention
+from infrastructure.database.session import (
+    check_tables_exist,
+    ensure_default_user,
+    usable_user_exists,
+    users_table_exists,
+)
 
 
 def _client_ip(request: Request) -> str | None:
@@ -85,8 +88,8 @@ async def lifespan(_: FastAPI):
     else:
         check_tables_exist()
     bootstrap_single_metric_analytics_defaults()
-    _reset_processing_upload_tasks()
-    _reset_analytics_export_jobs()
+    reset_processing_upload_tasks()
+    reset_analytics_export_jobs()
 
     try:
         await asyncio.to_thread(run_retention)
@@ -106,32 +109,6 @@ async def lifespan(_: FastAPI):
         logger.info("Server stopped", extra={"event": "server.stopped"})
 
 
-app = FastAPI(
-    title="CLS Connex",
-    docs_url=FASTAPI_DOCS_URL,
-    redoc_url=FASTAPI_REDOC_URL,
-    openapi_url=FASTAPI_OPENAPI_URL,
-    root_path=FASTAPI_ROOT_PATH,
-    lifespan=lifespan,
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
-    allow_credentials=CORS_ORIGINS != ["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=os.environ["SESSION_SECRET_KEY"],
-    session_cookie="clsense_session",
-    same_site="lax",
-    https_only=COOKIE_SECURE,
-)
-
-
-@app.middleware("http")
 async def log_request(request: Request, call_next) -> Response:
     request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
     request_id = request_id[:128]
@@ -170,108 +147,74 @@ async def log_request(request: Request, call_next) -> Response:
         reset_request_id(request_token)
 
 
-@app.exception_handler(Exception)
 async def unhandled_exception_handler(_: Request, exception: Exception) -> JSONResponse:
     logger.exception("Unhandled server error", exc_info=exception)
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
-def _reset_processing_upload_tasks() -> None:
-    from models.UploadTask import UploadTask
-    from utils.database import SessionLocal
-    from utils.utc import utc_now
+async def application_exception_handler(
+    _: Request, exception: ApplicationError
+) -> JSONResponse:
+    """Translate service-layer failures to the existing HTTP error shape."""
 
-    db = SessionLocal()
-    try:
-        updated = (
-            db.query(UploadTask)
-            .filter(UploadTask.status == "processing")
-            .update(
-                {"status": "Stop: Restart", "updated_at": utc_now()},
-                synchronize_session="fetch",
-            )
-        )
-        db.commit()
-        if updated:
-            logger.info(
-                "Reset processing upload tasks",
-                extra={"event": "upload_tasks.reset_after_restart", "count": updated},
-            )
-    except Exception:
-        db.rollback()
-        logger.exception("Failed to reset processing upload tasks")
-        raise
-    finally:
-        db.close()
+    return JSONResponse(
+        status_code=exception.status_code,
+        content={"detail": exception.detail},
+    )
 
 
-def _reset_analytics_export_jobs() -> None:
-    """Fail in-process export work that cannot survive a service restart."""
-    from models.AnalyticsExportJob import AnalyticsExportJob
-    from models.AnalyticsQueryLog import AnalyticsQueryLog
-    from utils.database import SessionLocal
-    from utils.utc import utc_now
-
-    db = SessionLocal()
-    try:
-        jobs = (
-            db.query(AnalyticsExportJob)
-            .filter(AnalyticsExportJob.status.in_(("queued", "processing")))
-            .all()
-        )
-        now = utc_now()
-        query_ids = [job.query_log_id for job in jobs if job.query_log_id]
-        for job in jobs:
-            job.status = "failed"
-            job.error_message = "Analytics export interrupted by service restart"
-            job.completed_at = now
-        if query_ids:
-            for query_log in (
-                db.query(AnalyticsQueryLog)
-                .filter(AnalyticsQueryLog.id.in_(query_ids))
-                .all()
-            ):
-                query_log.status = "failed"
-                query_log.error_message = "Analytics export interrupted by service restart"
-                query_log.completed_at = now
-        db.commit()
-        if jobs:
-            logger.info(
-                "Reset interrupted analytics exports",
-                extra={"event": "analytics.exports.reset_after_restart", "count": len(jobs)},
-            )
-    except Exception:
-        db.rollback()
-        logger.exception("Failed to reset interrupted analytics exports")
-        raise
-    finally:
-        db.close()
+_reset_processing_upload_tasks = reset_processing_upload_tasks
+_reset_analytics_export_jobs = reset_analytics_export_jobs
 
 
-@app.get("/health")
-async def health_check(db: Session = Depends(get_db)):
-    try:
-        db.execute(text("SELECT 1"))
-        return {"status": "healthy", "profile": DEPLOYMENT_PROFILE}
-    except Exception as error:
-        logger.exception("Health check database query failed")
-        raise HTTPException(status_code=500, detail="Database unavailable") from error
+def create_app() -> FastAPI:
+    """Build the stable ASGI application used by deployment and tests."""
+
+    application = FastAPI(
+        title="CLS Connex",
+        docs_url=FASTAPI_DOCS_URL,
+        redoc_url=FASTAPI_REDOC_URL,
+        openapi_url=FASTAPI_OPENAPI_URL,
+        root_path=FASTAPI_ROOT_PATH,
+        lifespan=lifespan,
+    )
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=CORS_ORIGINS,
+        allow_credentials=CORS_ORIGINS != ["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    application.add_middleware(
+        SessionMiddleware,
+        secret_key=os.environ["SESSION_SECRET_KEY"],
+        session_cookie="clsense_session",
+        same_site="lax",
+        https_only=COOKIE_SECURE,
+    )
+    application.middleware("http")(log_request)
+    application.add_exception_handler(Exception, unhandled_exception_handler)
+    application.add_exception_handler(ApplicationError, application_exception_handler)
+    add_pagination(application)
+    application.include_router(operations_router)
+    application.include_router(auth.router)
+    application.include_router(analytics.router)
+    application.include_router(surveys.router)
+    application.include_router(dashboard.router)
+    application.include_router(strategy.router)
+    application.include_router(stores.router)
+    application.include_router(departments.router)
+    application.include_router(tasks.router)
+    application.include_router(users.router)
+    application.include_router(channels.router)
+    application.include_router(delivery_services.router)
+    application.include_router(topics.router)
+    application.include_router(translator.router)
+    install_openapi_component_compatibility(application)
+    return application
 
 
-add_pagination(app)
-app.include_router(auth.router)
-app.include_router(analytics.router)
-app.include_router(surveys.router)
-app.include_router(dashboard.router)
-app.include_router(strategy.router)
-app.include_router(stores.router)
-app.include_router(departments.router)
-app.include_router(tasks.router)
-app.include_router(users.router)
-app.include_router(channels.router)
-app.include_router(delivery_services.router)
-app.include_router(topics.router)
-app.include_router(translator.router)
+app = create_app()
 
 
 if __name__ == "__main__":

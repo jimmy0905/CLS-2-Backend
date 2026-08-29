@@ -10,11 +10,19 @@ from pydantic import ValidationError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from utils import security
-from utils.security import create_access_token, get_current_user, require_admin
-from routers import users
-from routers.users import UpdateUserPasswordRequest, UpdateUserRequest, update_user_password
-from utils.database import get_db
+from features.identity.service import security
+from features.identity.service.security import (
+    create_access_token,
+    get_current_user,
+    require_admin,
+)
+from features.identity.endpoints import users
+from features.identity.endpoints.users import (
+    UpdateUserPasswordRequest,
+    UpdateUserRequest,
+    update_user_password,
+)
+from infrastructure.database.session import get_db
 
 
 def test_require_admin_returns_an_admin_user() -> None:

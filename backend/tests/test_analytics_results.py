@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from utils.analytics import (
+from features.analytics.model.semantic import (
     Aggregation,
     CatalogField,
     CatalogMetric,
@@ -15,7 +15,7 @@ from utils.analytics import (
     QuerySpec,
     SemanticCatalog,
 )
-from utils.analytics_results import augment_cube_query_with_supports, format_query_result
+from features.analytics.service.results import augment_cube_query_with_supports, format_query_result
 
 
 @pytest.fixture

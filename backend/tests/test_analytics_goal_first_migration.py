@@ -11,8 +11,8 @@ import sqlalchemy as sa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from routers.analytics import _catalog_from_records
-from utils.analytics import metric_targets, validate_chart_definition
+from features.analytics.endpoints.analytics import _catalog_from_records
+from features.analytics.model.semantic import metric_targets, validate_chart_definition
 
 
 MIGRATION_PATH = (

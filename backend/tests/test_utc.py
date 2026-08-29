@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 import unittest
 
-from utils.utc import (
+from core.time import (
     as_timezone,
     as_utc,
     local_isoformat,

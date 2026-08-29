@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from utils.analytics import (
+from features.analytics.model.semantic import (
     Aggregation,
     AnalyticsValidationError,
     CatalogField,
@@ -23,7 +23,7 @@ from utils.analytics import (
     validate_chart_definition,
     validate_query,
 )
-from utils.analytics_results import format_query_result
+from features.analytics.service.results import format_query_result
 
 
 MIGRATION_PATH = (
@@ -277,7 +277,7 @@ def test_catalog_metric_targets_exclude_complex_hidden_and_ambiguous_pairs(
 def test_survey_count_query_ignores_legacy_semantic_view(
     legacy_semantic_view: str | None,
 ) -> None:
-    from routers.analytics import _catalog_from_records
+    from features.analytics.endpoints.analytics import _catalog_from_records
 
     public_catalog = _catalog_from_records([], [])
     payload = {
@@ -295,7 +295,7 @@ def test_survey_count_query_ignores_legacy_semantic_view(
 
 @pytest.mark.parametrize("raw_metric", ["id", "assignment_id", "survey_id"])
 def test_raw_identifiers_are_not_public_metric_targets(raw_metric: str) -> None:
-    from routers.analytics import _catalog_from_records
+    from features.analytics.endpoints.analytics import _catalog_from_records
 
     with pytest.raises(AnalyticsValidationError, match="not published"):
         validate_query(
@@ -438,7 +438,7 @@ def test_result_is_flat_and_renames_the_resolved_measure_to_value(
 
 
 def test_migration_default_charts_resolve_against_public_core_catalog() -> None:
-    from routers.analytics import _catalog_from_records
+    from features.analytics.endpoints.analytics import _catalog_from_records
 
     migration = _load_single_metric_migration()
     public_catalog = _catalog_from_records([], [])

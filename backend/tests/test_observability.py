@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from utils.logger import JsonFormatter, bind_request_id, reset_request_id
-from utils.retention import purge_rotated_log_files, retention_cutoff
+from core.logging import JsonFormatter, bind_request_id, reset_request_id
+from features.operations.service import purge_rotated_log_files, retention_cutoff
 
 
 class JsonFormatterTests(unittest.TestCase):
@@ -59,7 +59,7 @@ class RetentionTests(unittest.TestCase):
             os.utime(expired_log, (now.timestamp() - 31 * 86_400,) * 2)
             os.utime(retained_log, (now.timestamp() - 24 * 86_400,) * 2)
 
-            with patch("utils.retention.SERVER_LOG_FILE", str(log_path)):
+            with patch("features.operations.service.SERVER_LOG_FILE", str(log_path)):
                 deleted = purge_rotated_log_files(retention_cutoff(30, now))
 
             self.assertEqual(deleted, 1)

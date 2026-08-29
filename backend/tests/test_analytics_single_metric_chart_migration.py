@@ -134,7 +134,7 @@ def test_replacement_defaults_follow_chart_shape_matrix() -> None:
 
 def test_replacement_defaults_validate_against_the_chart_input_model() -> None:
     migration = _load_migration()
-    from routers.analytics import ChartInput
+    from features.analytics.endpoints.analytics import ChartInput
 
     for chart in migration._DEFAULT_CHARTS:
         parsed = ChartInput.model_validate({**chart, "visibility": "viewer"})

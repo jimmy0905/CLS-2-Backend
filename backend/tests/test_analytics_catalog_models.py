@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 class AnalyticsCatalogModelTests(unittest.TestCase):
     def test_catalog_models_are_registered_with_governance_columns(self) -> None:
-        from models import (
+        from infrastructure.database.registry import (
             AnalyticsChart,
             AnalyticsExportJob,
             AnalyticsField,
@@ -18,9 +18,9 @@ class AnalyticsCatalogModelTests(unittest.TestCase):
             AnalyticsMetric,
             AnalyticsModelVersion,
             AnalyticsQueryLog,
+            Base,
             UploadTask,
         )
-        from utils.database import Base
 
         expected_tables = {
             "analytics_fields",
@@ -87,7 +87,7 @@ class AnalyticsCatalogModelTests(unittest.TestCase):
         )
 
     def test_metric_and_catalog_version_identity_is_unique(self) -> None:
-        from models import AnalyticsMetric, AnalyticsModelVersion
+        from infrastructure.database.registry import AnalyticsMetric, AnalyticsModelVersion
 
         metric_constraints = {
             constraint.name
@@ -104,7 +104,7 @@ class AnalyticsCatalogModelTests(unittest.TestCase):
         self.assertIn("uq_analytics_model_versions_catalog_version", version_constraints)
 
     def test_foreign_keys_preserve_published_definition_dependencies(self) -> None:
-        from models import AnalyticsChart, AnalyticsMetric
+        from infrastructure.database.registry import AnalyticsChart, AnalyticsMetric
 
         metric_foreign_keys = {
             (foreign_key.parent.name, foreign_key.target_fullname)

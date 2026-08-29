@@ -10,8 +10,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from utils.llm import extract_total, normalize_keywords
-from utils.llm.response_parser import _validated_total_response
+from infrastructure.integrations.llm import extract_total, normalize_keywords
+from infrastructure.integrations.llm.response_parser import _validated_total_response
 
 
 class FakeUsage:
