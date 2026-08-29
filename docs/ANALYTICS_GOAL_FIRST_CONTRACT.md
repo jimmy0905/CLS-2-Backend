@@ -22,6 +22,9 @@
 | 有多少個 topic assignment？ | `survey_topics` | `topic_assignment` | `count` | topic assignment 列數 |
 | 有多少間有回應的門市？ | `survey_responses` | `store` | `count` | 被涵蓋的相異門市數 |
 | 平均 CLS 是多少？ | `survey_responses` | `cls` | `average` | 平均受治理 CLS measure |
+| 每個 keyword 的平均 assignment sentiment 是多少？ | `survey_keywords` | `keyword_sentiment` | `average` | keyword assignment score 的平均值 |
+| 每個 department 的平均 assignment sentiment 是多少？ | `survey_departments` | `department_sentiment` | `average` | department assignment score 的平均值 |
+| 每個 topic 的平均 assignment sentiment 是多少？ | `survey_topics` | `topic_assignment_sentiment` | `average` | topic assignment score 的平均值 |
 | 有多少個回應為 `MIXED`？ | `survey_responses` | `topic_sentiment_mixed` | `count` | 經篩選的 response 數 |
 | 每個 keyword 與 department 組合有多少個 `MIXED` 回應？ | `survey_assignments` | `topic_sentiment_mixed` | `count` | combination grain 的相異 response 數 |
 
@@ -31,7 +34,7 @@
 
 具有封閉值集合的 dimension，也會針對每個值發佈一個名為 `<field>_<value>` 的 metric target。衡量 `topic_sentiment_mixed/count` 可回答「有多少筆是 MIXED」，而不需使用 group-by 額度做 sentiment breakdown，因此可對其他一組 dimension 進行雙維交叉表。仍可依 dimension 本身分組；當需要同時取得所有值時，這仍是正確做法。
 
-Enum target 只提供 `count`。sentiment 是字串，對它加總或平均沒有意義；如要平均數值，應衡量該數值本身。
+Enum-value target 只提供 `count`。assignment sentiment 另有三個受治理的 average target：`keyword_sentiment`、`department_sentiment` 與 `topic_assignment_sentiment`。它們不會直接平均字串，而是使用內部 assignment score：`POSITIVE=1`、`NEGATIVE=0`、`NEUTRAL=-1`。因此 average 等同於 `(positive_count - neutral_count) / assignment_count`；score backing field 不會公開為 dimension 或 filter。
 
 宣告的 enum dimension 包含 `topic_sentiment`（`POSITIVE`、`NEGATIVE`、`NEUTRAL`、`MIXED`）、各個 single-family grain 的 assignment `sentiment`，以及 combination grain 中的 `keyword_sentiment`、`department_sentiment`、`topic_assignment_sentiment`（各為 `POSITIVE`、`NEGATIVE`、`NEUTRAL`）。任意字串 dimension 不會展開，因為它沒有封閉值集合。
 
@@ -40,6 +43,8 @@ Enum target 只提供 `count`。sentiment 是字串，對它加總或平均沒�
 `keyword`、`department` 與 `topic` 各自存在於不同 grain，且不能 join；若要交叉其中兩者，必須使用已持有三者的 grain。一列 `survey_assignments` 就是一個 `(response, keyword, department, topic)` 組合，因此 response 會依 assignment 數量的乘積重複出現。
 
 此 grain 只發佈依 response key 去重的 measure。計數會成為相異 response 計數；`cls/sum` 與 `cls/average` 等 response-level 加總及平均值刻意不提供，因為 fan-out 會使每個 response 按其組合數加權。只有要交叉 assignment family 時才選擇此 grain；對單一 family 而言，專屬 grain 更省資源且精確。
+
+同樣地，三個 assignment sentiment average 只發佈於各自的 single-family grain；不可在 `survey_assignments` combination grain 計算，否則每個 assignment 會因其他 family 的組合數而被錯誤加權。
 
 ## 探索流程
 
@@ -102,6 +107,20 @@ Catalog field 包含：
 ```
 
 如要回答「提到 keyword `A` 的不重複問卷中，各 assignment sentiment 分別有多少筆？」，只需將 target 改為 `survey/count`。若要分析問卷的 response-level sentiment，而非 keyword assignment 本身的 sentiment，則改以 `topic_sentiment` 分組。
+
+計算每個 keyword 的平均 assignment sentiment：
+
+```json
+{
+  "dimensions": ["keyword"],
+  "metric": "keyword_sentiment",
+  "aggregation": "average",
+  "filters": [],
+  "timezone": "Asia/Hong_Kong",
+  "order": [{"member": "value", "direction": "desc"}],
+  "limit": 100
+}
+```
 
 依門市格式與 response sentiment，按時間統計問卷數：
 

@@ -462,6 +462,39 @@ test('core field registry resolves assignment aliases and rejects type drift', (
   );
 });
 
+test('assignment sentiment score resolves to the derived reporting-view column', () => {
+  const scoreField = {
+    slug: 'sentiment_score',
+    label: 'Assignment sentiment score',
+    semanticView: 'survey_keywords',
+    dataType: 'number',
+    sourceKind: 'core',
+    sourceKey: null,
+    visibility: 'viewer',
+  };
+  const localCatalog = validateCatalog({
+    profile,
+    catalogVersion: 1,
+    fields: [scoreField],
+    metrics: [
+      {
+        slug: 'custom_keyword_sentiment_average',
+        label: 'Average keyword sentiment',
+        semanticView: 'survey_keywords',
+        operation: 'average',
+        sourceField: 'sentiment_score',
+        visibility: 'viewer',
+      },
+    ],
+  }, profile);
+  const fields = new Map(localCatalog.fields.map((field) => [field.slug, field]));
+
+  assert.match(
+    compileMeasure(localCatalog.metrics[0], fields),
+    /type: avg[\s\S]*?assignment_sentiment_score/,
+  );
+});
+
 test('date and time extrema compile as temporal aggregate measures', () => {
   const dateField = {
     slug: 'reported_at',

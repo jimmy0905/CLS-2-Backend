@@ -651,6 +651,15 @@ for _view, _assignment_members in {
         _core_field("response_id", FieldType.NUMBER, _view),
         _core_field("sentiment", FieldType.STRING, _view),
         CatalogField(
+            slug="sentiment_score",
+            label="Assignment Sentiment Score",
+            semantic_view=_view,
+            data_type=FieldType.NUMBER,
+            scope="assignment",
+            published=False,
+            filterable=False,
+        ),
+        CatalogField(
             slug="distinct_survey_id",
             label="Distinct Survey ID",
             semantic_view=_view,
@@ -869,7 +878,13 @@ _CORE_METRICS: tuple[CatalogMetric, ...] = (
         for sentiment in enum_dimension_values("topic_sentiment")
     ),
 )
-for _view in ("survey_topics", "survey_departments", "survey_keywords"):
+_ASSIGNMENT_SENTIMENT_TARGETS = {
+    "survey_topics": "topic_assignment_sentiment",
+    "survey_departments": "department_sentiment",
+    "survey_keywords": "keyword_sentiment",
+}
+
+for _view, _sentiment_target in _ASSIGNMENT_SENTIMENT_TARGETS.items():
     _prefix = _view.removeprefix("survey_").removesuffix("s")
     _CORE_METRICS += (
         _core_metric(
@@ -891,6 +906,16 @@ for _view in ("survey_topics", "survey_departments", "survey_keywords"):
             public_aggregation=QueryAggregation.COUNT,
             entity="survey",
             label="Unique Survey Count",
+        ),
+        _core_metric(
+            f"{_sentiment_target}_average",
+            Aggregation.AVERAGE,
+            "sentiment_score",
+            semantic_view=_view,
+            query_target=_sentiment_target,
+            public_aggregation=QueryAggregation.AVERAGE,
+            entity=f"{_prefix}_assignment",
+            label=f"Average {_prefix.title()} Assignment Sentiment",
         ),
         *(
             _core_metric(
@@ -2736,13 +2761,21 @@ def _builder_options(
     )
 
 
+def _field_is_visible(field: CatalogField, role: str) -> bool:
+    return field.published and (
+        role == "admin" or field.visibility is Visibility.VIEWER
+    )
+
+
 def _semantic_view_combination(
-    catalog: SemanticCatalog, semantic_view: str
+    catalog: SemanticCatalog, semantic_view: str, role: str
 ) -> SemanticViewCombinationOutput:
     dimensions = tuple(
         field.slug
         for field in catalog.fields
-        if field.semantic_view == semantic_view and field.slug != "value"
+        if field.semantic_view == semantic_view
+        and field.slug != "value"
+        and _field_is_visible(field, role)
     )
     assignment_dimensions = _SEMANTIC_VIEW_ASSIGNMENT_DIMENSIONS[semantic_view]
     return SemanticViewCombinationOutput(
@@ -2779,6 +2812,7 @@ def _catalog_response(
             time_dimension=field.time_dimension,
         )
         for field in catalog.fields
+        if _field_is_visible(field, role)
     )
     targets = {
         semantic_view: tuple(
@@ -2800,7 +2834,7 @@ def _catalog_response(
         for semantic_view in sorted(catalog.views)
     }
     semantic_view_combinations = tuple(
-        _semantic_view_combination(catalog, semantic_view)
+        _semantic_view_combination(catalog, semantic_view, role)
         for semantic_view in sorted(catalog.views)
     )
     chart_rules = tuple(
@@ -2878,6 +2912,7 @@ def _query_capabilities_response(
                 field
                 for field in catalog.fields
                 if field.semantic_view == payload.semantic_view
+                and _field_is_visible(field, role)
             ),
             key=lambda field: field.slug,
         )

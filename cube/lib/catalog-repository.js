@@ -137,6 +137,7 @@ const ASSIGNMENT_SHARED_CORE_FIELDS = {
   assignment_id: ['assignment_id', 'number'],
   response_id: ['id', 'number'],
   sentiment: ['assignment_sentiment', 'string'],
+  sentiment_score: ['assignment_sentiment_score', 'number'],
 };
 const CORE_FIELDS = {
   survey_responses: RESPONSE_CORE_FIELDS,
@@ -191,9 +192,9 @@ const CORE_MEASURES = {
     'topic_sentiment_neutral_count',
     'topic_sentiment_mixed_count',
   ]),
-  survey_topics: new Set(['assignment_count', 'survey_count', 'topic_assignment_positive_count', 'topic_assignment_negative_count', 'topic_assignment_neutral_count', 'topic_sentiment_positive_survey_count', 'topic_sentiment_negative_survey_count', 'topic_sentiment_neutral_survey_count', 'topic_sentiment_mixed_survey_count']),
-  survey_departments: new Set(['assignment_count', 'survey_count', 'department_assignment_positive_count', 'department_assignment_negative_count', 'department_assignment_neutral_count', 'topic_sentiment_positive_survey_count', 'topic_sentiment_negative_survey_count', 'topic_sentiment_neutral_survey_count', 'topic_sentiment_mixed_survey_count']),
-  survey_keywords: new Set(['assignment_count', 'survey_count', 'keyword_assignment_positive_count', 'keyword_assignment_negative_count', 'keyword_assignment_neutral_count', 'topic_sentiment_positive_survey_count', 'topic_sentiment_negative_survey_count', 'topic_sentiment_neutral_survey_count', 'topic_sentiment_mixed_survey_count']),
+  survey_topics: new Set(['assignment_count', 'survey_count', 'topic_assignment_sentiment_average', 'topic_assignment_positive_count', 'topic_assignment_negative_count', 'topic_assignment_neutral_count', 'topic_sentiment_positive_survey_count', 'topic_sentiment_negative_survey_count', 'topic_sentiment_neutral_survey_count', 'topic_sentiment_mixed_survey_count']),
+  survey_departments: new Set(['assignment_count', 'survey_count', 'department_sentiment_average', 'department_assignment_positive_count', 'department_assignment_negative_count', 'department_assignment_neutral_count', 'topic_sentiment_positive_survey_count', 'topic_sentiment_negative_survey_count', 'topic_sentiment_neutral_survey_count', 'topic_sentiment_mixed_survey_count']),
+  survey_keywords: new Set(['assignment_count', 'survey_count', 'keyword_sentiment_average', 'keyword_assignment_positive_count', 'keyword_assignment_negative_count', 'keyword_assignment_neutral_count', 'topic_sentiment_positive_survey_count', 'topic_sentiment_negative_survey_count', 'topic_sentiment_neutral_survey_count', 'topic_sentiment_mixed_survey_count']),
   survey_assignments: new Set([
     'combination_count',
     'survey_count',
@@ -222,7 +223,7 @@ const CHART_DIMENSION_FIELDS = new Set([
   'keyword_sentiment', 'department_sentiment', 'topic_assignment_sentiment',
 ]);
 const ASSIGNMENT_SCOPE_FIELDS = new Set([
-  'assignment_id', 'sentiment', 'topic_id', 'topic', 'department_id',
+  'assignment_id', 'sentiment', 'sentiment_score', 'topic_id', 'topic', 'department_id',
   'department', 'keyword_id', 'keyword', 'combination_id', 'keyword_sentiment',
   'department_sentiment', 'topic_assignment_sentiment',
 ]);

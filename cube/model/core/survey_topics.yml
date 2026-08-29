@@ -20,6 +20,14 @@ cubes:
           public_aggregation: count
           entity: survey
 
+      - name: topic_assignment_sentiment_average
+        sql: assignment_sentiment_score
+        type: avg
+        meta:
+          query_target: topic_assignment_sentiment
+          public_aggregation: average
+          entity: topic_assignment
+
       - name: topic_assignment_positive_count
         sql: SUM(CASE WHEN {CUBE}.assignment_sentiment = 'POSITIVE' THEN 1 ELSE 0 END)
         type: number
@@ -80,6 +88,11 @@ cubes:
       - name: sentiment
         sql: assignment_sentiment
         type: string
+
+      - name: sentiment_score
+        sql: assignment_sentiment_score
+        type: number
+        public: false
 
       - name: reported_at
         sql: reported_at

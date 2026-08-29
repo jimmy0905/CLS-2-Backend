@@ -31,6 +31,7 @@ from features.analytics.model.semantic import (
     QueryAggregation,
     QuerySpec,
     SemanticCatalog,
+    compile_cube_query,
     validate_query,
 )
 from infrastructure.integrations.cube import CubeQueryError, CubeUnavailableError
@@ -131,6 +132,26 @@ def test_core_dashboard_sentiment_metrics_are_queryable_without_publication() ->
             assert metric.source_field == "sentiment"
             assert metric.query_target == f"sentiment_{sentiment}"
 
+    for view, target, entity in (
+        ("survey_topics", "topic_assignment_sentiment", "topic_assignment"),
+        ("survey_departments", "department_sentiment", "department_assignment"),
+        ("survey_keywords", "keyword_sentiment", "keyword_assignment"),
+    ):
+        metric = metrics[(view, f"{target}_average")]
+        assert metric.aggregation is Aggregation.AVERAGE
+        assert metric.source_field == "sentiment_score"
+        assert metric.query_target == target
+        assert metric.public_aggregation is QueryAggregation.AVERAGE
+        assert metric.entity == entity
+        score = next(
+            field
+            for field in catalog.fields
+            if field.semantic_view == view and field.slug == "sentiment_score"
+        )
+        assert score.data_type is FieldType.NUMBER
+        assert score.published is False
+        assert score.filterable is False
+
     # The combination grain must never count fanned-out rows.
     combination_survey_count = metrics[("survey_assignments", "survey_count")]
     assert combination_survey_count.aggregation is Aggregation.DISTINCT_COUNT
@@ -153,6 +174,52 @@ def test_core_dashboard_sentiment_metrics_are_queryable_without_publication() ->
     )
     assert distinct_survey_id.published is False
     assert distinct_survey_id.filterable is False
+
+
+def test_assignment_sentiment_average_targets_resolve_to_their_own_grains() -> None:
+    catalog = analytics._catalog_from_records([], [])
+    for dimension, target, semantic_view, measure in (
+        (
+            "topic",
+            "topic_assignment_sentiment",
+            "survey_topics",
+            "topic_assignment_sentiment_average",
+        ),
+        (
+            "department",
+            "department_sentiment",
+            "survey_departments",
+            "department_sentiment_average",
+        ),
+        (
+            "keyword",
+            "keyword_sentiment",
+            "survey_keywords",
+            "keyword_sentiment_average",
+        ),
+    ):
+        query = validate_query(
+            {
+                "dimensions": [dimension],
+                "metric": target,
+                "aggregation": "average",
+            },
+            catalog,
+        )
+        assert query.semantic_view == semantic_view
+        assert compile_cube_query(query, catalog, _validated=True)["measures"] == [
+            f"{semantic_view}.{measure}"
+        ]
+
+    with pytest.raises(AnalyticsValidationError, match="Crossing assignment families"):
+        validate_query(
+            {
+                "dimensions": ["keyword", "department"],
+                "metric": "keyword_sentiment",
+                "aggregation": "average",
+            },
+            catalog,
+        )
 
 
 def test_distinct_metrics_match_their_core_cube_measures() -> None:
@@ -317,6 +384,26 @@ def test_query_capabilities_use_the_same_goal_first_resolver(monkeypatch) -> Non
     )
     assert "contains" in keyword_filter["operators"]
 
+    sentiment_average = client.post(
+        "/analytics/query-capabilities",
+        json={
+            "semantic_view": "survey_keywords",
+            "metric": "keyword_sentiment",
+            "aggregation": "average",
+        },
+    )
+    assert sentiment_average.status_code == 200
+    sentiment_body = sentiment_average.json()
+    assert sentiment_body["metric"]["aggregation_label"] == (
+        "Average Keyword Assignment Sentiment"
+    )
+    assert "sentiment_score" not in {
+        item["slug"] for item in sentiment_body["allowed_dimensions"]
+    }
+    assert "sentiment_score" not in {
+        item["field"] for item in sentiment_body["filter_members"]
+    }
+
     invalid = client.post(
         "/analytics/query-capabilities",
         json={
@@ -383,6 +470,17 @@ def test_catalog_exposes_machine_readable_member_and_chart_combinations(
         "average",
         "median",
     }
+    for semantic_view, target in (
+        ("survey_topics", "topic_assignment_sentiment"),
+        ("survey_departments", "department_sentiment"),
+        ("survey_keywords", "keyword_sentiment"),
+    ):
+        targets = {
+            item["metric"]: {method["method"] for method in item["aggregations"]}
+            for item in payload["metric_targets"][semantic_view]
+        }
+        assert targets[target] == {"average"}
+        assert "sentiment_score" not in fields_by_view[semantic_view]
     view_rules = {
         item["semantic_view"]: item
         for item in combinations["semantic_views"]

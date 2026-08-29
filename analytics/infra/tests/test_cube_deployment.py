@@ -243,6 +243,7 @@ def test_cube_models_keep_assignment_grains_separate_and_use_stable_percentiles(
         assert "name: assignment_count" in models[assignment]
         assert "name: survey_count" in models[assignment]
         cube = yaml.safe_load(models[assignment])["cubes"][0]
+        measures = {item["name"]: item for item in cube["measures"]}
         dimensions = {item["name"]: item for item in cube["dimensions"]}
         assert dimensions["survey_id"]["type"] == "string"
         assert dimensions["store_name"]["type"] == "string"
@@ -253,6 +254,28 @@ def test_cube_models_keep_assignment_grains_separate_and_use_stable_percentiles(
             assert dimensions[assignment_name]["sql"] == response_dimension["sql"]
             assert dimensions[assignment_name]["type"] == response_dimension["type"]
         assert dimensions["sentiment"]["sql"] == "assignment_sentiment"
+        assert dimensions["sentiment_score"] == {
+            "name": "sentiment_score",
+            "sql": "assignment_sentiment_score",
+            "type": "number",
+            "public": False,
+        }
+        target = {
+            "survey_topics": "topic_assignment_sentiment",
+            "survey_departments": "department_sentiment",
+            "survey_keywords": "keyword_sentiment",
+        }[assignment]
+        prefix = assignment.removeprefix("survey_").removesuffix("s")
+        assert measures[f"{target}_average"] == {
+            "name": f"{target}_average",
+            "sql": "assignment_sentiment_score",
+            "type": "avg",
+            "meta": {
+                "query_target": target,
+                "public_aggregation": "average",
+                "entity": f"{prefix}_assignment",
+            },
+        }
 
 
 def test_cube_primary_key_dimensions_are_public():
