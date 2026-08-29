@@ -64,7 +64,6 @@ from utils.analytics import (
     resolve_query_metric,
     resolve_semantic_view,
     shape_chart_rows,
-    validate_chart_definition,
     validate_identifier,
     validate_metric,
     validate_query,
@@ -105,8 +104,20 @@ SemanticView = Literal[
 ]
 
 _PROFILE = re.compile(r"^[a-z0-9]+_(?:cls|ecls)$")
-_CHART_TYPES = tuple(
-    rule["chart_type"] for rule in chart_combination_rules()
+_CHART_TYPES = (
+    "kpi",
+    "table",
+    "bar",
+    "column",
+    "stacked_bar",
+    "grouped_bar",
+    "line",
+    "area",
+    "pie",
+    "donut",
+    "polar_area",
+    "radar",
+    "heatmap",
 )
 
 # OpenAPI descriptions deliberately mirror the public analytics contract.  The
@@ -1533,10 +1544,13 @@ class ChartInput(_StrictInput):
         "bar",
         "column",
         "stacked_bar",
+        "grouped_bar",
         "line",
         "area",
         "pie",
         "donut",
+        "polar_area",
+        "radar",
         "heatmap",
     ]
     semantic_view: SemanticView = Field(
@@ -2570,24 +2584,9 @@ def _builder_query(
 def _compatible_chart_types(
     query: QuerySpec, catalog: SemanticCatalog, role: str
 ) -> tuple[str, ...]:
-    result: list[str] = []
-    for chart_type in _CHART_TYPES:
-        try:
-            validate_chart_definition(
-                chart_type,
-                query.dimensions,
-                query.metric,
-                query.aggregation,
-                catalog,
-                semantic_view=query.semantic_view,
-                time_dimension=query.time_dimension,
-                time_granularity=query.time_granularity,
-                role=role,
-            )
-        except AnalyticsValidationError:
-            continue
-        result.append(chart_type)
-    return tuple(result)
+    """Chart type is a client rendering choice, not a governed query constraint."""
+
+    return _CHART_TYPES
 
 
 def _breakdown_is_honest(
@@ -3014,17 +3013,6 @@ def _chart_query(
     values = definition.model_dump(mode="json")
     values.update(update)
     dimensions = tuple(values["dimensions"])
-    validate_chart_definition(
-        chart["chart_type"],
-        dimensions,
-        values["metric"],
-        values["aggregation"],
-        catalog,
-        semantic_view=chart["semantic_view"],
-        time_dimension=values.get("time_dimension"),
-        time_granularity=values.get("time_granularity"),
-        role=role,
-    )
 
     requested_limit = int(values["limit"])
     query_limit = min(requested_limit, 1_000)

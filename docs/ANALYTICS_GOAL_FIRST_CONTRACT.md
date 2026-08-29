@@ -128,7 +128,7 @@ Catalog field 包含：
 - `semantic_view` 不再是 query selector。舊用戶端仍可傳送它，但伺服器會忽略它並回傳實際推導出的 grain。
 - 已移除的 `metrics` field 會以 `422` 拒絕。
 - 只接受在 `metric_targets` 下發佈的 pair。
-- `time_dimension` 不可同時出現於 `dimensions`，且 line／area chart 必須提供 `time_granularity`。
+- `time_dimension` 不可同時出現於 `dimensions`；前端若以它繪製 line／area，必須同時提供 `time_granularity`。
 - `order.member` 必須是已選 dimension、已選 time dimension 或 `value`。
 - query、chart data 與 aggregate export 皆使用此契約。
 - `filter-options`、record query 與 drilldown 保留各自專用的回應形狀。
@@ -180,7 +180,7 @@ Catalog field 包含：
 | 形狀 | 相容圖表類型 |
 | --- | --- |
 | 無時間、0 個 dimension | KPI、table |
-| 無時間、1 個 dimension | bar、column、pie、donut、table |
+| 無時間、1 個 dimension | bar、column、line、area、pie、donut、polar area、radar、table |
 | 無時間、2 個 dimension | stacked bar、grouped bar、heatmap、table |
 | 無時間、3 個 dimension | table |
 | 有時間、0–1 個一般 dimension | line、area、table |
@@ -188,11 +188,11 @@ Catalog field 包含：
 
 除 table 與 KPI 外，結果必須為數值。任何選取的 `table_only` dimension 都會將結果限制為 table。`scatter` 與 `store_map` 不屬於公開圖表契約。
 
-Aggregate query 可選擇傳入 `chart_type`。存在時，伺服器會在執行任何操作前依上述形狀驗證；不相容配對會以 `422` 失敗，而不是產生用戶端無法繪製的資料列。
+Aggregate query 的 `chart_type` 為選填 renderer metadata；前端應依回傳資料形狀選擇圖型，伺服器不以它驗證或拒絕 query。
 
 ### Series 上限與格線補值
 
-圖表在查詢失效前很久就可能難以閱讀，因此帶有 series axis 的 chart type 會設上限：pie 與 donut 保留前十二個 slice，將其餘彙總為 `Other`，因為部分仍必須加總為整體；line、area、stacked bar、grouped bar 與 heatmap 保留前十個 series 並捨棄其餘，因為彙總額外的線或欄沒有意義。`series_limit` 可將上限覆寫至最多五十；`schema.layout` 同時回報套用的上限及是否有內容遭捨棄。
+圖型的相容性由 frontend renderer 依 response shape 決定，後端不以 `chart_type` 拒絕 query。圖表在查詢失效前很久就可能難以閱讀，因此帶有 series axis 的 chart type 會設上限：pie 與 donut 保留前十二個 slice，將其餘彙總為 `Other`，因為部分仍必須加總為整體；line、area、stacked bar、grouped bar 與 heatmap 保留前十個 series 並捨棄其餘，因為彙總額外的線或欄沒有意義。`series_limit` 可將上限覆寫至最多五十；`schema.layout` 同時回報套用的上限及是否有內容遭捨棄。
 
 上限針對無界 dimension 而設。`keyword` 可有數萬個值，`store_name_english` 可有數百個值；`topic` 與 `department` 則來自約二十與十個項目的封閉擷取清單，所以預設永不截斷。
 

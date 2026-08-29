@@ -76,7 +76,7 @@ Catalog membership 與 data availability 不相同：field 可以在 catalog 發
 | 部門 assignment | `survey_departments` | 一個 department assignment | `department_assignment` + `count` |
 | 關鍵字提及 | `survey_keywords` | 一個 keyword assignment | `keyword_assignment` + `count` |
 
-執行時應從 `catalog.combinations.semantic_views` 讀取 `grain`、`assignment_dimension` 與 dimension list，再從 `catalog.metric_targets[semantic_view]` 讀取可執行 pair；不可在前端硬編碼相容性清單。
+執行時應從 `catalog.combinations.semantic_views` 讀取 `grain`、`assignment_dimension` 與 dimension list，再從 `catalog.metric_targets[semantic_view]` 讀取可執行 pair；chart type 則由前端按 response shape 決定。
 
 ## 狀態與請求建立
 
@@ -112,7 +112,7 @@ Catalog membership 與 data availability 不相同：field 可以在 catalog 發
 }
 ```
 
-伺服器會拒絕 stale／cross-view member、未發佈或 ambiguous pair、超過三個 dimension、無 time dimension 的 time control，以及不相容的 chart shape，通常回傳 `422`。當 Cube 或 Analytics 資料庫無法服務時回傳 `503`；應顯示可重試狀態，而非變更使用者選擇。
+伺服器會拒絕 stale／cross-view member、未發佈或 ambiguous pair、超過三個 dimension，以及無 time dimension 的 time control，通常回傳 `422`；不以 chart shape 拒絕 query。當 Cube 或 Analytics 資料庫無法服務時回傳 `503`；應顯示可重試狀態，而非變更使用者選擇。
 
 ## 感情色彩與指標語意
 
@@ -137,22 +137,23 @@ Target 同樣需要以單位說明，避免使用者不小心變更問題：
 
 ## 圖表選擇與呈現
 
-以 `catalog.combinations.charts` 為執行時唯一準則。現行嚴格 matrix：
+以 frontend 的 response-shape matrix 選擇 renderer：
 
 | Query shape | 相容 chart type |
 | --- | --- |
 | 無時間、0 個 dimension | `kpi`、`table` |
-| 無時間、1 個 dimension | `bar`、`column`、`pie`、`donut`、`table` |
-| 無時間、2 個 dimension | `stacked_bar`、`heatmap`、`table` |
+| 無時間、1 個 dimension | `bar`、`column`、`line`、`area`、`pie`、`donut`、`polar_area`、`radar`、`table` |
+| 無時間、2 個 dimension | `stacked_bar`、`grouped_bar`、`heatmap`、`table` |
 | 無時間、3 個 dimension | `table` |
 | 有粒度時間、0–1 個一般 dimension | `line`、`area`、`table` |
 | 有粒度時間、2–3 個一般 dimension | `table` |
 
-`line` 與 `area` 需要 `time_dimension` 與 `time_granularity`；除 `table` 與 `kpi` 外，metric result 必須是 number。`scatter` 與 `store_map` 不受支援。
+這個矩陣屬於 frontend renderer；不要把 `chart_type` 傳到 `/analytics/query` 來要求後端判斷相容性。`line` 與 `area` 在有 time dimension 時需要 `time_granularity`，也可用於無時間的一般分類資料。除 `table` 與 `kpi` 外，metric result 必須是 number。`scatter` 與 `store_map` 不受支援。
 
 共用 aggregate response 使用 `schema` 與 flat `rows`；不要依 metric property name 查值：
 
-- `line`／`area`：`schema.time_dimension.key` 是 X axis；零個一般 dimension 表示單一 series，一個一般 dimension 為 series key。
+- `line`／`area`：若有 `schema.time_dimension`，它是 X axis；零個一般 dimension 表示單一 series，一個一般 dimension 為 series key。若無時間，第一個一般 dimension 為 category axis。
+- `pie`／`donut`／`polar_area`／`radar`：第一個一般 dimension 是 category，`value` 是各 category 的數值。
 - `stacked_bar`：第一個 dimension 是 category，第二個是 series。
 - `heatmap`：兩個 dimension key 標識 cell，`value` 是 intensity。
 - `kpi`：讀取唯一 row 的 `value`。

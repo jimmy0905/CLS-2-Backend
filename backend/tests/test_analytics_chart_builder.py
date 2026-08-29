@@ -253,9 +253,7 @@ def test_example_one_crosses_keyword_with_department_on_deduplicated_counts(
     assert layout.column_dimension == "department"
 
     charts = analytics._compatible_chart_types(query, catalog, "viewer")
-    assert {"grouped_bar", "heatmap", "table"} <= set(charts)
-    # Two dimensions cannot be drawn as a single ring or single bar series.
-    assert "pie" not in charts and "bar" not in charts and "line" not in charts
+    assert charts == analytics._CHART_TYPES
 
 
 def test_example_two_puts_stores_on_weekly_lines(catalog) -> None:
@@ -282,38 +280,35 @@ def test_example_two_puts_stores_on_weekly_lines(catalog) -> None:
     assert layout.column_dimension == "store_name_english"
 
     charts = analytics._compatible_chart_types(query, catalog, "viewer")
-    assert {"line", "area", "table"} <= set(charts)
-    assert "pie" not in charts
+    assert charts == analytics._CHART_TYPES
 
 
-def test_a_chart_type_incompatible_with_the_data_shape_is_rejected(catalog) -> None:
-    with pytest.raises(Exception) as error:
-        validate_query(
-            QuerySpec(
-                semantic_view="survey_assignments",
-                dimensions=("keyword", "department"),
-                metric="topic_sentiment_mixed",
-                aggregation="count",
-                chart_type="pie",
-            ),
-            catalog,
-            "viewer",
-        )
-    assert "pie" in str(error.value)
+def test_chart_type_is_not_a_backend_query_constraint(catalog) -> None:
+    pie_query = validate_query(
+        QuerySpec(
+            semantic_view="survey_assignments",
+            dimensions=("keyword", "department"),
+            metric="topic_sentiment_mixed",
+            aggregation="count",
+            chart_type="pie",
+        ),
+        catalog,
+        "viewer",
+    )
+    radar_query = validate_query(
+        QuerySpec(
+            semantic_view="survey_responses",
+            dimensions=("region",),
+            metric="cls",
+            aggregation="average",
+            chart_type="radar",
+        ),
+        catalog,
+        "viewer",
+    )
 
-    with pytest.raises(Exception) as error:
-        validate_query(
-            QuerySpec(
-                semantic_view="survey_responses",
-                dimensions=("region",),
-                metric="cls",
-                aggregation="average",
-                chart_type="line",
-            ),
-            catalog,
-            "viewer",
-        )
-    assert "line" in str(error.value)
+    assert pie_query.chart_type == "pie"
+    assert radar_query.chart_type == "radar"
 
 
 def test_unbounded_series_are_capped_and_the_grid_is_completed(catalog) -> None:

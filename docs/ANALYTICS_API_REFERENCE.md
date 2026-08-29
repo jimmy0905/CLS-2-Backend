@@ -109,7 +109,7 @@ Dimension 與 time value 會保留 `schema` 宣告的 key。未選 time dimensio
 
 回傳目前角色可使用的 active immutable catalog，包括 active model version、semantic view、可見 field、可執行的邏輯 `metric_targets` 與支援 chart type。不會揭露 candidate header、admin-only field、raw payload key、SQL expression、governed Cube metric slug 或 draft definition。
 
-在建立探索 UI 前先呼叫此 endpoint。用戶端只能將本 response 回傳的 slug 送至 query endpoint。`combinations` 也提供可供機器讀取的 query limit、grain definition 與 chart compatibility，前端不需另行維護手寫相容性表。
+在建立探索 UI 前先呼叫此 endpoint。用戶端只能將本 response 回傳的 slug 送至 query endpoint。`combinations` 提供可供機器讀取的 query limit 與 grain definition；chart renderer compatibility 由前端依 response shape 決定。
 
 ### `POST /analytics/query-capabilities`
 
@@ -211,13 +211,13 @@ Response 包含 `chart` 及與 `/analytics/query` 相同的 `schema`、flat `row
 | Query shape | 相容 chart type |
 | --- | --- |
 | 無時間、0 個 dimension | `kpi`、`table` |
-| 無時間、1 個 dimension | `bar`、`column`、`pie`、`donut`、`table` |
-| 無時間、2 個 dimension | `stacked_bar`、`heatmap`、`table` |
+| 無時間、1 個 dimension | `bar`、`column`、`line`、`area`、`pie`、`donut`、`polar_area`、`radar`、`table` |
+| 無時間、2 個 dimension | `stacked_bar`、`grouped_bar`、`heatmap`、`table` |
 | 無時間、3 個 dimension | `table` |
 | 有粒度時間、0–1 個一般 dimension | `line`、`area`、`table` |
 | 有粒度時間、2–3 個一般 dimension | `table` |
 
-`line` 與 `area` 同時需要 time dimension 與 time granularity。除 `table` 與 `kpi` 外 metric result 必須為 numeric。`scatter` 與 `store_map` 不受支援。不存在或不可見的 chart 回傳 `404`。
+這是前端 renderer 的選擇矩陣；`/analytics/query` 不以 `chart_type` 驗證 dimension/metric shape，後端只回傳 governed schema 與 flat rows。選擇 time dimension 時，`line` 與 `area` 仍需要 time granularity；無時間的一般分類資料也可選用它們。除 `table` 與 `kpi` 外 metric result 必須為 numeric。`scatter` 與 `store_map` 不受支援。不存在或不可見的 chart 回傳 `404`。
 
 ### `POST /analytics/drilldown`
 
@@ -259,7 +259,7 @@ Export job 建立後狀態為 `queued`。系統在受理時記錄精確 role、m
 
 ### Chart（圖表）
 
-Chart 本文含 `slug`、`title`、可選 `description`、`chart_type`、`semantic_view`、受治理 `definition` 與 `visibility`。Definition 指定 0–3 個 dimension、恰一個 `metric` field 與 `aggregation`，可另含 filter、time setting、order 與 bounded limit。驗證使用 chart data 章節的嚴格 matrix；`line`／`area` 需要 granular time dimension，兩個一般 dimension 僅可使用 `stacked_bar`、`heatmap` 或 `table`，三個一般 dimension 只可使用 `table`。`scatter`、`store_map` 不再接受。
+Chart 本文含 `slug`、`title`、可選 `description`、`chart_type`、`semantic_view`、受治理 `definition` 與 `visibility`。Definition 指定 0–3 個 dimension、恰一個 `metric` field 與 `aggregation`，可另含 filter、time setting、order 與 bounded limit。後端保存 `chart_type` 供 renderer 使用，但不以它驗證 query shape；前端依資料形狀決定可選圖型。`scatter`、`store_map` 不再接受。
 
 | Endpoint | 行為 |
 | --- | --- |

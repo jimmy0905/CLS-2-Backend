@@ -377,7 +377,12 @@ def test_catalog_exposes_machine_readable_member_and_chart_combinations(
         for item in payload["metric_targets"]["survey_responses"]
     }
     assert response_targets["survey"] == {"count"}
-    assert "average" in response_targets["cls"]
+    assert response_targets["cls"] == {"sum", "average"}
+    assert response_targets["topic_sentiment_score"] == {
+        "sum",
+        "average",
+        "median",
+    }
     view_rules = {
         item["semantic_view"]: item
         for item in combinations["semantic_views"]
@@ -1491,7 +1496,7 @@ def test_pie_contract_forces_top_twelve_and_uses_governed_other_value() -> None:
     }
 
 
-def test_chart_runtime_rejects_temporal_metric_in_numeric_plot() -> None:
+def test_chart_runtime_does_not_validate_the_renderer_type() -> None:
     temporal_catalog = SemanticCatalog(
         fields=[
             CatalogField(
@@ -1525,8 +1530,9 @@ def test_chart_runtime_rejects_temporal_metric_in_numeric_plot() -> None:
         },
     }
 
-    with pytest.raises(AnalyticsValidationError, match="numeric metric"):
-        analytics._chart_query(chart, None, temporal_catalog, "viewer")
+    query, _ = analytics._chart_query(chart, None, temporal_catalog, "viewer")
+
+    assert query.chart_type == "bar"
 
 
 def test_filtered_metric_parameters_are_typed_and_declarative() -> None:

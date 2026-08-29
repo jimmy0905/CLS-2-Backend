@@ -721,15 +721,17 @@ Enum target **只提供 `count`**。情緒是字串，加總或平均它沒有�
 | Query shape | 可用 Chart |
 | --- | --- |
 | 無 time、0 Dimensions | `kpi`, `table` |
-| 無 time、1 Dimension | `bar`, `column`, `pie`, `donut`, `table` |
+| 無 time、1 Dimension | `bar`, `column`, `line`, `area`, `pie`, `donut`, `polar_area`, `radar`, `table` |
 | 無 time、2 Dimensions | `stacked_bar`, `grouped_bar`, `heatmap`, `table` |
 | 無 time、3 Dimensions | `table` |
 | 有 granular time、0–1 普通 Dimensions | `line`, `area`, `table` |
 | 有 granular time、2–3 普通 Dimensions | `table` |
 
-所有 Chart 都只有一個 Metric/Aggregation。`line`／`area` 必須同時有
-`time_dimension` 和 `time_granularity`。除了 `table` 和 `kpi`，Metric
-結果必須是 number。`scatter` 與 `store_map` 已移除。
+所有 Chart 都只有一個 Metric/Aggregation。圖型選擇由 frontend renderer
+依 response shape 決定，後端不以 `chart_type` 驗證組合。`line`／`area`
+在有 time dimension 時需要 `time_granularity`，無 time 的單一分類 dimension
+亦可選用。除了 `table` 和 `kpi`，Metric 結果必須是 number。`scatter` 與
+`store_map` 已移除。
 
 例如以下 aggregate query 合法：
 
@@ -744,9 +746,8 @@ Enum target **只提供 `count`**。情緒是字串，加總或平均它沒有�
 但不能用作 Pie Chart，因為 Pie 只接受一個 Dimension。它可以用於
 Table、Stacked Bar、Grouped Bar 或 Heatmap。
 
-`/analytics/query` 也接受選填的 `chart_type`。填了之後，伺服器會在執行
-之前先驗證上表的形狀，所以不相容的組合會直接回 `422`，而不是回一堆
-前端畫不出來的資料。
+`/analytics/query` 的 `chart_type` 是選填的 renderer metadata。前端根據
+response shape 選圖；伺服器不會用它驗證或拒絕 query。
 
 ### 13.1 Series 上限與補空格
 

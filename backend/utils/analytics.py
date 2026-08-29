@@ -39,6 +39,8 @@ ChartType = Literal[
     "area",
     "pie",
     "donut",
+    "polar_area",
+    "radar",
     "heatmap",
 ]
 
@@ -1169,18 +1171,6 @@ def validate_query(
         if order.member not in selected:
             raise AnalyticsValidationError("Ordering is limited to selected members")
 
-    if query.chart_type is not None:
-        validate_chart_definition(
-            query.chart_type,
-            query.dimensions,
-            query.metric,
-            query.aggregation,
-            catalog,
-            semantic_view=resolution.semantic_view,
-            time_dimension=query.time_dimension,
-            time_granularity=query.time_granularity,
-            role=role,
-        )
     layout = chart_layout(query)
     if query.fill_empty and (layout is None or layout.column_dimension is None):
         raise AnalyticsValidationError(
@@ -1346,7 +1336,7 @@ CHART_COMBINATION_RULES: tuple[dict[str, Any], ...] = (
             "numeric_metric_required": True,
             "exact_metric_count": 1,
         }
-        for chart_type in ("bar", "column", "pie", "donut")
+        for chart_type in ("bar", "column", "pie", "donut", "polar_area", "radar")
     ),
     # A cross tabulation of two dimensions. grouped_bar compares the second
     # dimension side by side, which suits comparison better than stacking.
