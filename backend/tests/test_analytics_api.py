@@ -176,6 +176,17 @@ def test_core_dashboard_sentiment_metrics_are_queryable_without_publication() ->
     assert distinct_survey_id.filterable is False
 
 
+def test_core_filter_controls_do_not_enumerate_identifiers() -> None:
+    catalog = analytics._catalog_from_records([], [])
+    fields = {(field.semantic_view, field.slug): field for field in catalog.fields}
+
+    assert fields[("survey_responses", "id")].filter_control == "input"
+    assert fields[("survey_keywords", "assignment_id")].filter_control == "input"
+    assert fields[("survey_assignments", "combination_id")].filter_control == "input"
+    assert fields[("survey_keywords", "keyword")].filter_control == "search"
+    assert fields[("survey_keywords", "keyword")].minimum_search_length == 2
+
+
 def test_assignment_sentiment_average_targets_resolve_to_their_own_grains() -> None:
     catalog = analytics._catalog_from_records([], [])
     for dimension, target, semantic_view, measure in (
@@ -790,6 +801,108 @@ def test_filter_options_return_non_null_governed_values(monkeypatch) -> None:
         "survey_responses.store_format": "asc",
     }
     assert cube.calls[0][0]["offset"] == 1000
+
+
+def test_filter_options_enforce_catalog_option_controls(monkeypatch) -> None:
+    db = FakeDb()
+    catalog = SemanticCatalog(
+        fields=[
+            CatalogField(
+                slug="id",
+                label="Response ID",
+                semantic_view="survey_responses",
+                data_type=FieldType.NUMBER,
+                filter_control="input",
+            ),
+            CatalogField(
+                slug="keyword",
+                label="Keyword",
+                semantic_view="survey_responses",
+                data_type=FieldType.STRING,
+                filter_control="search",
+                minimum_search_length=2,
+            ),
+        ],
+        metrics=[
+            CatalogMetric(
+                slug="survey_count",
+                label="Response count",
+                semantic_view="survey_responses",
+                aggregation=Aggregation.COUNT,
+                source_field="id",
+                query_target="survey",
+                public_aggregation="count",
+                entity="survey",
+            )
+        ],
+    )
+    captured: dict[str, object] = {}
+
+    async def fake_execute(
+        query,
+        db,
+        current_user,
+        *,
+        cube_query_override=None,
+        pinned_version=None,
+        pinned_catalog=None,
+        query_is_validated=False,
+    ):
+        captured["query"] = query
+        captured["cube_query"] = cube_query_override
+        captured["query_is_validated"] = query_is_validated
+        return {
+            "query_id": "query-1",
+            "model_version": 0,
+            "rows": [{"keyword": "Delivery", "value": 12}],
+            "warnings": [],
+            "freshness_time": None,
+        }
+
+    monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
+    monkeypatch.setattr(config, "DEPLOYMENT_PROFILE", "wtchk_cls")
+    monkeypatch.setattr(analytics, "_catalog_from_version", lambda version, role: catalog)
+    monkeypatch.setattr(analytics, "_active_model_version", lambda db: None)
+    monkeypatch.setattr(analytics, "_execute_query", fake_execute)
+    client = _client(db)
+
+    input_response = client.post(
+        "/analytics/filter-options",
+        json={"semantic_view": "survey_responses", "member": "id"},
+    )
+    short_search_response = client.post(
+        "/analytics/filter-options",
+        json={
+            "semantic_view": "survey_responses",
+            "member": "keyword",
+            "search": "d",
+        },
+    )
+    search_response = client.post(
+        "/analytics/filter-options",
+        json={
+            "semantic_view": "survey_responses",
+            "member": "keyword",
+            "search": "de",
+        },
+    )
+
+    assert input_response.status_code == 422
+    assert "does not provide listed options" in input_response.json()["detail"]
+    assert short_search_response.status_code == 422
+    assert "at least 2 characters" in short_search_response.json()["detail"]
+    assert search_response.status_code == 200
+    assert search_response.json()["values"] == [{"value": "Delivery", "count": 12}]
+    assert captured["query_is_validated"] is True
+    assert captured["query"].semantic_view == "survey_responses"
+    assert captured["cube_query"]["filters"] == [
+        {"member": "survey_responses.keyword", "operator": "set"},
+        {
+            "member": "survey_responses.keyword",
+            "operator": "contains",
+            "values": ["de"],
+        },
+    ]
 
 
 def test_frontend_dashboard_analytics_discovery_and_chart_flow(monkeypatch) -> None:

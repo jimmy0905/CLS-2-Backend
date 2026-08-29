@@ -35,6 +35,7 @@ from features.analytics.model.semantic import (
     CatalogMetric,
     ChartType,
     FieldType,
+    FilterControl,
     FilterSpec,
     MAX_AGGREGATE_ROWS,
     MAX_DIMENSIONS,
@@ -55,6 +56,7 @@ from features.analytics.model.semantic import (
     resolve_query_metric,
     resolve_semantic_view,
     shape_chart_rows,
+    validate_query_fields,
     validate_identifier,
     validate_metric,
     validate_query,
@@ -80,6 +82,11 @@ from infrastructure.database.dbo.AnalyticsMetric import AnalyticsMetric
 from infrastructure.database.dbo.AnalyticsModelVersion import AnalyticsModelVersion
 from infrastructure.database.dbo.AnalyticsQueryLog import AnalyticsQueryLog
 from infrastructure.database.dbo.User import User
+# Register every mapped database object before AnalyticsQueryLog construction
+# triggers SQLAlchemy's relationship resolution.  In particular, AnalyticsField
+# refers to AnalyticsFieldValue by name and the latter is not otherwise needed
+# by this endpoint module.
+from infrastructure.database import registry as _database_registry
 from infrastructure.database.session import get_db
 from features.feedback.model.sentiment import Sentiment, TopicSentiment
 from features.identity.service.security import get_current_user, require_admin
@@ -554,11 +561,37 @@ _ASSIGNMENT_SCOPE_FIELDS = {
     "department_sentiment",
     "topic_assignment_sentiment",
 }
+_SEARCH_FILTER_FIELDS = {"keyword"}
+_INPUT_FILTER_FIELDS = {
+    "id",
+    "survey_id",
+    "respondent_id",
+    "comment",
+    "latitude",
+    "longitude",
+    "assignment_id",
+    "response_id",
+    "combination_id",
+    "topic_id",
+    "department_id",
+    "keyword_id",
+}
+
+
+def _core_filter_control(slug: str) -> tuple[FilterControl, int]:
+    """Return the safe option-discovery policy for a core dimension."""
+
+    if slug in _SEARCH_FILTER_FIELDS:
+        return "search", 2
+    if slug in _INPUT_FILTER_FIELDS:
+        return "input", 0
+    return "select", 0
 
 
 def _core_field(
     slug: str, data_type: FieldType, semantic_view: str = "survey_responses"
 ) -> CatalogField:
+    filter_control, minimum_search_length = _core_filter_control(slug)
     return CatalogField(
         slug=slug,
         label=slug.replace("_", " ").title(),
@@ -571,6 +604,8 @@ def _core_field(
         ),
         usage="chart" if slug in _CHART_DIMENSION_FIELDS else "table_only",
         filterable=True,
+        filter_control=filter_control,
+        minimum_search_length=minimum_search_length,
         time_dimension=data_type in {FieldType.DATE, FieldType.TIME},
     )
 
@@ -1022,6 +1057,8 @@ class CatalogFieldOutput(_StrictOutput):
     scope: Literal["response", "assignment"]
     usage: Literal["chart", "table_only"]
     filterable: bool
+    filter_control: FilterControl
+    minimum_search_length: int
     time_dimension: bool
 
 
@@ -1143,6 +1180,8 @@ class FilterMemberCapabilityOutput(_StrictOutput):
     label: str
     type: FieldType
     scope: Literal["response", "assignment"]
+    filter_control: FilterControl
+    minimum_search_length: int
     operators: tuple[str, ...]
 
 
@@ -1906,6 +1945,8 @@ def _catalog_from_version(
                 scope=item.get("scope", "response"),
                 usage=item.get("usage", "table_only"),
                 filterable=item.get("filterable", True),
+                filter_control=item.get("filterControl", "input"),
+                minimum_search_length=item.get("minimumSearchLength", 0),
                 time_dimension=item.get(
                     "timeDimension", item["dataType"] in {"date", "time"}
                 ),
@@ -2243,6 +2284,7 @@ async def _execute_query(
     cube_query_override: dict[str, Any] | None = None,
     pinned_version: AnalyticsModelVersion | None = None,
     pinned_catalog: SemanticCatalog | None = None,
+    query_is_validated: bool = False,
 ) -> dict[str, Any]:
     """Validate, execute, log, and format a governed Cube query."""
 
@@ -2256,7 +2298,12 @@ async def _execute_query(
             catalog = pinned_catalog
             if _version_id(_active_model_version(db)) != _version_id(version):
                 raise _AnalyticsCatalogChangedError
-        query = validate_query(query, catalog, role)
+        # Most aggregate requests resolve their grain from the chosen members.
+        # A filter-options request is intentionally different: its caller has
+        # already validated the explicit selector view, so do not resolve it to
+        # a narrower assignment grain while formatting the result.
+        if not query_is_validated:
+            query = validate_query(query, catalog, role)
         cube_query = cube_query_override or compile_cube_query(
             query, catalog, role, _validated=True
         )
@@ -2809,6 +2856,8 @@ def _catalog_response(
             scope=field.scope,
             usage=field.usage,
             filterable=field.filterable,
+            filter_control=field.filter_control,
+            minimum_search_length=field.minimum_search_length,
             time_dimension=field.time_dimension,
         )
         for field in catalog.fields
@@ -2928,6 +2977,8 @@ def _query_capabilities_response(
             scope=field.scope,
             usage=field.usage,
             filterable=field.filterable,
+            filter_control=field.filter_control,
+            minimum_search_length=field.minimum_search_length,
             time_dimension=field.time_dimension,
         )
 
@@ -2957,6 +3008,8 @@ def _query_capabilities_response(
                 label=field.label,
                 type=field.data_type,
                 scope=field.scope,
+                filter_control=field.filter_control,
+                minimum_search_length=field.minimum_search_length,
                 operators=allowed_filter_operators(field.data_type),
             )
             for field in fields
@@ -3164,6 +3217,12 @@ def _catalog_from_records(
             scope=(getattr(field, "definition", None) or {}).get("scope", "response"),
             usage=(getattr(field, "definition", None) or {}).get("usage", "table_only"),
             filterable=(getattr(field, "definition", None) or {}).get("filterable", True),
+            filter_control=(getattr(field, "definition", None) or {}).get(
+                "filter_control", "input"
+            ),
+            minimum_search_length=(getattr(field, "definition", None) or {}).get(
+                "minimum_search_length", 0
+            ),
             time_dimension=(getattr(field, "definition", None) or {}).get(
                 "time_dimension", field.data_type in {"date", "time"}
             ),
@@ -3431,6 +3490,12 @@ def _cube_catalog_payload(
                 "scope": (getattr(field, "definition", None) or {}).get("scope", "response"),
                 "usage": (getattr(field, "definition", None) or {}).get("usage", "table_only"),
                 "filterable": (getattr(field, "definition", None) or {}).get("filterable", True),
+                "filterControl": (getattr(field, "definition", None) or {}).get(
+                    "filter_control", "input"
+                ),
+                "minimumSearchLength": (getattr(field, "definition", None) or {}).get(
+                    "minimum_search_length", 0
+                ),
                 "timeDimension": (getattr(field, "definition", None) or {}).get(
                     "time_dimension", field.data_type in {"date", "time"}
                 ),
@@ -3828,6 +3893,24 @@ async def get_filter_options(
         version = _active_model_version(db)
         catalog = _catalog_from_version(version, role)
         field = catalog.field(payload.member, payload.semantic_view)
+        if not field.filterable:
+            raise AnalyticsValidationError(
+                f"Dimension {field.slug} is not available for filtering"
+            )
+        if field.filter_control == "input":
+            raise AnalyticsValidationError(
+                f"{field.label} accepts an exact value and does not provide listed options"
+            )
+        if (
+            field.filter_control == "search"
+            and (
+                payload.search is None
+                or len(payload.search) < field.minimum_search_length
+            )
+        ):
+            raise AnalyticsValidationError(
+                f"Search {field.label} with at least {field.minimum_search_length} characters"
+            )
         count_target = _FILTER_OPTION_METRIC_TARGETS[payload.semantic_view]
         filters: tuple[FilterSpec, ...] = (
             *payload.filters,
@@ -3857,7 +3940,18 @@ async def get_filter_options(
             ),
             limit=payload.limit,
         )
-        cube_query = compile_cube_query(query, catalog, role)
+        # filter-options is deliberately view-scoped. Aggregate queries normally
+        # resolve the narrowest honest grain, but doing that here could silently
+        # turn a survey_assignments selector into a single-assignment selector.
+        validate_query_fields(
+            semantic_view=payload.semantic_view,
+            dimensions=query.dimensions,
+            filters=query.filters,
+            catalog=catalog,
+            role=role,
+        )
+        resolve_query_metric(query, catalog, role)
+        cube_query = compile_cube_query(query, catalog, role, _validated=True)
         cube_query["offset"] = payload.cursor or 0
     except (AnalyticsValidationError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
@@ -3869,6 +3963,7 @@ async def get_filter_options(
         cube_query_override=cube_query,
         pinned_version=version,
         pinned_catalog=catalog,
+        query_is_validated=True,
     )
     values = [
         {

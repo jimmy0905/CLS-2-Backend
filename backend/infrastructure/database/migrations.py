@@ -13,9 +13,10 @@ from core.config import (
 from core.logging import logger
 
 GOAL_FIRST_ANALYTICS_REVISION = "0013_goal_first_analytics"
+BACKEND_DIR = Path(__file__).resolve().parents[2]
+MIGRATIONS_DIR = BACKEND_DIR / "migrations"
 GOAL_FIRST_ANALYTICS_MIGRATION = (
-    Path(__file__).resolve().parents[1]
-    / "migrations"
+    MIGRATIONS_DIR
     / "versions"
     / "2026_08_28_0013_migrate_goal_first_analytics.py"
 )
@@ -116,9 +117,8 @@ def bootstrap_single_metric_analytics_defaults() -> bool:
 
 
 def _build_alembic_config() -> Config:
-    backend_dir = Path(__file__).resolve().parents[1]
-    alembic_config = Config(str(backend_dir / "alembic.ini"))
-    alembic_config.set_main_option("script_location", str(backend_dir / "migrations"))
+    alembic_config = Config(str(BACKEND_DIR / "alembic.ini"))
+    alembic_config.set_main_option("script_location", str(MIGRATIONS_DIR))
     alembic_config.set_main_option("sqlalchemy.url", SQLALCHEMY_DATABASE_URI)
     return alembic_config
 

@@ -107,7 +107,7 @@ Dimension 與 time value 會保留 `schema` 宣告的 key。未選 time dimensio
 
 ### `GET /analytics/catalog`
 
-回傳目前角色可使用的 active immutable catalog，包括 active model version、semantic view、可見 field、可執行的邏輯 `metric_targets` 與支援 chart type。不會揭露 candidate header、admin-only field、raw payload key、SQL expression、governed Cube metric slug 或 draft definition。
+回傳目前角色可使用的 active immutable catalog，包括 active model version、semantic view、可見 field、可執行的邏輯 `metric_targets` 與支援 chart type。不會揭露 candidate header、admin-only field、raw payload key、SQL expression、governed Cube metric slug 或 draft definition。每個 field 另提供 `filter_control`（`select`、`search` 或 `input`）及 `minimum_search_length`；前端必須依此決定是否可載入 option。
 
 在建立探索 UI 前先呼叫此 endpoint。用戶端只能將本 response 回傳的 slug 送至 query endpoint。`combinations` 提供可供機器讀取的 query limit 與 grain definition；chart renderer compatibility 由前端依 response shape 決定。
 
@@ -166,6 +166,8 @@ GET /analytics/query-combinations?semantic_view=survey_responses
 ```
 
 `semantic_view` 與 `member` 為必填。`filters` 可用於相依選擇，例如選定門市格式後才列出門市；`search` 僅限 string field。UI 需要隱藏完全無資料 dimension 時，先呼叫 `GET /analytics/catalog/availability`。
+
+此 endpoint 只適用於 catalog 宣告為 `select` 或 `search` 的 field。`search` field 必須帶有至少 `minimum_search_length` 個字元的 `search`；`input` field（例如 response／survey ID、assignment ID、組合 ID）只接受使用者輸入的 exact value，呼叫此 endpoint 會得到 `422`。前端不得在開啟 filter UI 時自動查詢 `search` field，亦不得把 cursor page 全部載入；`select` 最多顯示首 100 個 value，若 `has_more` 為 true 應提示使用者先縮窄條件。
 
 此 endpoint 只回傳 option value 及其相符 row count；不接受 `metric`、`aggregation` 或已移除的 `metrics`，也不回傳 `metric_columns` 或各 option 的 metric object。超過 1,000 個 value 時，將 response `next_cursor` 作為下一請求 `cursor`；先按相符 row count 遞減、再按 value 遞增排序。`has_more` 在頁面滿時為 true；總數剛好是 `limit` 倍數時，最後一次請求可能回傳空頁。
 

@@ -59,6 +59,9 @@ class FieldType(str, Enum):
     TIME = "time"
 
 
+FilterControl = Literal["select", "search", "input"]
+
+
 class Visibility(str, Enum):
     VIEWER = "viewer"
     ADMIN = "admin"
@@ -258,13 +261,22 @@ class CatalogField(_CatalogModel):
     scope: Literal["response", "assignment"] = "response"
     usage: Literal["chart", "table_only"] = "table_only"
     filterable: bool = True
+    filter_control: FilterControl = "select"
+    minimum_search_length: int = Field(default=0, ge=0, le=100)
     time_dimension: bool = False
     kind: Literal[MemberKind.DIMENSION] = MemberKind.DIMENSION
 
     @model_validator(mode="after")
-    def _time_dimension_type(self) -> "CatalogField":
+    def _filter_control_contract(self) -> "CatalogField":
         if self.time_dimension and self.data_type not in {FieldType.DATE, FieldType.TIME}:
             raise ValueError("time dimensions must use a date or time field")
+        if self.filter_control == "search":
+            if self.data_type is not FieldType.STRING:
+                raise ValueError("Search filter controls require a string dimension")
+            if self.minimum_search_length < 2:
+                raise ValueError("Search filter controls require at least two characters")
+        elif self.minimum_search_length:
+            raise ValueError("Only search filter controls accept a minimum search length")
         return self
 
 

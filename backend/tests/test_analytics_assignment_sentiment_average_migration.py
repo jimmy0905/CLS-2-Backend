@@ -13,7 +13,7 @@ MIGRATION_PATH = (
 
 def _migration():
     spec = importlib.util.spec_from_file_location(
-        "migration_0015_assignment_sentiment_averages", MIGRATION_PATH
+        "migration_0015_assignment_sentiment_avg", MIGRATION_PATH
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -32,7 +32,8 @@ class _RecordingOp:
 def test_assignment_sentiment_average_migration_follows_assignment_matrix() -> None:
     migration = _migration()
 
-    assert migration.revision == "0015_assignment_sentiment_averages"
+    assert migration.revision == "0015_assignment_sentiment_avg"
+    assert len(migration.revision) <= 32
     assert migration.down_revision == "0014_assignment_matrix_view"
 
 

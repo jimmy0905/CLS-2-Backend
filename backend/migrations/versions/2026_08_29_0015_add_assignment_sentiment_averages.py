@@ -1,6 +1,6 @@
 """add numeric sentiment scores to single-family assignment reporting views
 
-Revision ID: 0015_assignment_sentiment_averages
+Revision ID: 0015_assignment_sentiment_avg
 Revises: 0014_assignment_matrix_view
 Create Date: 2026-08-29 15:00:00.000000
 
@@ -15,7 +15,7 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0015_assignment_sentiment_averages"
+revision: str = "0015_assignment_sentiment_avg"
 down_revision: str | Sequence[str] | None = "0014_assignment_matrix_view"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

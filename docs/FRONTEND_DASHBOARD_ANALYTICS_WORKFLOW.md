@@ -20,12 +20,14 @@ flowchart TD
     D --> H[GET /analytics/catalog/availability]
     H --> I{field.available？}
     I -- 否 --> I1[隱藏或停用該 dimension／filter]
-    I -- 是 --> J[顯示 dimension／filter 控制項]
-    J --> K[POST /analytics/filter-options]
-    K --> L{has_more？}
-    L -- 是 --> K1[以 next_cursor 載入下一頁]
-    K1 --> K
-    L -- 否 --> M[使用者選擇 filter、日期及時區]
+    I -- 是 --> J{filter_control}
+    J -- input --> J1[輸入 exact value，不發 option query]
+    J -- search --> J2[輸入 minimum_search_length]
+    J2 --> K[POST /analytics/filter-options]
+    J -- select --> K
+    K --> L[只顯示第一頁；has_more 時提示縮窄]
+    J1 --> M[使用者選擇 filter、日期及時區]
+    L --> M
     E --> M
     M --> N{已發佈 Dashboard 卡片？}
     N -- 是 --> O[POST /analytics/charts/chart_id/data]
@@ -49,7 +51,7 @@ flowchart TD
 | `GET /analytics/query-combinations?semantic_view=...` | 已經 active-catalog 驗證、可直接執行的有限 query template 集合。引導式探索保留其 dimension、metric／aggregation、time dimension 及 grain，只修改 `allowed_overrides` 中列出的欄位。 |
 | `GET /analytics/catalog/availability?semantic_view=...` | 各 catalog field 在 view 中是否至少有一個非 null 值。只顯示 `available: true` 的 field；availability rate 小於 1 並不代表不可使用。 |
 | `GET /analytics/charts/published` | 呼叫端可見的受治理 Dashboard card。保存 `id`（data URL 使用）與 `slug`（穩定前端查找）。 |
-| `POST /analytics/filter-options` | 一個可用 dimension 的非 null 下拉值。傳送已選且相容的 filter 建立相依 selector；`has_more` 為 true 時以 `next_cursor` 繼續。 |
+| `POST /analytics/filter-options` | 只為 catalog 的 `select`／`search` field 取回 non-null option。`select` 只顯示第一頁；`search` 必須先輸入 `minimum_search_length`。`input` field 不可呼叫此 endpoint，直接輸入 exact value。 |
 | `POST /analytics/charts/{chart_id}/data` | 預先定義 Dashboard card 的優先路徑。dimension 與單一 metric／aggregation 維持受治理；前端只能覆寫 filter、time range／granularity、timezone、order 及 limit。 |
 | `POST /analytics/query` | 傳送目標優先 query 的 metric、aggregation、dimension、filter 與可選 time control。不必傳 `semantic_view`；回應會列出伺服器解析出的 grain。 |
 

@@ -793,6 +793,15 @@
           "data_type": {
             "$ref": "#/components/schemas/FieldType"
           },
+          "filter_control": {
+            "enum": [
+              "select",
+              "search",
+              "input"
+            ],
+            "title": "Filter Control",
+            "type": "string"
+          },
           "filterable": {
             "title": "Filterable",
             "type": "boolean"
@@ -800,6 +809,10 @@
           "label": {
             "title": "Label",
             "type": "string"
+          },
+          "minimum_search_length": {
+            "title": "Minimum Search Length",
+            "type": "integer"
           },
           "scope": {
             "enum": [
@@ -842,6 +855,8 @@
           "scope",
           "usage",
           "filterable",
+          "filter_control",
+          "minimum_search_length",
           "time_dimension"
         ],
         "title": "CatalogFieldOutput",
@@ -2296,9 +2311,22 @@
             "title": "Field",
             "type": "string"
           },
+          "filter_control": {
+            "enum": [
+              "select",
+              "search",
+              "input"
+            ],
+            "title": "Filter Control",
+            "type": "string"
+          },
           "label": {
             "title": "Label",
             "type": "string"
+          },
+          "minimum_search_length": {
+            "title": "Minimum Search Length",
+            "type": "integer"
           },
           "operators": {
             "items": {
@@ -2324,6 +2352,8 @@
           "label",
           "type",
           "scope",
+          "filter_control",
+          "minimum_search_length",
           "operators"
         ],
         "title": "FilterMemberCapabilityOutput",
