@@ -1,11 +1,10 @@
-# CLSense Backend
+# CLSense 後端
 
-## Deployment profiles
+## 部署設定檔
 
-The Docker Compose stack has one backend service per Nginx business-unit route. Services
-are opt-in Compose profiles named `[bu_name]_[cls|ecls]`; only the selected profile starts.
+Docker Compose 堆疊會為每個 Nginx 事業單位路由建立一個後端服務。服務採用選擇性啟動的 Compose 設定檔，名稱為 `[bu_name]_[cls|ecls]`；只有被選取的設定檔會啟動。
 
-The Nginx configuration provides 30 CLS profiles:
+Nginx 設定提供 30 個 CLS 設定檔：
 
 ```
 wtchk_cls wtctw_cls wtcmy_cls kvnl_cls sd_cls wtcsg_cls wwhk_cls pnshk_cls
@@ -14,7 +13,7 @@ icibe_cls kvbe_cls tps_cls wtcua_cls wtctr_cls mat_cls mch_cls mcz_cls mfr_cls
 mhu_cls mit_cls mro_cls msk_cls icinl_cls
 ```
 
-It provides 31 ECLS profiles:
+並提供 31 個 ECLS 設定檔：
 
 ```
 wtchk_ecls wtcph_ecls wtcmy_ecls ftrhk_ecls pnshk_ecls wwhk_ecls wtcth_ecls
@@ -24,127 +23,83 @@ mfr_ecls mhu_ecls mit_ecls mro_ecls msk_ecls tps_ecls wtctr_ecls wtcua_ecls
 svruk_ecls
 ```
 
-Every profile preserves the API port defined in Nginx and has its own upload volume.
-For example, `wtchk_cls` listens on host port 8000 and `wtchk_ecls` listens on
-8003. The full mapping is the source of truth in [docker-compose.yml](docker-compose.yml).
+每個設定檔都會保留 Nginx 定義的 API 連接埠，並擁有獨立的上傳磁碟區。例如，`wtchk_cls` 在主機的 8000 埠監聽，而 `wtchk_ecls` 在 8003 埠監聽。完整對應表以 [docker-compose.yml](docker-compose.yml) 為準。
 
-### Configuration boundaries
+### 設定範圍
 
-Copy [`.env.example`](.env.example) to `.env` and fill in the shared credentials
-and integration settings. For every profile you deploy, create
-`deploy/profile/<profile>.env` and copy only its matching block from
-[`deploy/profile.env.example`](deploy/profile.env.example). The external
-`connex_network` must already contain the `postgres` service.
-The legacy misspelled `env.exmaple` remains as a compatibility template; use
-`.env.example` for new deployments.
+將 [`.env.example`](.env.example) 複製為 `.env`，填入共用憑證與整合設定。每部署一個設定檔，請建立 `deploy/profile/<profile>.env`，並只從 [`deploy/profile.env.example`](deploy/profile.env.example) 複製相符的區塊。外部 `connex_network` 必須已包含 `postgres` 服務。舊有拼字錯誤的 `env.exmaple` 仍保留作為相容範本；新的部署請使用 `.env.example`。
 
-Compose uses the specified `--env-file` values only to interpolate an explicit
-environment allowlist. It does not inject either file wholesale into containers,
-so one profile's Azure OAuth credentials or analysis-feedback endpoint are never
-present in another profile's container.
+Compose 僅使用指定的 `--env-file` 值來插入明確允許的環境變數；它不會將任一檔案完整注入容器。因此，一個設定檔的 Azure OAuth 憑證或分析回饋端點，絕不會存在於另一個設定檔的容器中。
 
-The following non-secret values are service-local configuration in
-[`docker-compose.yml`](docker-compose.yml), rather than values loaded from
-`.env`. They are isolated per profile:
+下列非機密值是 [`docker-compose.yml`](docker-compose.yml) 中各服務專屬的設定，而非從 `.env` 載入。它們會依設定檔隔離：
 
-| Configuration | Why it is isolated |
+| 設定 | 隔離原因 |
 | --- | --- |
-| `DATABASE_NAME` | Each service uses its own `[bu]_[cls|ecls]` database. |
-| `FASTAPI_ROOT_PATH` | Matches the Nginx API route, such as `/wtchk/api` or `/ecls/wtchk/api`. |
-| `IS_ECLS_ENABLED` | Selects CLS or ECLS processing behaviour. |
-| `DEPLOYMENT_PROFILE`, `LOG_SERVICE_NAME` | Keeps logs and diagnostics attributable to one deployment. |
-| `FRONTEND_URL`, `AZURE_REDIRECT_URI` | Compose derives these per-profile paths from shared `PUBLIC_BASE_URL`. |
-| Azure AD OAuth credentials | Each service receives its own tenant, client ID, and client secret from its namespaced ignored profile environment file. |
-| `ANALYZE_FEEDBACK_API_URL` | Each service receives its own analysis-feedback endpoint from its namespaced ignored profile environment file. |
-| `ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL`, `SURVEY_EXPORT_COLUMN_*` | Each profile has its own Compose values, initially `false`; edit that profile's service block to enable a feature. |
+| `DATABASE_NAME` | 每個服務使用自己的 `[bu]_[cls|ecls]` 資料庫。 |
+| `FASTAPI_ROOT_PATH` | 對應 Nginx API 路由，例如 `/wtchk/api` 或 `/ecls/wtchk/api`。 |
+| `IS_ECLS_ENABLED` | 選擇 CLS 或 ECLS 處理行為。 |
+| `DEPLOYMENT_PROFILE`、`LOG_SERVICE_NAME` | 讓日誌與診斷資訊可歸屬至單一部署。 |
+| `FRONTEND_URL`、`AZURE_REDIRECT_URI` | Compose 會依設定檔，從共用的 `PUBLIC_BASE_URL` 推導這些路徑。 |
+| Azure AD OAuth 憑證 | 每個服務會從具命名空間且被忽略的設定檔環境檔取得自己的租用戶、用戶端 ID 與用戶端密鑰。 |
+| `ANALYZE_FEEDBACK_API_URL` | 每個服務會從具命名空間且被忽略的設定檔環境檔取得自己的分析回饋端點。 |
+| `ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL`、`SURVEY_EXPORT_COLUMN_*` | 每個設定檔各有 Compose 值，初始為 `false`；如需啟用功能，請編輯該設定檔的服務區塊。 |
 
-Azure AD OAuth credentials and analysis-feedback endpoints are profile-specific
-settings stored only in `deploy/profile/<profile>.env`, which is ignored by
-Git. Copy the needed profile block from
-[`deploy/profile.env.example`](deploy/profile.env.example) into that file.
-For example, `wtchk_cls` consumes only
-`WTCHK_CLS_AZURE_TENANT_ID`, `WTCHK_CLS_AZURE_CLIENT_ID`,
-`WTCHK_CLS_AZURE_CLIENT_SECRET`, and
-`WTCHK_CLS_ANALYZE_FEEDBACK_API_URL`. Generic Azure OAuth and
-`ANALYZE_FEEDBACK_API_URL` values are deliberately overridden inside every
-service, preventing cross-profile inheritance.
+Azure AD OAuth 憑證與分析回饋端點皆為設定檔專屬設定，只會儲存在被 Git 忽略的 `deploy/profile/<profile>.env`。請將 [`deploy/profile.env.example`](deploy/profile.env.example) 中所需的設定檔區塊複製到該檔案。例如，`wtchk_cls` 只會使用 `WTCHK_CLS_AZURE_TENANT_ID`、`WTCHK_CLS_AZURE_CLIENT_ID`、`WTCHK_CLS_AZURE_CLIENT_SECRET` 與 `WTCHK_CLS_ANALYZE_FEEDBACK_API_URL`。通用 Azure OAuth 與 `ANALYZE_FEEDBACK_API_URL` 值會在每個服務中刻意覆寫，以避免跨設定檔繼承。
 
-Analysis-feedback channel inclusion and every survey-export column flag are
-version-controlled, profile-specific settings in `docker-compose.yml`. They
-are no longer read from `.env`; modify only the target profile's service block.
+分析回饋是否包含渠道，以及所有問卷匯出欄位旗標，都是由版本控制的設定檔專屬設定，位於 `docker-compose.yml`。它們不再從 `.env` 讀取；請只修改目標設定檔的服務區塊。
 
-### Start a profile
+### 啟動設定檔
 
-You must provide the profile name, its profile-specific environment file, and
-the shared `.env` file. For example, to start `wtchk_cls`:
+必須提供設定檔名稱、其專屬環境檔與共用 `.env`。例如，啟動 `wtchk_cls`：
 
 ```bash
-docker compose \
-  --profile wtchk_cls \
-  --env-file ./deploy/profile/wtchk_cls.env \
-  --env-file ./.env \
+docker compose \\
+  --profile wtchk_cls \\
+  --env-file ./deploy/profile/wtchk_cls.env \\
+  --env-file ./.env \\
   up -d --build
 ```
 
-Keep shared values only in `.env` and do not repeat a variable in both files;
-when a variable is present in both, the later `--env-file` takes precedence.
+共用值只應放在 `.env`，不要在兩個檔案中重複宣告同一變數；若變數同時存在，較後面的 `--env-file` 會優先。
 
-To start several isolated BUs, name every profile and supply each corresponding
-profile environment file:
+如需啟動多個彼此隔離的 BU，請列出所有設定檔，並提供每個設定檔對應的環境檔：
 
 ```bash
-docker compose \
-  --profile wtchk_cls \
-  --profile wtchk_ecls \
-  --env-file ./deploy/profile/wtchk_cls.env \
-  --env-file ./deploy/profile/wtchk_ecls.env \
-  --env-file ./.env \
+docker compose \\
+  --profile wtchk_cls \\
+  --profile wtchk_ecls \\
+  --env-file ./deploy/profile/wtchk_cls.env \\
+  --env-file ./deploy/profile/wtchk_ecls.env \\
+  --env-file ./.env \\
   up -d --build
 ```
 
-The shared `PUBLIC_BASE_URL` defaults to `http://localhost:3000` for local use. Set it
-to the public Nginx origin in `.env` before enabling Azure OAuth, so the generated
-per-profile redirect URI is registered with Azure.
+共用的 `PUBLIC_BASE_URL` 預設為本機使用的 `http://localhost:3000`。啟用 Azure OAuth 前，請在 `.env` 將它設為公開的 Nginx 來源，以確保產生的各設定檔重新導向 URI 已向 Azure 註冊。
 
-## Observability and data retention
+## 可觀測性與資料保留
 
-Server logs are structured JSON on stdout, suitable for Docker or a centralized log
-collector. Each request emits a completion record with UTC timestamp, service,
-profile, request ID, method, path, status, duration, and client IP. The request ID
-is also returned in `X-Request-ID`; query strings and credentials are never logged
-by the request middleware. Unexpected errors include a stack trace.
+伺服器會將結構化 JSON 日誌輸出至 stdout，適合交由 Docker 或集中式日誌收集器處理。每個請求都會產生完成紀錄，包含 UTC 時間戳記、服務、設定檔、請求 ID、方法、路徑、狀態、耗時與用戶端 IP。請求 ID 亦會在 `X-Request-ID` 回傳；請求中介層絕不記錄查詢字串或憑證。未預期錯誤會包含堆疊追蹤。
 
-Docker limits its local JSON log files to ten 10 MiB files per service. For an
-additional daily rotating application log, configure `SERVER_LOG_FILE` only when a
-writable log mount is supplied; Compose otherwise uses a read-only application
-filesystem by design.
+Docker 將每個服務的本機 JSON 日誌檔限制為十個、每個 10 MiB。若要額外建立每日輪替的應用程式日誌，僅在提供可寫入的日誌掛載時設定 `SERVER_LOG_FILE`；否則 Compose 依設計使用唯讀的應用程式檔案系統。
 
-`DATA_RETENTION_DAYS=30` is the default and is configured in `.env.example`.
-Retention runs after startup and every `RETENTION_CHECK_INTERVAL_SECONDS`
-(default 86400). It purges only operational data older than the cutoff:
+`DATA_RETENTION_DAYS=30` 為預設值，定義於 `.env.example`。資料保留會在啟動後及每個 `RETENTION_CHECK_INTERVAL_SECONDS`（預設為 86400）週期執行。它只會清除早於截止日的營運資料：
 
-- login records;
-- completed or failed upload tasks and their error rows;
-- rotated application log files when `SERVER_LOG_FILE` is configured.
+- 登入紀錄；
+- 已完成或失敗的上傳工作及其錯誤列；
+- 設定 `SERVER_LOG_FILE` 時已輪替的應用程式日誌檔。
 
-It never deletes surveys, users, stores, departments, topics, delivery services, or
-other business data.
+它絕不刪除問卷、使用者、門市、部門、主題、外送服務或其他業務資料。
 
-## Database migrations
+## 資料庫遷移
 
-Startup applies committed Alembic migrations when `DATABASE_AUTO_MIGRATE=true`.
-Automatic migration generation is disabled by default and is forcibly disabled in
-Compose, so production containers never modify the checked-out migration source.
+當 `DATABASE_AUTO_MIGRATE=true` 時，啟動程序會套用已提交的 Alembic 遷移。自動產生遷移預設停用，並在 Compose 中強制停用，因此正式環境容器絕不會修改已簽出的遷移原始碼。
 
-Create and review schema changes manually from the backend directory:
+請從後端目錄手動建立並檢閱結構變更：
 
 ```bash
 cd backend
-alembic revision --autogenerate -m "describe schema change"
+alembic revision --autogenerate -m "描述結構變更"
 alembic upgrade head
 ```
 
-`DATABASE_BOOTSTRAP_SCHEMA=true` enables the legacy SQLAlchemy `create_all()`
-bootstrap path for a local empty database. Fresh databases do not create an admin
-unless `BOOTSTRAP_DEFAULT_ADMIN=true` and a non-empty
-`BOOTSTRAP_DEFAULT_ADMIN_PASSWORD` are configured.
+`DATABASE_BOOTSTRAP_SCHEMA=true` 可為空白的本機資料庫啟用舊版 SQLAlchemy `create_all()` 初始化流程。除非同時設定 `BOOTSTRAP_DEFAULT_ADMIN=true` 與非空的 `BOOTSTRAP_DEFAULT_ADMIN_PASSWORD`，否則新資料庫不會建立管理員。

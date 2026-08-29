@@ -1,11 +1,10 @@
-# Targeted pre-aggregation refresh contract
+# 定向預先彙總重新整理契約
 
-After an upload commits, FastAPI groups the affected reporting months into
-contiguous date ranges and calls the private Cube API for that profile:
+上傳提交後，FastAPI 會將受影響的報表月份分組為連續日期範圍，並呼叫該設定檔的私有 Cube API：
 
 ```http
 POST /cubejs-api/v1/pre-aggregations/jobs
-Authorization: <short-lived profile/refresh_worker Cube JWT>
+Authorization: <短效 profile/refresh_worker Cube JWT>
 Content-Type: application/json
 ```
 
@@ -35,27 +34,9 @@ Content-Type: application/json
 }
 ```
 
-`dateRange` selects only partitions whose build ranges intersect the supplied
-range. The end date is the start of the month after the last affected month.
-The deployment's `ANALYTICS_CUBE_REFRESH_TIME_ZONES` setting is applied to
-both the scheduled refresh worker and upload-triggered refresh requests. It
-must include every timezone that the dashboard is expected to serve; the
-default is UTC plus `Asia/Hong_Kong`.
-Published chart rollups whose semantic view is affected are appended from the
-active catalog version; this is especially important for exact-dimension
-non-additive rollups.
+`dateRange` 只會選取建置範圍與指定範圍相交的分割區。結束日期是最後一個受影響月份之後那個月的第一天。部署的 `ANALYTICS_CUBE_REFRESH_TIME_ZONES` 設定會同時套用至排程重新整理工作者與上傳觸發的重新整理請求。它必須包含儀表板預期提供服務的所有時區；預設值為 UTC 加上 `Asia/Hong_Kong`。
+語意檢視受影響的已發佈圖表彙總，會從啟用中的 catalog 版本附加至請求；這對精確維度的非可加性彙總尤其重要。
 
-Every `survey_assignments` measure is a distinct count over the response key, so
-none of them is additive and its rollups only serve queries whose dimensions
-match exactly. `daily_topic_departments` is built because `topic` and
-`department` come from closed extraction lists and stay small; combinations
-involving `keyword` are left to PostgreSQL, since that dimension is unbounded.
-The caller records the request state on the upload. A rejected request is
-visible as `analytics_refresh_status=failed` but does not fail the already
-committed upload. Operators can poll returned job tokens through Cube's
-`action: get` contract when diagnosing refresh latency.
+每個 `survey_assignments` 指標都是對 response key 的相異計數，因此都不可加；其彙總只能用於維度完全相同的查詢。由於 `topic` 與 `department` 來自封閉的擷取清單、且組合數維持很小，因此會建置 `daily_topic_departments`；涉及 `keyword` 的組合則交由 PostgreSQL，因為該維度沒有上限。呼叫端會將請求狀態記錄在上傳作業上。遭拒的請求會顯示為 `analytics_refresh_status=failed`，但不會使已提交的上傳失敗。排查重新整理延遲時，操作人員可透過 Cube 的 `action: get` 契約輪詢回傳的工作 token。
 
-Catalog publication is independent. It increments `catalogVersion`; Cube's
-`schemaVersion` callback observes the new version within the five-second local
-metadata cache and recompiles. Catalog version changes must never be used as a
-substitute for refreshing data partitions.
+Catalog 發佈獨立運作。它會遞增 `catalogVersion`；Cube 的 `schemaVersion` 回呼會在五秒的本機中繼資料快取內觀察到新版本並重新編譯。絕不可將 catalog 版本變更視為重新整理資料分割區的替代方案。

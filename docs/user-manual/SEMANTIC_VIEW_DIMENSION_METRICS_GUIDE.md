@@ -18,9 +18,9 @@
 
 相關文件：
 
-- [Analytics API reference](../ANALYTICS_API_REFERENCE.md)
-- [Frontend dashboard analytics workflow](../FRONTEND_DASHBOARD_ANALYTICS_WORKFLOW.md)
-- [Dashboard analytics migration](../DASHBOARD_ANALYTICS_MIGRATION.md)
+- [Analytics API 參考](../ANALYTICS_API_REFERENCE.md)
+- [前端儀表板 Analytics 工作流程](../FRONTEND_DASHBOARD_ANALYTICS_WORKFLOW.md)
+- [儀表板 Analytics 遷移指南](../DASHBOARD_ANALYTICS_MIGRATION.md)
 
 ## 1. 三個核心概念
 
@@ -52,7 +52,7 @@ survey_responses + topic + id/count
 
 ## 2. Semantic View 完整組合矩陣
 
-### 2.1 `survey_responses`
+### 2.1 `survey_responses`（問卷回應）
 
 資料粒度：
 
@@ -132,7 +132,7 @@ channel_name, channel_id, delivery_service_name, delivery_service_id
 - 每日回覆數量如何變化？
 - 哪間店舖的平均 sentiment score 最低？
 
-### 2.2 `survey_topics`
+### 2.2 `survey_topics`（主題指派）
 
 資料粒度：
 
@@ -151,7 +151,7 @@ assignment_id, response_id, sentiment, topic_id, topic
 | `topic_sentiment` | 整份 Survey Response 的 sentiment |
 | `sentiment` | 當前 Topic assignment 的 sentiment |
 | `topic` | Topic 名稱 |
-| `assignment_id` | Topic assignment ID |
+| `assignment_id` | Topic assignment ID（主題指派識別字） |
 | `response_id` | 原本 response 的 ID |
 
 #### 常用公開 Metric Options
@@ -168,7 +168,7 @@ assignment_id, response_id, sentiment, topic_id, topic
 - 有多少份不同 Survey 提及 Delivery？
 - Mall 店舖的 Topic assignments 分佈如何？
 
-### 2.3 `survey_departments`
+### 2.3 `survey_departments`（部門指派）
 
 資料粒度：
 
@@ -196,7 +196,7 @@ assignment_id, response_id, sentiment, department_id, department
 - 有多少不同 Survey 涉及 Logistics？
 - 各 Store Format 的 Department assignment workload 如何？
 
-### 2.4 `survey_keywords`
+### 2.4 `survey_keywords`（關鍵字指派）
 
 資料粒度：
 
@@ -242,7 +242,7 @@ assignment_id, response_id, sentiment, keyword_id, keyword
 
 欄位型別容許的 Aggregations：
 
-| Field type | Aggregations |
+| 欄位型別 | 可用彙總方式 |
 | --- | --- |
 | string / boolean | `count`, `distinct_count` |
 | number | `count`, `distinct_count`, `sum`, `average`, `min`, `max`, `median` |
@@ -315,7 +315,7 @@ U = NEUTRAL
 M = MIXED
 ```
 
-| Survey | Store | Format / Region | Overall sentiment | Topics | Departments | Keywords |
+| 問卷 | 門市 | 格式／地區 | 整體情緒 | 主題 | 部門 | 關鍵字 |
 | --- | --- | --- | --- | --- | --- | --- |
 | S1 | A | Mall / HK Island | N | Delivery N, Speed N | Operations N, Digital N | late N, cold N |
 | S2 | A | Mall / HK Island | P | Staff P | Service P | friendly P |
@@ -331,10 +331,10 @@ M = MIXED
 基礎總數：
 
 ```text
-Survey Responses      = 10
-Topic Assignments      = 15
-Department Assignments = 15
-Keyword Assignments    = 14
+問卷回應數     = 10
+主題指派數     = 15
+部門指派數     = 15
+關鍵字指派數   = 14
 ```
 
 四個總數不同，就是 Semantic View 必須分開的主要原因。
@@ -408,25 +408,25 @@ Keyword Assignments    = 14
 
 `store_format` 存在於全部四個 Views，但不同 grain 下的計數結果不同。
 
-### 6.1 Response grain
+### 6.1 Response grain（回應粒度）
 
 ```text
 survey_responses + store_format + id/count
 ```
 
-| Format | Count |
+| 格式 | 計數 |
 | --- | ---: |
 | Mall | 5 |
 | Street | 3 |
 | Airport | 2 |
 
-### 6.2 Topic assignment grain
+### 6.2 Topic assignment grain（主題指派粒度）
 
 ```text
 survey_topics + store_format + assignment_id/count
 ```
 
-| Format | value（Topic assignment count） |
+| 格式 | value（主題指派計數） |
 | --- | ---: |
 | Mall | 8 |
 | Street | 5 |
@@ -435,22 +435,22 @@ survey_topics + store_format + assignment_id/count
 Mall 從 5 變成 8，因為：
 
 ```text
-S1 = 2 Topics
-S2 = 1 Topic
-S3 = 1 Topic
-S6 = 2 Topics
-S7 = 2 Topics
+S1 = 2 個主題
+S2 = 1 個主題
+S3 = 1 個主題
+S6 = 2 個主題
+S7 = 2 個主題
 
 合計 = 8 Topic assignments
 ```
 
-### 6.3 Keyword assignment grain
+### 6.3 Keyword assignment grain（關鍵字指派粒度）
 
 ```text
 survey_keywords + store_format + assignment_id/count
 ```
 
-| Format | value（Keyword assignment count） |
+| 格式 | value（關鍵字指派計數） |
 | --- | ---: |
 | Mall | 7 |
 | Street | 5 |
@@ -471,7 +471,7 @@ Mall 只有 7，因為 S7 有兩個 Topics，但只有一個 Keyword。
 }
 ```
 
-| Format | value |
+| 格式 | value |
 | --- | ---: |
 | Mall | 5 |
 | Street | 3 |
@@ -500,11 +500,11 @@ assignment 的 Surveys，不代表所有 Surveys。
 ```text
 survey_responses + topic_sentiment + id/count
 
-Positive = 3
-Negative = 3
-Neutral  = 2
-Mixed    = 2
-Total    = 10
+正向 = 3
+負向 = 3
+中性 = 2
+混合 = 2
+總數 = 10
 ```
 
 在 Topic assignment grain：
@@ -513,7 +513,7 @@ Total    = 10
 survey_topics + topic_sentiment + assignment_id/count
 ```
 
-| Overall topic_sentiment | value（Topic assignment count） |
+| 整體 topic_sentiment | value（主題指派計數） |
 | --- | ---: |
 | POSITIVE | 4 |
 | NEGATIVE | 5 |

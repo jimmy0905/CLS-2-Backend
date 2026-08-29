@@ -1,104 +1,77 @@
-# Analytics API reference
+# Analytics API 參考
 
-> The public aggregate API is goal-first. Read
-> [Goal-first analytics query contract](ANALYTICS_GOAL_FIRST_CONTRACT.md) before
-> implementing a query builder; it defines logical metric targets,
-> `/analytics/query-capabilities`, and the current response schema.
+> 公開 aggregate API 採用目標優先模式。實作 query builder 前，請先閱讀[目標優先的 Analytics 查詢契約](ANALYTICS_GOAL_FIRST_CONTRACT.md)，其中定義邏輯 metric target、`/analytics/query-capabilities` 與現行 response schema。
 
-This document describes the governed Cube analytics API. It covers the analytics routes only; existing `/dashboard/*`, survey, upload, and authentication routes are unchanged.
+本文件說明受治理的 Cube Analytics API。它只涵蓋 Analytics route；既有 `/dashboard/*`、survey、upload 與 authentication route 不受影響。
 
-For an endpoint-by-endpoint replacement guide and ready-to-send bodies for the
-current dashboard cards, see [Dashboard analytics migration](DASHBOARD_ANALYTICS_MIGRATION.md).
-For the frontend call order, availability checks, filter discovery, and chart
-loading loop, see
-[Frontend dashboard analytics workflow](FRONTEND_DASHBOARD_ANALYTICS_WORKFLOW.md).
-For a Chinese user manual covering valid and misleading Semantic View,
-Dimension, and Metric combinations with a ten-survey worked example, see
-[Semantic View、Dimension 與 Metric 使用手冊](user-manual/SEMANTIC_VIEW_DIMENSION_METRICS_GUIDE.md).
+目前 dashboard card 的端點逐一替代方案及可直接送出的本文，請參閱[儀表板 Analytics 遷移指南](DASHBOARD_ANALYTICS_MIGRATION.md)。前端呼叫順序、availability、filter discovery 及 chart loading loop，請參閱[前端儀表板 Analytics 工作流程](FRONTEND_DASHBOARD_ANALYTICS_WORKFLOW.md)。如需含十份虛構問卷範例的中文 Semantic View、Dimension、Metric 手冊，請參閱[Semantic View、Dimension 與 Metric 使用手冊](user-manual/SEMANTIC_VIEW_DIMENSION_METRICS_GUIDE.md)。
 
-## Base URL, access, and common behaviour
+## Base URL、存取與共同行為
 
-The paths below are FastAPI paths. In the `wtchk_cls` deployment, the external API is normally served under:
+以下路徑是 FastAPI 路徑。在 `wtchk_cls` 部署中，外部 API 一般位於：
 
 ```text
 https://<api-host>/wtchk/api
 ```
 
-For example, `GET /analytics/catalog` is requested as:
+例如：
 
 ```text
 GET https://<api-host>/wtchk/api/analytics/catalog
 Authorization: Bearer <access-token>
 ```
 
-All viewer and administrator analytics endpoints require a normal application access token. They return `404` while `ANALYTICS_ENABLED=false`; this lets a BU compile Cube metadata in shadow mode without exposing analytics to users. The API sends `Cache-Control: no-store, private` for analytics responses.
+所有 viewer 與 administrator Analytics endpoint 均需一般應用程式 access token。`ANALYTICS_ENABLED=false` 時會回傳 `404`，讓 BU 可在不向使用者公開 Analytics 的 shadow mode 中編譯 Cube metadata。Analytics response 均帶有 `Cache-Control: no-store, private`。
 
-Roles are enforced at the API boundary:
-
-| Caller | Access |
+| 呼叫端 | 存取權 |
 | --- | --- |
-| Viewer | Published, viewer-visible catalog members; querying, charts, drilldown, and own exports. |
-| Admin | Viewer access plus candidate discovery, governance definitions, publication, and all export jobs. |
-| Cube service | The private internal catalog endpoint only, authenticated by profile-bound HMAC. It is not a browser endpoint. |
+| Viewer | 已發佈、viewer 可見的 catalog member；查詢、chart、drilldown 及自己的 export。 |
+| Admin | 包含 viewer 存取權，另加 chart governance、publication 與所有 export job。 |
+| Cube service | 僅私有 internal catalog endpoint，使用 profile-bound HMAC 驗證；不是 browser endpoint。 |
 
-The supported semantic views are `survey_responses`, `survey_topics`, `survey_departments`, `survey_keywords`, and `survey_assignments`. Each is a separate grain. Aggregate callers supply a logical metric plus dimensions, time, and filters; the server selects the narrowest grain that can answer that combination. Cube queries still use exactly one view, so cubes are never joined. Crossing two assignment families is expressed by the `survey_assignments` grain, which already holds all three, rather than by combining views.
+## Semantic View 與資料粒度
 
-### Semantic-view grains and sentiment mapping
+支援的 semantic view 為 `survey_responses`、`survey_topics`、`survey_departments`、`survey_keywords` 與 `survey_assignments`。每一個都是獨立 grain。Aggregate caller 提供邏輯 metric、dimension、time 與 filter；伺服器選出能安全回答該組合的最窄 grain。Cube query 仍只使用一個 view，絕不 join cube。
 
-`survey_responses` is plural—there is no `survey_response` view. Choose the view based on the question you are asking, not simply on which word “sentiment” appears in its source table.
+| Semantic View | 一列代表 | Canonical response sentiment | Assignment sentiment | 適用情境 |
+| --- | --- | --- | --- | --- |
+| `survey_responses` | 一個未刪除 survey response | `topic_sentiment` = `surveys.topic_sentiment`；score = `topic_sentiment_score` | 無。舊 `surveys.sentiment` 不是公開 semantic field。 | 整體 response volume、CLS、store／channel 分析及 response-level sentiment。 |
+| `survey_topics` | 一個 topic assignment | 同上 | `sentiment` = `survey_topics.sentiment` | 依 `topic` 分析；使用 `topic_assignment/count` 或 `survey/count`。 |
+| `survey_departments` | 一個 department assignment | 同上 | `sentiment` = `survey_departments.sentiment` | 依 `department` 分析；使用 `department_assignment/count` 或 `survey/count`。 |
+| `survey_keywords` | 一個 keyword assignment | 同上 | `sentiment` = `survey_keywords.sentiment` | 依／篩選 `keyword`；使用 `keyword_assignment/count` 或 `survey/count`。 |
+| `survey_assignments` | 一個 `(response, keyword, department, topic)` 組合 | 同上 | `keyword_sentiment`、`department_sentiment`、`topic_assignment_sentiment` | 交叉兩個 assignment family，例如 keyword × department；只提供計數。 |
 
-| Semantic view | One row represents | Database source | Canonical response sentiment | Assignment sentiment | Use it for |
-| --- | --- | --- | --- | --- | --- |
-| `survey_responses` | One non-deleted survey response | `surveys`, joined to `stores`, `channels`, and `delivery_services` | `topic_sentiment` = `surveys.topic_sentiment`; score = `surveys.topic_sentiment_score` | None. The legacy `surveys.sentiment` is intentionally not a public semantic field. | Overall response volume, CLS, store/channel analysis, and response-level sentiment. Use `survey/count` for surveys or `store/count` for represented stores. |
-| `survey_topics` | One topic assigned to a survey | `survey_topics` joined to the survey facts and `topics` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_topics.sentiment` | Topic analysis: group by `topic`, then use `topic_assignment/count` or `survey/count`. |
-| `survey_departments` | One department assigned to a survey | `survey_departments` joined to the survey facts and `departments` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_departments.sentiment` | Department analysis: group by `department`, then use `department_assignment/count` or `survey/count`. |
-| `survey_keywords` | One keyword assigned to a survey | `survey_keywords` joined to the survey facts and `keywords` | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | `sentiment` = `survey_keywords.sentiment` | Keyword analysis: group/filter by `keyword`, then use `keyword_assignment/count` or `survey/count`. |
-| `survey_assignments` | One `(response, keyword, department, topic)` combination | `analytics_survey_assignments`, all three assignment tables left-joined to the survey facts | `topic_sentiment` = `surveys.topic_sentiment`; score remains `surveys.topic_sentiment_score` | One column per family: `keyword_sentiment`, `department_sentiment`, `topic_assignment_sentiment` | Cross tabulating two assignment families, such as keyword by department. Counting measures only. |
+在 `survey_responses` 中一律使用 `topic_sentiment`；`sentiment` 不是有效 public member。在 assignment view 中，`topic_sentiment` 仍表示 response-level 值，`sentiment` 則只表示該 assignment row。既有 response-level metric、chart、saved query、drilldown 或 frontend selector 若使用 `sentiment`，應改為 `topic_sentiment` 後再 validate／publish 新 catalog version。
 
-In `survey_responses`, always use `topic_sentiment`; `sentiment` is not a valid public member. In assignment views, use `topic_sentiment` for the response-level value and `sentiment` only for that topic/department/keyword assignment row. This keeps the legacy `surveys.sentiment` out of analytics.
+不得在同一 query 結合 `survey_topics`、`survey_departments` 與 `survey_keywords`。一份 response 可有多個 assignment，join 會乘大 row 數並使 count／average 模糊。確實需要兩個 assignment family 時使用 `survey_assignments`：它明確產生組合列，並以 distinct response count 回答。由於 `cls/sum` 與 `cls/average` 會受組合數加權，它們在此 grain 刻意不存在；單一 family 應使用其專屬 grain。
 
-Migration note: update any existing response-level metric, chart, saved query, drilldown, or frontend field selector that names `sentiment` to use `topic_sentiment`, then validate/publish a new catalog version. Do **not** change `sentiment` in an assignment-view definition unless you specifically mean the response-level value; in that case use `topic_sentiment`.
+## 共用查詢契約
 
-Do not combine `survey_topics`, `survey_departments`, and `survey_keywords` in one query; Cube rejects any request naming two views. A response can have multiple assignments of each kind, so combining them would multiply rows and make counts and averages ambiguous.
+`POST /analytics/query`、chart data 與 aggregate export 一律使用已發佈的 field *slug*，絕不接受 raw SQL、Cube member name 或 governed metric slug。每個 aggregate 選擇一個邏輯業務 target 作為 `metric`，以及一種 `aggregation`；伺服器會將 pair 對應至 resolved fact grain 中一個已發佈的 Cube measure。
 
-When you genuinely need two families on the same chart, use `survey_assignments`. It pays that multiplication explicitly — one row per combination — and answers it with distinct response counts, so a response mentioning three keywords across two departments is still counted once per cell. That is also why the grain publishes counting measures only: `cls/sum` and `cls/average` would be weighted by each response's combination count and are absent by design. For a single family, keep using its own grain, which is both cheaper and exact.
-
-### Shared query concepts
-
-`POST /analytics/query`, chart data, and aggregate exports use published field
-*slugs*, never raw SQL, Cube member names, or governed metric slugs. Every
-aggregate selects one logical business target as `metric` and one
-`aggregation`; the server maps that pair to exactly one published governed
-Cube measure for the resolved fact grain.
-
-| Property | Rule |
+| 欄位 | 規則 |
 | --- | --- |
-| `semantic_view` | Deprecated compatibility field. If sent, it is ignored; the response reports the grain actually selected. |
-| `dimensions` | Up to three published dimension slugs for an ad-hoc query. Together with filters/time, these select the grain. |
-| `metric` | Exactly one logical target the resolved grain can answer. |
-| `aggregation` | Exactly one method published for that target at the resolved grain. Use `average`, not `avg`. |
-| `filters` | Up to 20 typed filters. Operators are `equals`, `not_equals`, `contains`, `not_contains`, `starts_with`, `ends_with`, comparison operators, `in`, `not_in`, `set`, `not_set`, and `between`, when compatible with the member type. |
-| `time_dimension` | A published date/time dimension. It may be paired with `time_range` and `time_granularity`; do not also include it as an ordinary dimension. |
-| `time_range` | Two ISO-8601 date/datetime values, each at most 64 characters, with start no later than end. |
-| `time_granularity` | Cube-supported granularity such as day, week, month, quarter, or year, when valid for the time member. |
-| `timezone` | Optional IANA timezone (for example, `Asia/Hong_Kong` or `America/New_York`) used for time-range boundaries, time buckets, and timestamp display. UTC is used when omitted. |
-| `order` | A list of `{ "member": "<slug-or-value>", "direction": "asc" | "desc" }`. The member must be a selected dimension, the selected time dimension, or the fixed metric key `value`. |
-| `limit` | Aggregate queries allow 1–1,000 rows. |
+| `semantic_view` | 已棄用的相容欄位。若傳送會被忽略；response 會回報實際選定的 grain。 |
+| `dimensions` | 0–3 個已發佈 dimension slug；連同 filter／time 決定 grain。 |
+| `metric` | resolved grain 可回答的一個邏輯 target。 |
+| `aggregation` | target 在 resolved grain 發佈的一種方法；使用 `average`，而非 `avg`。 |
+| `filters` | 最多 20 個具型別 filter。operator 包含 `equals`、`not_equals`、`contains`、`not_contains`、`starts_with`、`ends_with`、比較 operator、`in`、`not_in`、`set`、`not_set` 與 `between`（依 member type 決定）。 |
+| `time_dimension` | 已發佈的 date/time dimension；可搭配 `time_range`、`time_granularity`，但不得同時作為一般 dimension。 |
+| `time_range` | 兩個 ISO-8601 date/datetime 值，每個最多 64 字元，開始不得晚於結束。 |
+| `time_granularity` | 當 time member 支援時，可用 `day`、`week`、`month`、`quarter`、`year` 等 Cube 粒度。 |
+| `timezone` | 可選 IANA timezone，例如 `Asia/Hong_Kong`；用於 time-range boundary、time bucket 與 timestamp display。未提供時為 UTC。 |
+| `order` | `{ "member": "<slug-or-value>", "direction": "asc" \| "desc" }` 清單。member 必須是已選 dimension、selected time dimension 或 `value`。 |
+| `limit` | Aggregate query 允許 1–1,000 列。 |
 
-Allowed operations by source-field type are:
-
-| Field type | Allowed aggregations |
+| Field type | 可發佈 aggregation |
 | --- | --- |
-| String / boolean | `count`, `distinct_count` |
-| Number | `count`, `distinct_count`, `sum`, `average`, `min`, `max`, `median` |
-| Date / time | `count`, `distinct_count`, `min`, `max` |
+| String／boolean | `count`、`distinct_count` |
+| Number | `count`、`distinct_count`、`sum`、`average`、`min`、`max`、`median` |
+| Date／time | `count`、`distinct_count`、`min`、`max` |
 
-The type table governs which methods may be published, but it is not an
-allowlist by itself. The exact logical `(metric, aggregation)` pair must appear
-in the active catalog's `metric_targets` for the server-resolved semantic view.
-Missing and ambiguous pairs are rejected with `422`.
+型別表只決定可發佈的方法類別，並非自行構成 allowlist。確切的邏輯 `(metric, aggregation)` pair 必須出現在 active catalog、且屬於伺服器 resolved semantic view 的 `metric_targets`。缺少或 ambiguous pair 會回傳 `422`。
 
-A successful aggregate response has this shape:
+成功 aggregate response 使用 flat row，metric cell 固定為 `value`：
 
 ```json
 {
@@ -126,365 +99,58 @@ A successful aggregate response has this shape:
 }
 ```
 
-Rows are always flat. Dimension and time values retain the keys declared in
-`schema`; the sole aggregate is always `value`. When no time dimension was
-selected, `schema.time_dimension` is `null`. `rows` and `warnings` are always
-present, including for an empty result. Weighted, filtered, variance,
-standard-deviation, percentile, and confidence-interval measures may remain in
-governance metadata, but they are not exposed through this simplified query
-contract.
+Dimension 與 time value 會保留 `schema` 宣告的 key。未選 time dimension 時，`schema.time_dimension` 為 `null`；即使結果為空，`rows` 與 `warnings` 也必定存在。Weighted、filtered、variance、standard-deviation、percentile 與 confidence-interval measure 可保留在 governance metadata，但不透過簡化 query contract 公開。
 
-Common errors are `401` for a missing, invalid, deleted, or wrong-profile token; `403` for an insufficient role; `404` when analytics is disabled or a resource is not visible; `422` for invalid governed input or a rejected semantic query; and `503` when Cube or the analytics database dependency is unavailable. Cube/PostgreSQL implementation details are deliberately not exposed in error messages.
+常見錯誤：`401`（缺少、無效、已刪除或錯誤 profile 的 token）、`403`（角色不足）、`404`（Analytics 停用或資源不可見）、`422`（無效的受治理輸入或遭拒的 semantic query）、`503`（Cube 或 Analytics 資料庫無法使用）。錯誤訊息刻意不洩漏 Cube／PostgreSQL 實作細節。
 
-### Request field requirements and examples
-
-Swagger/ReDoc marks required JSON fields from the OpenAPI schema. The following guide makes the contract explicit before you call an endpoint.
-
-| Request model | Required fields | Optional fields / rules | Example |
-| --- | --- | --- | --- |
-| Aggregate query | `metric`, `aggregation` | `dimensions` (0–3), `filters`, time controls, `timezone`, `order`, `limit`. `time_range`/`time_granularity` require `time_dimension`. Legacy `semantic_view` is accepted but ignored; the removed `metrics` field is rejected. | `{ "dimensions": ["store_format"], "metric": "survey", "aggregation": "count", "timezone": "Asia/Hong_Kong" }` |
-| Filter | `member`, `operator` | `value` is required for scalar comparisons; `values` is required for `in`, `not_in`, and `between`; neither is used for `set`/`not_set`. | `{ "member": "topic_sentiment", "operator": "equals", "value": "NEGATIVE" }` |
-| Drilldown | None: defaults select common response fields | `semantic_view` is fixed to `survey_responses`; choose `fields` (1–50), `filters` (0–20), `cursor`, `limit` (1–250), and optional `timezone` for local timestamp filters/display. | `{ "fields": ["survey_id", "respondent_id", "store_key", "reported_at", "comment", "topic_sentiment", "cls"], "limit": 100, "timezone": "Asia/Hong_Kong" }` |
-| Create field | `slug`, `label`, `data_type`, `source_key` | `semantic_view` defaults to `survey_responses`; `source_kind` is fixed to `raw_json`; `description` and `visibility` are optional. | `{ "slug": "overall_score", "label": "Overall score", "data_type": "number", "source_key": "Overall Score" }` |
-| Promote candidate | `data_type` | `visibility`, `label`, `description`. | `{ "data_type": "number", "visibility": "viewer", "label": "Overall score" }` |
-| Create metric | `slug`, `label`, `operation` | `semantic_view` defaults to `survey_responses`; use at most one of `field_id`/`source_member`, and at most one of `weight_field_id`/`weight_member`. A source is required when the operation needs one; CI operations require `confidence_level` (0.8–0.999). | `{ "slug": "negative_response_rate", "label": "Negative response rate", "source_member": "topic_sentiment", "operation": "filtered_rate", "definition": { "filter": { "operator": "equals", "value": "NEGATIVE" } } }` |
-| Create chart | `slug`, `title`, `chart_type`, `semantic_view`, `definition` | `description`, `visibility`; every definition has one `metric` + `aggregation`, while dimension/time requirements depend on chart type. | `{ "slug": "responses_by_store_format", "title": "Responses by store format", "chart_type": "bar", "semantic_view": "survey_responses", "definition": { "dimensions": ["store_format"], "metric": "survey", "aggregation": "count" } }` |
-| Chart data override | None | `filters`, `time_range`, `time_granularity`, `timezone`, `order`, `limit` only; it cannot replace the chart’s governed dimensions, metric, or aggregation. | `{ "time_range": ["2026-01-01", "2026-03-31"], "time_granularity": "month", "timezone": "Asia/Hong_Kong" }` |
-| Filter options | `semantic_view`, `member` | `filters` (up to 18), string-only `search`, optional `timezone`, `limit` (1–1,000), and offset `cursor` (0–1,000,000). The endpoint automatically excludes null values. `metrics` is not accepted. | `{ "semantic_view": "survey_responses", "member": "store_format", "search": "Mall", "timezone": "Asia/Hong_Kong", "cursor": 0 }` |
-| Record query | `resource` | `filters` (up to 20 typed allowlisted filters), `order` (up to 3 allowlisted fields), `page`, `size`, and optional IANA `timezone`. Survey pages are capped at 100; master-data pages at 1,000. | `{ "resource": "surveys", "filters": [{"member": "topic_sentiment", "operator": "equals", "value": "NEGATIVE"}], "size": 100 }` |
-| Export | `export_format`; exactly one of `query`, `drilldown`, or `record_query` | `export_format` is `csv` or `xlsx`; its selected object follows the relevant query model above. Record exports are live-DB queries and retain configured survey columns. | `{ "export_format": "csv", "record_query": { "resource": "surveys", "size": 100 } }` |
-| Catalog publication | None | `description` is optional release/audit text. | `{ "description": "Quarterly metric release" }` |
-
-## Viewer endpoints
+## Viewer Endpoint（檢視者端點）
 
 ### `GET /analytics/catalog`
 
-Returns the active immutable catalog the current role is allowed to use. It
-includes the active model version, semantic views, visible fields, executable
-logical `metric_targets`, and supported chart types. It does not reveal
-candidate headers, admin-only fields, raw payload keys, SQL expressions,
-governed Cube metric slugs, or draft definitions.
+回傳目前角色可使用的 active immutable catalog，包括 active model version、semantic view、可見 field、可執行的邏輯 `metric_targets` 與支援 chart type。不會揭露 candidate header、admin-only field、raw payload key、SQL expression、governed Cube metric slug 或 draft definition。
 
-Use this endpoint before building an exploration UI. A client should only send slugs returned here to the query endpoints.
-
-The response also includes a machine-readable `combinations` contract so a
-frontend does not need to maintain a separate handwritten compatibility table:
-
-```json
-{
-  "model_version": 8,
-  "metric_targets": {
-    "survey_topics": [
-      {
-        "metric": "topic_assignment",
-        "label": "Topic Assignment",
-        "entity": "topic_assignment",
-        "aggregations": [
-          {"method": "count", "label": "Topic Assignment Count", "result_type": "number"}
-        ]
-      },
-      {
-        "metric": "survey",
-        "label": "Survey",
-        "entity": "survey",
-        "aggregations": [
-          {"method": "count", "label": "Unique Survey Count", "result_type": "number"}
-        ]
-      }
-    ]
-  },
-  "combinations": {
-    "query": {
-      "max_dimensions": 3,
-      "exact_metric_count": 1,
-      "max_filters": 20,
-      "requires_single_semantic_view": true,
-      "members_must_belong_to_semantic_view": true,
-      "order_members_must_be_selected": true,
-      "time_dimension_must_not_be_dimension": true
-    },
-    "semantic_views": [
-      {
-        "semantic_view": "survey_topics",
-        "grain": "one survey-to-topic assignment",
-        "dimensions": ["assignment_id", "survey_id", "topic", "sentiment"],
-        "assignment_dimension": "topic",
-        "response_sentiment_dimension": "topic_sentiment",
-        "assignment_sentiment_dimension": "sentiment"
-      }
-    ],
-    "charts": [
-      {
-        "chart_type": "pie",
-        "min_dimensions": 1,
-        "max_dimensions": 1,
-        "time_dimension": "forbidden",
-        "requires_time_granularity": false,
-        "numeric_metric_required": true,
-        "exact_metric_count": 1
-      }
-    ]
-  }
-}
-```
-
-The example arrays are abbreviated. `metric_targets` is a top-level object
-keyed by semantic view. Each target groups its role-visible executable
-aggregation methods. The `charts` rules are generated from the same definitions
-used by server-side chart validation.
+在建立探索 UI 前先呼叫此 endpoint。用戶端只能將本 response 回傳的 slug 送至 query endpoint。`combinations` 也提供可供機器讀取的 query limit、grain definition 與 chart compatibility，前端不需另行維護手寫相容性表。
 
 ### `POST /analytics/query-capabilities`
 
-After the user chooses one goal and method, call this endpoint before showing
-the remaining selectors:
+使用者選擇一個 goal 與 method 後，先呼叫此 endpoint 再顯示其餘 selector：
 
 ```json
 {
-  "semantic_view": "survey_keywords",
   "metric": "survey",
   "aggregation": "count"
 }
 ```
 
-It validates the pair with the same resolver used by query execution and
-returns `allowed_dimensions`, `filter_members` with typed operators,
-`allowed_time_dimensions`, `result_type`, and `warnings`. This is the canonical
-way for a query builder to discover which breakdowns remain meaningful.
-
-## Chart builder endpoints
-
-These three endpoints are a column-first facade over the same goal-first
-contract. They exist because a user thinks in terms of what they want to see,
-not which row grain can answer it: the server resolves the grain, so the caller
-never selects `semantic_view` at all. The steps may be answered in any order.
-
-```text
-what to measure -> break it down by -> and by (or over time) -> aggregate -> draw as
-```
-
-### `GET /analytics/builder/measures`
-
-Lists everything a chart can measure, flattened across grains, with enum
-dimensions already expanded into one entry per value:
-
-```json
-{
-  "model_version": 8,
-  "count": 25,
-  "measures": [
-    {
-      "key": "topic_sentiment:MIXED",
-      "label": "Topic Sentiment is MIXED",
-      "field": "topic_sentiment",
-      "enum_value": "MIXED",
-      "semantic_views": ["survey_responses", "survey_topics", "survey_departments", "survey_keywords", "survey_assignments"],
-      "aggregations": [
-        {"method": "count", "label": "Mixed Topic Sentiment Responses", "result_type": "number"}
-      ],
-      "result_type": "number",
-      "supports_cross_assignment": true
-    }
-  ]
-}
-```
-
-`supports_cross_assignment` is `false` for a response-level sum or average such
-as `cls`, which cannot survive the combination grain's fan-out. A frontend can
-grey out those crossings before the user tries them.
-
-### `POST /analytics/builder/options`
-
-Accepts a partial selection and reports what is still selectable. Send `{}` to
-populate the first screen; every field is optional.
-
-```json
-{
-  "measure": {"field": "topic_sentiment", "enum_value": "MIXED"},
-  "aggregation": "count",
-  "breakdown": "keyword",
-  "series": {"dimension": "department"},
-  "chart_type": "grouped_bar"
-}
-```
-
-`series` is either one `dimension` or one `time`, never both:
-
-```json
-{"series": {"time": {"field": "reported_at", "interval": "week"}}}
-```
-
-The response resolves the grain and narrows every remaining choice:
-
-```json
-{
-  "model_version": 8,
-  "semantic_view": "survey_assignments",
-  "grain": "one survey-to-(keyword, department, topic) assignment combination",
-  "selection_complete": true,
-  "available_measures": [],
-  "available_aggregations": [{"method": "count", "label": "…", "result_type": "number"}],
-  "available_breakdowns": [
-    {"slug": "keyword", "label": "Keyword", "data_type": "string", "scope": "assignment", "enum_values": []}
-  ],
-  "available_series_dimensions": [],
-  "available_time_fields": [],
-  "available_intervals": ["day", "week", "month", "quarter", "year"],
-  "compatible_chart_types": ["table", "stacked_bar", "grouped_bar", "heatmap"],
-  "query": {"semantic_view": "survey_assignments", "dimensions": ["keyword", "department"], "metric": "topic_sentiment_mixed", "aggregation": "count"},
-  "warnings": []
-}
-```
-
-Before anything is selected, `semantic_view` is `null` and the dimension lists
-are the union across grains, so `keyword`, `department`, and `topic` are all
-visible on first load. Once a measure is chosen, a dimension that would move the
-query to a grain the measure cannot survive is removed from
-`available_series_dimensions`, and `warnings` explains why. `query` is the exact
-body that `POST /analytics/query` would accept, and is `null` until the
-selection is both complete and valid.
-
-### `POST /analytics/builder/query`
-
-Takes a complete selection plus the same optional `order`, `limit`,
-`series_limit`, and `fill_empty` fields, resolves the narrowest grain that
-answers it, and runs it. The response is the standard aggregate envelope,
-including `schema.layout`, plus `semantic_view_reason` naming the chosen grain.
-
-A selection no grain can answer returns `422` with the reason rather than a
-misleading number. Averaging CLS per keyword and department is the canonical
-example: the crossing forces the combination grain, where a response repeats
-once per combination and the average would be silently weighted.
+它以與 query execution 相同的 resolver 驗證 pair，並回傳 `allowed_dimensions`、帶型別 operator 的 `filter_members`、`allowed_time_dimensions`、`result_type` 與 `warnings`。這是 query builder 發現哪些 breakdown 仍有意義的標準方式。
 
 ### `GET /analytics/query-combinations`
 
-Returns a finite, curated collection of aggregate query templates. Use this
-endpoint when the frontend should offer only known-good combinations instead of
-building arbitrary permutations from `GET /analytics/catalog`.
+回傳有限且精選的 aggregate query template。前端只提供已知正確組合時使用此 endpoint，而不要由 `GET /analytics/catalog` 任意排列。
 
-The optional `semantic_view` query parameter limits the collection to one view:
+可選 `semantic_view` query parameter 將 collection 限制於一個 view：
 
 ```text
 GET /analytics/query-combinations?semantic_view=survey_responses
 ```
 
-Through the local frontend BFF, the corresponding URL is:
+每個回傳的 `query` 都是可直接執行、且已通過 active-catalog、member visibility、semantic-view、time-dimension 與 metric validation 的 `POST /analytics/query` body。用戶端只可修改其 `allowed_overrides` 中的欄位。回傳 count 是依 semantic-view 與角色過濾後的 template 數。
 
-```text
-GET http://localhost:3000/api/bff/analytics/query-combinations?semantic_view=survey_responses
-```
-
-Each returned `query` is a directly executable `POST /analytics/query` body and
-has already passed the same active-catalog, member-visibility, semantic-view,
-time-dimension, and metric validation used by the query endpoint. Templates
-whose members are not visible to the caller are omitted.
-
-Example response item:
-
-```json
-{
-  "slug": "responses_by_day",
-  "label": "Daily response trend",
-  "description": "Count responses in daily reported-at buckets.",
-  "semantic_view": "survey_responses",
-  "grain": "one non-deleted survey response",
-  "query": {
-    "semantic_view": "survey_responses",
-    "dimensions": [],
-    "metric": "survey",
-    "aggregation": "count",
-    "filters": [],
-    "time_dimension": "reported_at",
-    "time_granularity": "day",
-    "order": [],
-    "limit": 100
-  },
-  "compatible_chart_types": ["line", "area"],
-  "allowed_overrides": ["filters", "time_range", "timezone", "order", "limit"]
-}
-```
-
-Notice that `reported_at` is not repeated in `dimensions`. The frontend may
-change only fields listed in `allowed_overrides`; member selection and the
-template's time grain remain fixed. Add, for example,
-`"timezone": "Asia/Hong_Kong"` before posting the selected query.
-
-The built-in finite collection covers response totals, response sentiment,
-responding-store totals and breakdowns, store format, channel, daily trends,
-average CLS, and topic/department/keyword assignment counts and distinct-survey
-views. `count` is the number of templates returned after semantic-view and role
-filtering.
-
-For example, `responding_stores_by_region` returns this query:
-
-```json
-{
-  "semantic_view": "survey_responses",
-  "dimensions": ["region"],
-  "metric": "store",
-  "aggregation": "count",
-  "limit": 100
-}
-```
-
-This counts distinct stores having at least one matching response. A response
-date range therefore means “stores responding during that period”; stores with
-zero matching responses cannot appear in a response-grain semantic view. Use
-the governed `stores` record resource when the UI needs the full store master
-list rather than survey analytics.
+`responding_stores_by_region` 類 template 使用 `survey_responses` 的 `store/count`，計算至少有一筆相符 response 的相異門市。response date range 表示「期間內有回應的門市」；零筆相符 response 的門市無法出現在 response-grain view。需要完整門市主檔時，使用受治理 `stores` record resource。
 
 ### `GET /analytics/catalog/availability`
 
-Returns which visible fields actually contain data for one semantic view. It is the intended way for a frontend to hide fields that are entirely null instead of guessing from the catalog definition.
+回傳某一 semantic view 中、呼叫端可見的 field 實際是否含資料，供前端隱藏完全為 null 的 field，而非從 catalog definition 猜測。
 
-Query parameter:
-
-| Field | Required | Description |
+| Query parameter | 必填 | 說明 |
 | --- | --- | --- |
-| `semantic_view` | Optional; defaults to `survey_responses` | One of `survey_responses`, `survey_topics`, `survey_departments`, or `survey_keywords`. |
+| `semantic_view` | 否，預設 `survey_responses` | `survey_responses`、`survey_topics`、`survey_departments` 或 `survey_keywords` 之一。 |
 
-Example:
-
-```text
-GET /analytics/catalog/availability?semantic_view=survey_responses
-```
-
-Illustrative response shape—the counts are calculated from the target BU when called:
-
-```json
-{
-  "model_version": 4,
-  "semantic_view": "survey_responses",
-  "total_rows": 28143,
-  "fields": [
-    {
-      "slug": "store_name_english",
-      "label": "Store Name English",
-      "data_type": "string",
-      "non_null_count": 28143,
-      "null_count": 0,
-      "availability_rate": 1.0,
-      "available": true
-    },
-    {
-      "slug": "delivery_service_name",
-      "label": "Delivery Service Name",
-      "data_type": "string",
-      "non_null_count": 0,
-      "null_count": 28143,
-      "availability_rate": 0.0,
-      "available": false
-    }
-  ],
-  "generated_at": "2026-08-26T08:00:00+00:00",
-  "cached": false
-}
-```
-
-The result contains only fields visible to the caller—viewer requests do not disclose admin-only fields. The first request for a role/view/model-version may scan the reporting view; identical requests are cached for up to 15 minutes. `available: true` means at least one reporting row has a non-null value, not that every row is complete.
+相同 role／view／model-version 的首次請求可能掃描 reporting view；相同請求最多快取 15 分鐘。`available: true` 只表示至少有一筆 reporting row 有非 null 值，不表示每一列完整。Viewer request 不會揭露 admin-only field。
 
 ### `POST /analytics/filter-options`
 
-Returns values that can populate one frontend filter control. The target `member` must be a published, role-visible dimension in the specified semantic view. The response excludes null values, orders options by matching-row count, and never exposes raw/unpromoted payload keys.
+回傳可填入一個前端 filter control 的 value。目標 `member` 必須是指定 semantic view 中已發佈、且角色可見的 dimension。回應排除 null value、依相符 row count 排序，且絕不公開 raw／unpromoted payload key。
 
 ```json
 {
@@ -499,37 +165,13 @@ Returns values that can populate one frontend filter control. The target `member
 }
 ```
 
-`semantic_view` and `member` are required. `filters` is optional and can express dependent choices (for example, list stores only after choosing a store format). `search` is optional and accepted only for string fields. Use `GET /analytics/catalog/availability` first if the UI should hide dimensions containing no data at all.
+`semantic_view` 與 `member` 為必填。`filters` 可用於相依選擇，例如選定門市格式後才列出門市；`search` 僅限 string field。UI 需要隱藏完全無資料 dimension 時，先呼叫 `GET /analytics/catalog/availability`。
 
-`filter-options` always returns only the option value and its matching row count.
-It does not accept `metric`, `aggregation`, or the removed `metrics` field, and
-does not return `metric_columns` or per-option metric objects.
-
-For more than 1,000 values, use `next_cursor` from the response as the next request’s `cursor`. Values are ordered by matching-row count descending, then the value ascending for stable paging. `has_more` is true when the page was full; one final request can return an empty page when the total is an exact multiple of `limit`.
-
-```json
-{
-  "query_id": "…",
-  "model_version": 4,
-  "semantic_view": "survey_responses",
-  "member": "store_format",
-  "label": "Store Format",
-  "data_type": "string",
-  "cursor": 0,
-  "next_cursor": 100,
-  "has_more": true,
-  "values": [
-    {"value": "Mall", "count": 245},
-    {"value": "Commercial", "count": 81}
-  ],
-  "warnings": [],
-  "freshness_time": "2026-08-26T08:00:00Z"
-}
-```
+此 endpoint 只回傳 option value 及其相符 row count；不接受 `metric`、`aggregation` 或已移除的 `metrics`，也不回傳 `metric_columns` 或各 option 的 metric object。超過 1,000 個 value 時，將 response `next_cursor` 作為下一請求 `cursor`；先按相符 row count 遞減、再按 value 遞增排序。`has_more` 在頁面滿時為 true；總數剛好是 `limit` 倍數時，最後一次請求可能回傳空頁。
 
 ### `POST /analytics/query`
 
-Runs one governed aggregate query. The server selects a single safe semantic view from the metric and selected members; the response names that resolved view. The request body is:
+執行一個受治理 aggregate query。伺服器根據 metric 與 selected member 選擇單一安全 semantic view，response 會列出 resolved view。
 
 ```json
 {
@@ -546,236 +188,102 @@ Runs one governed aggregate query. The server selects a single safe semantic vie
 }
 ```
 
-The server validates visibility, member types, limits, filter operators, the
-inferred grain, and
-that the selected `(metric, aggregation)` resolves to exactly one active
-governed measure before sending a short-lived role/profile token to private
-Cube. Missing `metric`/`aggregation`, the removed `metrics` array, more than
-three dimensions, an incompatible aggregation, or an unpublished/ambiguous
-pair produces `422`. It returns the common flat aggregate response; `503` means
-Cube cannot currently serve it.
+送至私有 Cube 前，伺服器會驗證 visibility、member type、limit、filter operator、推導 grain，以及 `(metric, aggregation)` 是否恰好解析至一個 active governed measure。缺少 `metric`／`aggregation`、傳送已移除 `metrics` array、超過三個 dimension、不相容 aggregation 或未發佈／ambiguous pair 均為 `422`；`503` 表示 Cube 無法服務。
 
 ### `POST /analytics/records/query`
 
-Runs a governed record query directly against the live application database. The
-supported resources are `surveys`, `stores`, `departments`, `channels`,
-`delivery_services`, and `topics`. Filters and ordering accept only typed,
-resource-specific allowlisted fields. Use `member` for a field name (`field` is
-accepted as an input alias), and use `value` for scalar operators or `values`
-for `in`, `not_in`, and `between`.
+直接對即時 application database 執行受治理 record query。支援 `surveys`、`stores`、`departments`、`channels`、`delivery_services`、`topics`。Filter 與 order 只接受具型別、resource-specific 的 allowlisted field。使用 `member` 表示欄位名（`field` 是可接受 input alias）；scalar operator 使用 `value`，`in`、`not_in`、`between` 使用 `values`。
 
-Survey results exclude soft-deleted rows and preserve the existing nested store,
-channel, delivery-service, department, topic, and keyword objects. Survey
-responses include both the legacy `sentiment` and canonical `topic_sentiment`
-fields. Topic, department, and keyword filters on a survey use `EXISTS`
-predicates, so assignment matches do not duplicate survey rows.
+Survey result 排除軟刪除列，並保留既有 nested store、channel、delivery-service、department、topic、keyword object。Survey response 同時包含舊 `sentiment` 與 canonical `topic_sentiment`。Survey 的 topic、department、keyword filter 使用 `EXISTS` predicate，不會因 assignment match 重複 survey row。
 
-```json
-{
-  "resource": "surveys",
-  "filters": [
-    {"member": "topic", "operator": "equals", "value": "Delivery"},
-    {"member": "reported_at", "operator": "between", "values": ["2026-01-01", "2026-02-01"]}
-  ],
-  "order": [
-    {"member": "reported_at", "direction": "desc"},
-    {"member": "id", "direction": "desc"}
-  ],
-  "page": 1,
-  "size": 100,
-  "timezone": "Asia/Hong_Kong"
-}
-```
-
-The response is `{ "resource", "items", "page", "size", "total",
-"has_more", "timezone" }`. Surveys default to `reported_at DESC, id DESC`;
-master-data resources default to their primary key ascending. Master-data queries
-return unused values as well as values referenced by surveys, which supports
-zero-filling dashboard selectors.
+Survey page 上限 100，預設 `reported_at DESC, id DESC`；master-data page 上限 1,000，預設 primary key 遞增。Master-data query 會回傳未被 survey 引用的 value，可供 dashboard selector 零填補。
 
 ### `GET /analytics/charts/published`
 
-Lists published charts visible to the caller in the active catalog. Each chart includes its ID, slug, title, type, semantic view, governed definition, visibility, lifecycle status, validation state, and model-version metadata. Draft, archived, invalid, or admin-only charts are omitted for viewers.
+列出 active catalog 中、呼叫端可見的已發佈 chart。每個 chart 包含 ID、slug、title、type、semantic view、governed definition、visibility、lifecycle status、validation state 與 model-version metadata。Viewer 不會看到 draft、archived、invalid 或 admin-only chart。
 
 ### `POST /analytics/charts/{chart_id}/data`
 
-Runs a published chart by numeric ID. The chart’s dimensions, metric, and aggregation are fixed by its published definition; callers may only supply safe exploration overrides:
+以 numeric ID 執行已發佈 chart。Chart 的 dimension、metric、aggregation 固定於已發佈 definition；caller 只可提供安全的 exploration override：`filters`、`time_range`、`time_granularity`、`timezone`、`order` 與 `limit`。
 
-```json
-{
-  "filters": [{"member": "store_format", "operator": "in", "values": ["Mall", "Commercial"]}],
-  "time_range": ["2024-08-01", "2024-08-31"],
-  "time_granularity": "month",
-  "order": [{"member": "value", "direction": "desc"}],
-  "limit": 100
-}
-```
+Response 包含 `chart` 及與 `/analytics/query` 相同的 `schema`、flat `rows`、`row_count`、`warnings`、freshness field。Pie／donut 會回傳前 12 個 category 加上 `Other`。
 
-The response contains `chart` plus the same `schema`, flat `rows`, `row_count`,
-`warnings`, and freshness fields returned by `/analytics/query`. Pie/donut
-results are shaped to the top 12 categories plus `Other`. The supported chart
-matrix is strict:
-
-| Query shape | Compatible chart types |
+| Query shape | 相容 chart type |
 | --- | --- |
-| No time, 0 dimensions | `kpi`, `table` |
-| No time, 1 dimension | `bar`, `column`, `pie`, `donut`, `table` |
-| No time, 2 dimensions | `stacked_bar`, `heatmap`, `table` |
-| No time, 3 dimensions | `table` |
-| Granular time, 0–1 ordinary dimension | `line`, `area`, `table` |
-| Granular time, 2–3 ordinary dimensions | `table` |
+| 無時間、0 個 dimension | `kpi`、`table` |
+| 無時間、1 個 dimension | `bar`、`column`、`pie`、`donut`、`table` |
+| 無時間、2 個 dimension | `stacked_bar`、`heatmap`、`table` |
+| 無時間、3 個 dimension | `table` |
+| 有粒度時間、0–1 個一般 dimension | `line`、`area`、`table` |
+| 有粒度時間、2–3 個一般 dimension | `table` |
 
-`line` and `area` require both a time dimension and time granularity. Except
-for `table` and `kpi`, the metric result must be numeric. `scatter` and
-`store_map` are not supported chart types. `404` is returned for a non-existent
-or non-visible chart.
+`line` 與 `area` 同時需要 time dimension 與 time granularity。除 `table` 與 `kpi` 外 metric result 必須為 numeric。`scatter` 與 `store_map` 不受支援。不存在或不可見的 chart 回傳 `404`。
 
 ### `POST /analytics/drilldown`
 
-Returns cursor-paginated response-level rows from `survey_responses` only. It is intended for inspecting the rows behind an aggregate, not for arbitrary raw-data access.
+只從 `survey_responses` 回傳 cursor-paginated response-level row。它用於檢視 aggregate 背後的 row，不是任意 raw-data access。
 
-```json
-{
-  "fields": ["survey_id", "respondent_id", "store_key", "reported_at", "comment", "topic_sentiment", "topic_sentiment_score", "cls"],
-  "filters": [{"member": "topic_sentiment", "operator": "equals", "value": "NEGATIVE"}],
-  "cursor": 0,
-  "limit": 100
-}
-```
-
-`fields` accepts 1–50 permitted core/promoted fields, `filters` accepts up to 20 compatible filters, and `limit` is 1–250. An optional IANA `timezone` applies local timestamp filters and formats returned timestamp fields; UTC is used when omitted. The response includes the effective `timezone` alongside `{ "rows": [...], "next_cursor": 100, "has_more": true }`. Only current-role-visible promoted fields are returned; unpromoted payload keys and the raw JSON payload are never returned. Capacity protection can return `429` with `Retry-After`; a database timeout/unavailability returns `503`.
+`fields` 可取 1–50 個允許的 core／promoted field，`filters` 最多 20 個相容 filter，`limit` 為 1–250。可選 IANA `timezone` 套用本地 timestamp filter 並格式化回傳 timestamp；未提供時為 UTC。response 會連同 `{ "rows": [...], "next_cursor": 100, "has_more": true }` 回傳有效 `timezone`。只回傳目前角色可見的 promoted field；unpromoted payload key 與 raw JSON payload 永不回傳。容量保護可回傳 `429` 並帶 `Retry-After`；資料庫 timeout／不可用時為 `503`。
 
 ### `POST /analytics/exports`
 
-Creates an asynchronous CSV or XLSX export. The body uses **exactly one** of an aggregate query, a drilldown query, or a live record query:
+建立非同步 CSV 或 XLSX export。本文必須在 aggregate query、drilldown query、即時 record query 三者之中**恰選一個**。`export_format` 為 `csv` 或 `xlsx`。
 
-```json
-{
-  "export_format": "xlsx",
-  "query": {
-    "dimensions": ["region"],
-    "metric": "survey",
-    "aggregation": "count"
-  }
-}
-```
-
-or:
-
-```json
-{
-  "export_format": "csv",
-  "drilldown": {
-    "fields": ["survey_id", "comment"],
-    "filters": []
-  }
-}
-```
-
-or:
-
-```json
-{
-  "export_format": "csv",
-  "record_query": {
-    "resource": "surveys",
-    "filters": [{"member": "topic_sentiment", "operator": "equals", "value": "NEGATIVE"}]
-  }
-}
-```
-
-It returns the newly created export job with status `queued`. The exact role, model version, query, and visibility rules are captured when admitted; the job re-checks the requester’s current account/role before producing data. Exports are capped at 250,000 rows, CSV/XLSX formula prefixes are escaped, and artifacts expire after 24 hours. Per-user and per-profile queue limits return `429`.
+Export job 建立後狀態為 `queued`。系統在受理時記錄精確 role、model version、query 與 visibility rule；產生資料前會再次檢查 requester 目前帳號／角色。Export 上限 250,000 列，CSV/XLSX formula prefix 會跳脫，artifact 在 24 小時後到期。每位使用者與每個 profile 的 queue limit 會回傳 `429`。
 
 ### `GET /analytics/exports/{job_id}`
 
-Returns the current export-job metadata for its owner or an admin. Status is `queued`, `processing`, `completed`, or `failed`, along with timestamps, format, row count when available, expiry, and safe failure information. Other users receive `404` rather than confirmation that a job exists. An expired job remains visible as historical job metadata, but its download returns `410`.
+回傳 job owner 或 admin 可見的 export-job metadata。Status 為 `queued`、`processing`、`completed` 或 `failed`，並包含 timestamp、format、可用的 row count、expiry 與安全的 failure information。其他使用者收到 `404`，而非確認 job 是否存在。過期 job 仍會保留為歷史 metadata，但 download 回傳 `410`。
 
 ### `GET /analytics/exports/{job_id}/download`
 
-Streams the completed CSV/XLSX artifact to its owner or an authorized admin. It returns `409` while the job is not complete, `404` when it is not visible, and `410` after expiry or removal. The file response is explicitly non-cacheable.
+將已完成 CSV/XLSX artifact 串流至 owner 或已授權 admin。Job 未完成時回傳 `409`、不可見時為 `404`、到期或已移除時為 `410`。File response 明確不可快取。
 
-## Administrator endpoints
+## Administrator Endpoint（管理員端點）
 
-All paths in this section require an authenticated admin and are feature-gated.
-The first rollout deliberately exposes **chart management only**. Standard fields
-and metrics are built in; candidate, field, metric, and catalog-version
-administration are not public endpoints. This keeps the operational surface
-small while retaining governed chart definitions and audit history.
+本節所有路徑都需要已驗證 admin 且受 feature gate 控制。首次 rollout 刻意只公開**chart management**。Standard field 與 metric 為內建；candidate、field、metric、catalog-version administration 並非 public endpoint，藉此縮小 operational surface，同時保留受治理 chart definition 與 audit history。
 
-### Removed candidate, field, and metric administration
+### 已移除的 candidate、field 與 metric administration
 
-These endpoints are retained only as private implementation handlers and are
-not mounted in the public API. They return `404` to callers. The historical
-details below are retained for migration context only; use chart definitions
-over the built-in catalog instead.
+這些 endpoint 僅保留為 private implementation handler，未掛載至 public API；對 caller 回傳 `404`。下列資訊僅保留遷移脈絡，請使用 built-in catalog 的 chart definition。
 
-| Endpoint | Detailed behaviour |
+| Endpoint | 歷史行為 |
 | --- | --- |
-| `GET /admin/analytics/candidates` | Lists imported header candidates discovered from uploads. Each item includes inferred type, conflicting types, bounded sample values, occurrence metadata, source key, and promotion state. It is admin-only because raw headers and samples may be sensitive. |
-| `GET /admin/analytics/fields` | Lists all local governed fields, including draft/archived state and discovery metadata. |
-| `GET /admin/analytics/fields/{field_id}` | Returns one field record or `404`. |
-| `POST /admin/analytics/fields` | Creates a draft raw-JSON field. Body: `slug`, `label`, optional `description`, `data_type` (`string`, `number`, `boolean`, `date`, `time`), `source_key`, optional `visibility` (`viewer`/`admin`), and `semantic_view` (currently `survey_responses`). It validates safe identifiers and type/source compatibility. |
-| `PUT /admin/analytics/fields/{field_id}` | Updates an existing field. A changed field becomes draft and must be revalidated/published before catalog activation. |
-| `POST /admin/analytics/fields/{field_id}/promote` | Promotes a discovered candidate into a governed draft field. Body selects `data_type`, `visibility`, and optional `label`/`description`; source key and candidate history stay traceable. |
-| `POST /admin/analytics/fields/{field_id}/validate` | Runs field validation and returns the field plus validation result/errors. It does not activate the catalog. |
-| `POST /admin/analytics/fields/{field_id}/publish` | Marks a valid, promoted field as published and records an audit event. It is still not visible to viewers until a catalog version is published. |
-| `POST /admin/analytics/fields/{field_id}/archive` | Archives a field. It refuses the request when a published metric or chart still references the field (including dimensions, time dimension, filters, and ordering). |
+| `GET /admin/analytics/candidates` | 列出上傳發現的 header candidate，包含 inferred／conflicting type、sample value、occurrence metadata、source key 與 promotion state。因 raw header／sample 可能敏感，限 admin。 |
+| `GET /admin/analytics/fields`、`GET /admin/analytics/fields/{field_id}` | 列出或取得 local governed field，包含 draft／archived state 與 discovery metadata。 |
+| `POST`／`PUT`／`validate`／`publish`／`archive` 的 `/admin/analytics/fields/{field_id}` 路由 | 建立、修改、驗證、發佈或封存 raw-JSON field；修改後必須重新 validate／publish。若已發佈 metric 或 chart 仍參照 field，archive 會被拒絕。 |
+| `GET /admin/analytics/metrics`、`GET /admin/analytics/metrics/{metric_id}` | 列出或取得 metric record、source／weight reference、operation、confidence configuration、lifecycle 與 audit/version data。 |
+| `POST`／`PUT`／`validate`／`publish`／`archive` 的 `/admin/analytics/metrics/{metric_id}` 路由 | 建立、修改、驗證、發佈或封存 governed metric。`definition` 不接受任意 SQL、JavaScript 或 expression，只接受 operation 所允許的 declarative parameter。 |
 
-### Metrics
+歷史 metric operation 包含 count／distinct／filtered count／rate、numeric sum／average／weighted sum／weighted average／min／max／variance／standard deviation／median／percentile／confidence interval 及 date/time min／max。Weight 必須是非負 numeric governed member；median／percentile 明確不加權。
 
-Metric creation supports both promoted field IDs and fixed governed core members. A body contains `slug`, `label`, optional `description`, `semantic_view`, one source (`field_id` or `source_member`) where required, `operation`, optional weight (`weight_field_id` or `weight_member`), optional `confidence_level`, optional declarative `definition`, and `visibility`.
+### Chart（圖表）
 
-Supported operations include count/distinct/filtered count and rates for all types; numeric sum, average, weighted sum/average, min/max, sample/population variance and standard deviation, weighted dispersion, median, percentile, and confidence intervals; and date/time min/max. Weights must be non-negative numeric governed members. Median/percentile are explicitly unweighted.
+Chart 本文含 `slug`、`title`、可選 `description`、`chart_type`、`semantic_view`、受治理 `definition` 與 `visibility`。Definition 指定 0–3 個 dimension、恰一個 `metric` field 與 `aggregation`，可另含 filter、time setting、order 與 bounded limit。驗證使用 chart data 章節的嚴格 matrix；`line`／`area` 需要 granular time dimension，兩個一般 dimension 僅可使用 `stacked_bar`、`heatmap` 或 `table`，三個一般 dimension 只可使用 `table`。`scatter`、`store_map` 不再接受。
 
-| Endpoint | Detailed behaviour |
+| Endpoint | 行為 |
 | --- | --- |
-| `GET /admin/analytics/metrics` | Lists all metric records, their source/weight references, operation, confidence configuration, lifecycle status, and audit/version data. |
-| `GET /admin/analytics/metrics/{metric_id}` | Returns one metric or `404`. |
-| `POST /admin/analytics/metrics` | Creates a draft governed metric. No arbitrary SQL, JavaScript, or expressions are accepted in `definition`; only the validated declarative parameters for the selected operation are allowed. |
-| `PUT /admin/analytics/metrics/{metric_id}` | Updates a metric and returns it to draft, requiring fresh validation/publication. |
-| `POST /admin/analytics/metrics/{metric_id}/validate` | Checks source type, operation, weight validity, visibility dependencies, confidence level (80%–99.9%), percentile/filter parameters, and semantic-view compatibility. |
-| `POST /admin/analytics/metrics/{metric_id}/publish` | Marks a valid metric published and audits the change. Catalog activation remains a separate step. |
-| `POST /admin/analytics/metrics/{metric_id}/archive` | Archives a metric unless a published chart still references it. |
+| `GET /admin/analytics/charts`、`GET /admin/analytics/charts/{chart_id}` | 列出或取得所有 chart，包含 draft、archive、validation error、definition、visibility 及 version metadata。 |
+| `POST /admin/analytics/charts` | 建立 draft chart definition；不會觸發 visual rendering，前端消費 chart contract。 |
+| `PUT /admin/analytics/charts/{chart_id}` | 更新 definition，並使其回到 draft。 |
+| `POST /admin/analytics/charts/{chart_id}/publish` | validate、publish 並立即啟用新 catalog version。response 含 `model_version`，viewer 隨後可從 `GET /analytics/charts/published` 取得 chart。 |
+| `DELETE /admin/analytics/charts/{chart_id}` | 軟刪除 chart、記錄 audit event，並立即啟用不含該 chart 的 catalog version；viewer 將不可見。 |
 
-### Charts
+### Catalog version（Catalog 版本）
 
-A chart body contains `slug`, `title`, optional `description`, `chart_type`,
-`semantic_view`, a governed `definition`, and `visibility`. The definition names
-0–3 dimensions and exactly one raw `metric` field plus `aggregation`; it may
-also include filters, time settings, ordering, and a bounded limit. Validation
-uses the strict chart matrix documented under chart data. In particular,
-`line`/`area` require a granular time dimension, two ordinary dimensions map
-only to `stacked_bar`, `heatmap`, or `table`, and three ordinary dimensions map
-only to `table`. `scatter` and `store_map` are no longer accepted.
-
-| Endpoint | Detailed behaviour |
+| Endpoint | 行為 |
 | --- | --- |
-| `GET /admin/analytics/charts` | Lists every chart, including drafts, archived charts, validation errors, definitions, visibility, and version metadata. |
-| `GET /admin/analytics/charts/{chart_id}` | Returns one chart or `404`. |
-| `POST /admin/analytics/charts` | Creates a draft chart definition. It has no visualization rendering side effect; the frontend consumes the chart contract. |
-| `PUT /admin/analytics/charts/{chart_id}` | Updates the definition and returns it to draft. |
-| `POST /admin/analytics/charts/{chart_id}/publish` | Validates, publishes, and immediately activates a new catalog version. The response includes `model_version`; viewers can then obtain the chart through `GET /analytics/charts/published`. |
-| `DELETE /admin/analytics/charts/{chart_id}` | Soft-deletes the chart, records an audit event, and immediately activates a catalog version without it. It is no longer visible to viewers. |
+| `GET /admin/analytics/catalog/versions` | 列出 model-version history：catalog version、status（`active`、`superseded` 等）、definition hash、creator、timestamp 與 validation error；清單不含 immutable snapshot。 |
+| `GET /admin/analytics/catalog/versions/{version_id}` | 回傳一個 version、其 immutable catalog snapshot 與 generated Cube catalog information，供 audit／debug；因可包含 local source key，限 admin。 |
+| `POST /admin/analytics/catalog/publish` | 可選本文 `{ "description": "Quarterly metrics release" }`。重新驗證所有已發佈 field／metric／chart、檢查 catalog size 與 dependency constraint、編譯 chart rollup definition、建立 immutable version 並以 atomic 方式啟用。成功回傳 `201`；無效 definition 為 `422`，lifecycle／concurrency conflict 為 `409`。 |
 
-### Catalog versions
-
-| Endpoint | Detailed behaviour |
-| --- | --- |
-| `GET /admin/analytics/catalog/versions` | Lists model-version history: catalog version, status (`active`, `superseded`, etc.), definition hash, creator, timestamps, and validation errors. The immutable snapshot is not included in this list response. |
-| `GET /admin/analytics/catalog/versions/{version_id}` | Returns one version including its immutable catalog snapshot and generated Cube catalog information, for audit/debugging. It is admin-only because it can include local source keys. |
-| `POST /admin/analytics/catalog/publish` | Optional body: `{ "description": "Quarterly metrics release" }`. Revalidates every published field/metric/chart, checks catalog-size and dependency constraints, compiles chart rollup definitions, records an immutable version, and atomically makes it active. Returns `201` with the new version. Invalid definitions produce `422`; lifecycle/concurrency conflicts produce `409`. |
-
-## Internal Cube metadata endpoint
+## 內部 Cube Metadata Endpoint
 
 ### `GET /internal/analytics/catalog`
 
-This is not a human administration API. It supplies active chart/catalog metadata
-to the per-BU Cube compiler. It is intentionally not controlled by
-`ANALYTICS_ENABLED`, allowing the seven-day shadow phase to compile while
-user-facing analytics remains disabled. It must be reachable only on the
-private analytics network.
+這不是供人員操作的 administration API。它向每個 BU 的 Cube compiler 提供 active chart／catalog metadata。它刻意不受 `ANALYTICS_ENABLED` 控制，讓七天 shadow phase 即使 user-facing Analytics 停用仍能編譯。它只能在 private Analytics network 上存取。
 
-Required headers are:
+必要 header：
 
 ```text
 X-Analytics-Profile: wtchk_cls
@@ -783,16 +291,16 @@ X-Analytics-Timestamp: <unix seconds>
 X-Analytics-Signature: <HMAC-SHA256 of "<timestamp>:<profile>">
 ```
 
-The profile must match the deployment profile, the timestamp must be fresh, and the signature must use that BU’s metadata secret. The response contains the catalog version, field/metric definitions, and approved local rollups required for Cube compilation. Invalid signature/timestamp receives `401`; a wrong profile receives `403`. This response is explicitly `Cache-Control: no-store, private`.
+Profile 必須符合 deployment profile、timestamp 必須新鮮，且 signature 使用該 BU 的 metadata secret。Response 包含 Cube 編譯所需的 catalog version、field／metric definition 與已核准的 local rollup。無效 signature／timestamp 為 `401`；錯誤 profile 為 `403`。此 response 亦明確為 `Cache-Control: no-store, private`。
 
-## Historical lifecycle example
+## 歷史生命週期範例
 
-The dynamic field/metric flow below is not enabled in the chart-only rollout.
+以下 dynamic field／metric flow 未在 chart-only rollout 啟用：
 
-1. An upload discovers a candidate; an admin examines it using `GET /admin/analytics/candidates`.
-2. The admin promotes and configures it using `POST /admin/analytics/fields/{field_id}/promote`.
-3. The admin creates a metric or chart that uses the field, then calls the relevant `validate` and `publish` endpoints.
-4. The admin calls `POST /admin/analytics/catalog/publish`.
-5. Cube receives the new immutable catalog through the internal endpoint, and users see it through `GET /analytics/catalog` and `GET /analytics/charts/published`.
+1. Upload 發現 candidate；admin 透過 `GET /admin/analytics/candidates` 檢視。
+2. Admin 使用 `POST /admin/analytics/fields/{field_id}/promote` promotion 與設定 field。
+3. Admin 建立使用該 field 的 metric 或 chart，接著呼叫相關 `validate`、`publish` endpoint。
+4. Admin 呼叫 `POST /admin/analytics/catalog/publish`。
+5. Cube 經由 internal endpoint 取得新的 immutable catalog；使用者經由 `GET /analytics/catalog` 與 `GET /analytics/charts/published` 看見它。
 
-Changing or archiving a definition does not rewrite prior catalog snapshots. A published chart/export remains tied to the model version recorded for that operation, which keeps governance and audit history reproducible.
+修改或 archive definition 不會改寫舊 catalog snapshot。已發佈的 chart／export 會維持與該操作記錄的 model version 綁定，因此 governance 與 audit history 可重現。

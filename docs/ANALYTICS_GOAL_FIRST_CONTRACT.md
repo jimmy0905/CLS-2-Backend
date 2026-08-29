@@ -1,78 +1,49 @@
-# Goal-first analytics query contract
+# 目標優先的 Analytics 查詢契約
 
-This is the authoritative public aggregate-query contract from catalog version
-`0013_goal_first_analytics` onward. It replaces the raw-column metric selector.
+這是自 catalog version `0013_goal_first_analytics` 起，具權威性的公開彙總查詢契約。它取代了原始欄位的 metric selector。
 
-## Mental model
+## 心智模型
 
-An aggregate query answers these questions in order:
+彙總查詢依序回答以下問題：
 
-1. What business result should be measured (`metric`)?
-2. How should that target be calculated (`aggregation`)?
-3. How should the result be grouped (`dimensions` and optional time)?
-4. Which rows qualify (`filters`)?
-5. Which fact grain can answer it safely? The server infers this; the response reports it as `semantic_view`.
+1. 要衡量哪項業務結果（`metric`）？
+2. 該目標應如何計算（`aggregation`）？
+3. 結果應如何分組（`dimensions` 與可選的時間）？
+4. 哪些資料列符合條件（`filters`）？
+5. 哪個 fact grain 能安全回答它？伺服器會自行推導，並在回應中以 `semantic_view` 回報。
 
-`metric` is a logical target, not a database column. Users do not select
-`id`, `assignment_id`, `survey_id`, or `store_key` to count records. The server
-resolves a published `(metric, aggregation)` pair to one governed Cube measure
-at the inferred view's grain.
+`metric` 是邏輯目標，而不是資料庫欄位。使用者不會選取 `id`、`assignment_id`、`survey_id` 或 `store_key` 來計數紀錄。伺服器會在推導出的 view grain，將已發佈的 `(metric, aggregation)` 組合解析為一個受治理的 Cube measure。
 
-| Question | Semantic view | Public target | Method | Governed meaning |
+| 問題 | Semantic View | 公開目標 | 方法 | 受治理意義 |
 | --- | --- | --- | --- | --- |
-| How many surveys? | `survey_responses` | `survey` | `count` | Response-grain survey count |
-| How many unique surveys mention a keyword? | `survey_keywords` | `survey` | `count` | Distinct survey count at keyword-assignment grain |
-| How many keyword assignments? | `survey_keywords` | `keyword_assignment` | `count` | Keyword assignment row count |
-| How many topic assignments? | `survey_topics` | `topic_assignment` | `count` | Topic assignment row count |
-| How many responding stores? | `survey_responses` | `store` | `count` | Distinct represented stores |
-| What is average CLS? | `survey_responses` | `cls` | `average` | Average governed CLS measure |
-| How many responses are `MIXED`? | `survey_responses` | `topic_sentiment_mixed` | `count` | Filtered response count |
-| How many `MIXED` responses per keyword and department? | `survey_assignments` | `topic_sentiment_mixed` | `count` | Distinct responses at the combination grain |
+| 有多少份問卷？ | `survey_responses` | `survey` | `count` | response-grain 問卷數 |
+| 有多少份不重複的問卷提到關鍵字？ | `survey_keywords` | `survey` | `count` | keyword-assignment grain 的相異問卷數 |
+| 有多少個 keyword assignment？ | `survey_keywords` | `keyword_assignment` | `count` | keyword assignment 列數 |
+| 有多少個 topic assignment？ | `survey_topics` | `topic_assignment` | `count` | topic assignment 列數 |
+| 有多少間有回應的門市？ | `survey_responses` | `store` | `count` | 被涵蓋的相異門市數 |
+| 平均 CLS 是多少？ | `survey_responses` | `cls` | `average` | 平均受治理 CLS measure |
+| 有多少個回應為 `MIXED`？ | `survey_responses` | `topic_sentiment_mixed` | `count` | 經篩選的 response 數 |
+| 每個 keyword 與 department 組合有多少個 `MIXED` 回應？ | `survey_assignments` | `topic_sentiment_mixed` | `count` | combination grain 的相異 response 數 |
 
-The same `survey/count` goal intentionally resolves to different physical
-measures at different grains. This prevents assignment fan-out from inflating a
-survey count.
+相同的 `survey/count` 目標會刻意在不同 grain 解析為不同的實體 measure。如此可避免 assignment fan-out 將問卷數膨脹。
 
-### Enum-valued dimensions are measurable one value at a time
+### Enum 值維度可一次衡量一個值
 
-A dimension with a closed value set also publishes one metric target per value,
-named `<field>_<value>`. Measuring `topic_sentiment_mixed/count` answers "how
-many are MIXED" without spending a group-by slot on the sentiment breakdown,
-which is what makes a two-dimension cross tabulation of some other pair
-possible. Grouping by the dimension itself remains available and is still the
-right choice when every value is wanted at once.
+具有封閉值集合的 dimension，也會針對每個值發佈一個名為 `<field>_<value>` 的 metric target。衡量 `topic_sentiment_mixed/count` 可回答「有多少筆是 MIXED」，而不需使用 group-by 額度做 sentiment breakdown，因此可對其他一組 dimension 進行雙維交叉表。仍可依 dimension 本身分組；當需要同時取得所有值時，這仍是正確做法。
 
-Enum targets publish `count` only. Sentiment is a string, so summing or
-averaging it has no meaning; to average a number, measure that number.
+Enum target 只提供 `count`。sentiment 是字串，對它加總或平均沒有意義；如要平均數值，應衡量該數值本身。
 
-The declared enum dimensions are `topic_sentiment` (`POSITIVE`, `NEGATIVE`,
-`NEUTRAL`, `MIXED`), the assignment `sentiment` of each single-family grain, and
-`keyword_sentiment`, `department_sentiment`, and `topic_assignment_sentiment` at
-the combination grain (each `POSITIVE`, `NEGATIVE`, `NEUTRAL`). An arbitrary
-string dimension is not expanded, because it has no closed value set.
+宣告的 enum dimension 包含 `topic_sentiment`（`POSITIVE`、`NEGATIVE`、`NEUTRAL`、`MIXED`）、各個 single-family grain 的 assignment `sentiment`，以及 combination grain 中的 `keyword_sentiment`、`department_sentiment`、`topic_assignment_sentiment`（各為 `POSITIVE`、`NEGATIVE`、`NEUTRAL`）。任意字串 dimension 不會展開，因為它沒有封閉值集合。
 
-### The `survey_assignments` grain
+### `survey_assignments` grain（指派組合粒度）
 
-`keyword`, `department`, and `topic` each live in their own grain and cannot be
-joined, so crossing two of them needs a grain that already holds all three. One
-`survey_assignments` row is one `(response, keyword, department, topic)`
-combination, so a response repeats once per product of its assignment counts.
+`keyword`、`department` 與 `topic` 各自存在於不同 grain，且不能 join；若要交叉其中兩者，必須使用已持有三者的 grain。一列 `survey_assignments` 就是一個 `(response, keyword, department, topic)` 組合，因此 response 會依 assignment 數量的乘積重複出現。
 
-Only measures that deduplicate on the response key are published there. A count
-becomes a distinct response count; response-level sums and averages such as
-`cls/sum` and `cls/average` are deliberately absent, because the fan-out would
-weight each response by its combination count. Choose this grain only to cross
-assignment families; for a single family, its own grain is both cheaper and
-exact.
+此 grain 只發佈依 response key 去重的 measure。計數會成為相異 response 計數；`cls/sum` 與 `cls/average` 等 response-level 加總及平均值刻意不提供，因為 fan-out 會使每個 response 按其組合數加權。只有要交叉 assignment family 時才選擇此 grain；對單一 family 而言，專屬 grain 更省資源且精確。
 
-## Discovery flow
+## 探索流程
 
-Load `GET /analytics/builder/measures`, choose one measurable target and one of
-its aggregations, then use `POST /analytics/builder/options` to discover the
-compatible dimensions. For a direct `POST /analytics/query`, send the same
-metric, aggregation, and selected members; the server resolves the grain.
-`GET /analytics/catalog` remains useful for governed metadata and the
-view-scoped administrative/discovery endpoints.
+載入 `GET /analytics/builder/measures`，選擇一個可衡量 target 及其中一項 aggregation，接著以 `POST /analytics/builder/options` 探索相容 dimension。直接呼叫 `POST /analytics/query` 時，傳送相同的 metric、aggregation 及已選 member；伺服器會解析 grain。`GET /analytics/catalog` 仍可用於受治理中繼資料及 view-scope 的管理／探索端點。
 
 ```http
 POST /analytics/query-capabilities
@@ -85,26 +56,20 @@ Content-Type: application/json
 }
 ```
 
-The response supplies the allowed dimensions, filter members and operators,
-time dimensions, result type, and warnings for that exact goal. A frontend
-must use these capabilities instead of deriving arbitrary metric operations
-from a column's storage type.
+回應會為此精確目標提供允許的 dimension、filter member 與 operator、time dimension、result type 及 warning。前端必須使用這些 capability，而非從欄位的儲存型別推導任意 metric operation。
 
-Catalog fields include:
+Catalog field 包含：
 
-- `scope`: `response` or `assignment`
-- `usage`: `chart` or `table_only`
-- `filterable`: whether it may be filtered
-- `time_dimension`: whether it may be used as granular time
+- `scope`：`response` 或 `assignment`
+- `usage`：`chart` 或 `table_only`
+- `filterable`：是否可用於篩選
+- `time_dimension`：是否可作為具粒度的時間
 
-A governed field can be a dimension without being a metric target. Identifier,
-free-text, coordinate, and other high-cardinality fields are normally
-`table_only`; they remain available for tables and controlled filters where
-appropriate.
+受治理 field 可以是 dimension，卻不是 metric target。identifier、free-text、coordinate 與其他高 cardinality field 通常是 `table_only`；在適當情況下，它們仍可用於 table 及受控 filter。
 
-## Query examples
+## 查詢範例
 
-Count surveys whose response-level topic sentiment is `MIXED`:
+計算 response-level topic sentiment 為 `MIXED` 的問卷數：
 
 ```json
 {
@@ -120,8 +85,7 @@ Count surveys whose response-level topic sentiment is `MIXED`:
 }
 ```
 
-Show the assignment-sentiment distribution for keyword `A`, counting keyword
-assignments:
+顯示 keyword `A` 的 assignment-sentiment 分布，並計算 keyword assignment：
 
 ```json
 {
@@ -137,12 +101,9 @@ assignments:
 }
 ```
 
-To answer “how many unique surveys mentioning keyword `A` fall in each
-assignment sentiment?”, change only the target to `survey/count`. To analyse
-the survey's response-level sentiment rather than the keyword assignment's own
-sentiment, group by `topic_sentiment` instead.
+如要回答「提到 keyword `A` 的不重複問卷中，各 assignment sentiment 分別有多少筆？」，只需將 target 改為 `survey/count`。若要分析問卷的 response-level sentiment，而非 keyword assignment 本身的 sentiment，則改以 `topic_sentiment` 分組。
 
-Count surveys by store format and response sentiment over time:
+依門市格式與 response sentiment，按時間統計問卷數：
 
 ```json
 {
@@ -158,26 +119,21 @@ Count surveys by store format and response sentiment over time:
 }
 ```
 
-That last shape is table-only because it combines granular time with two
-ordinary dimensions.
+最後一種形狀結合具粒度時間與兩個一般 dimension，因此僅能用於 table。
 
-## Request and response rules
+## 請求與回應規則
 
-- `dimensions` contains zero to three ordinary dimensions.
-- `metric` and `aggregation` are both required and singular.
-- `semantic_view` is no longer a query selector. Legacy clients may send it,
-  but the server ignores it and returns the actual inferred grain.
-- The removed `metrics` field is rejected with `422`.
-- Only pairs published under `metric_targets` are accepted.
-- `time_dimension` cannot also appear in `dimensions` and requires a
-  `time_granularity` for line/area charts.
-- `order.member` is a selected dimension, the selected time dimension, or
-  `value`.
-- Query, chart data, and aggregate export all use this contract.
-- `filter-options`, record query, and drilldown retain their specialised
-  response shapes.
+- `dimensions` 包含零至三個一般 dimension。
+- `metric` 與 `aggregation` 均為必填，且各只能有一個。
+- `semantic_view` 不再是 query selector。舊用戶端仍可傳送它，但伺服器會忽略它並回傳實際推導出的 grain。
+- 已移除的 `metrics` field 會以 `422` 拒絕。
+- 只接受在 `metric_targets` 下發佈的 pair。
+- `time_dimension` 不可同時出現於 `dimensions`，且 line／area chart 必須提供 `time_granularity`。
+- `order.member` 必須是已選 dimension、已選 time dimension 或 `value`。
+- query、chart data 與 aggregate export 皆使用此契約。
+- `filter-options`、record query 與 drilldown 保留各自專用的回應形狀。
 
-Every aggregate result uses flat rows and one fixed result key:
+每個 aggregate result 都使用 flat row，並有一個固定 result key：
 
 ```json
 {
@@ -215,49 +171,29 @@ Every aggregate result uses flat rows and one fixed result key:
 }
 ```
 
-`schema.time_dimension` is always `null` when it was not selected. `rows` and
-`warnings` are always present, including empty results.
+未選擇時間時，`schema.time_dimension` 一律為 `null`。即使結果為空，`rows` 與 `warnings` 仍會存在。
 
-`schema.layout` names the axes so a client need not infer them from long-format
-rows. A cross tabulation puts the first dimension on rows and the second on
-columns; a time chart puts the bucket on rows and the remaining dimension on
-columns, which is what makes each of its values one line. It is `null` only when
-there is nothing to lay out, as for a KPI.
+`schema.layout` 會標示座標軸，因此用戶端毋須從 long-format row 推導它們。交叉表會將第一個 dimension 放在列，第二個放在欄；time chart 會將 time bucket 放在列，其餘 dimension 放在欄，使其中每個值各形成一條線。只有 KPI 等沒有需要排版的內容時，它才是 `null`。
 
-## Chart compatibility
+## 圖表相容性
 
-| Shape | Compatible chart types |
+| 形狀 | 相容圖表類型 |
 | --- | --- |
-| No time, 0 dimensions | KPI, table |
-| No time, 1 dimension | bar, column, pie, donut, table |
-| No time, 2 dimensions | stacked bar, grouped bar, heatmap, table |
-| No time, 3 dimensions | table |
-| Time, 0–1 ordinary dimension | line, area, table |
-| Time, 2–3 ordinary dimensions | table |
+| 無時間、0 個 dimension | KPI、table |
+| 無時間、1 個 dimension | bar、column、pie、donut、table |
+| 無時間、2 個 dimension | stacked bar、grouped bar、heatmap、table |
+| 無時間、3 個 dimension | table |
+| 有時間、0–1 個一般 dimension | line、area、table |
+| 有時間、2–3 個一般 dimension | table |
 
-Except for table and KPI, the result must be numeric. Any selected
-`table_only` dimension restricts the result to table. `scatter` and
-`store_map` are not part of the public chart contract.
+除 table 與 KPI 外，結果必須為數值。任何選取的 `table_only` dimension 都會將結果限制為 table。`scatter` 與 `store_map` 不屬於公開圖表契約。
 
-An aggregate query may carry an optional `chart_type`. When present the server
-validates the shape above before running anything, so an incompatible pairing
-fails with `422` instead of producing rows a client cannot draw.
+Aggregate query 可選擇傳入 `chart_type`。存在時，伺服器會在執行任何操作前依上述形狀驗證；不相容配對會以 `422` 失敗，而不是產生用戶端無法繪製的資料列。
 
-### Series limits and grid filling
+### Series 上限與格線補值
 
-A chart stops being readable long before a query stops being valid, so a chart
-type with a series axis caps it: pie and donut keep the top twelve slices and
-aggregate the rest into `Other`, because their parts must still sum to the whole;
-line, area, stacked bar, grouped bar, and heatmap keep the top ten series and
-drop the rest, because an aggregated extra line or column would be meaningless.
-`series_limit` overrides the cap up to fifty, and `schema.layout` reports both
-the applied limit and whether anything was dropped.
+圖表在查詢失效前很久就可能難以閱讀，因此帶有 series axis 的 chart type 會設上限：pie 與 donut 保留前十二個 slice，將其餘彙總為 `Other`，因為部分仍必須加總為整體；line、area、stacked bar、grouped bar 與 heatmap 保留前十個 series 並捨棄其餘，因為彙總額外的線或欄沒有意義。`series_limit` 可將上限覆寫至最多五十；`schema.layout` 同時回報套用的上限及是否有內容遭捨棄。
 
-The cap exists for unbounded dimensions. `keyword` has tens of thousands of
-values and `store_name_english` hundreds, while `topic` and `department` come
-from closed extraction lists of about twenty and ten values and so are never
-truncated at the default.
+上限針對無界 dimension 而設。`keyword` 可有數萬個值，`store_name_english` 可有數百個值；`topic` 與 `department` 則來自約二十與十個項目的封閉擷取清單，所以預設永不截斷。
 
-Setting `fill_empty` completes a cross tabulation into a full grid by adding
-zero-valued rows for observed row and column pairs that returned no data. It
-requires a column axis and is rejected otherwise.
+設定 `fill_empty` 可將交叉表補成完整格線，為已觀察到但沒有回傳資料的 row／column 組合加入零值列。它需要 column axis，否則會被拒絕。

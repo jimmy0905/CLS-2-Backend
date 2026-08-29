@@ -1,440 +1,181 @@
-# Frontend workflow for dashboard analytics
+# 前端儀表板 Analytics 工作流程
 
-> Query builders use the logical-target discovery sequence defined in
-> [Goal-first analytics query contract](ANALYTICS_GOAL_FIRST_CONTRACT.md).
+> Query builder 請使用[目標優先的 Analytics 查詢契約](ANALYTICS_GOAL_FIRST_CONTRACT.md)定義的邏輯 target 探索順序。
 
-This workflow shows how the frontend replaces legacy `GET /dashboard/*`
-requests with the governed `/analytics` API. It begins by discovering which
-dimensions are published and which of them actually contain data, then loads
-filter values and published dashboard chart data.
+此工作流程說明前端如何以受治理的 `/analytics` API 取代舊有 `GET /dashboard/*` 請求。流程先探索已發佈、且在目前 BU 確實有資料的 dimension，再載入 filter value 與已發佈 dashboard chart data。
 
-All paths below are relative to the deployment API prefix (normally
-`/wtchk/api`) and require `Authorization: Bearer <access-token>`.
+以下所有路徑皆相對於部署 API prefix（一般為 `/wtchk/api`），且需要 `Authorization: Bearer <access-token>`。
 
-## Request workflow
+## 請求流程
 
 ```mermaid
 flowchart TD
-    A[Dashboard route opens] --> B[GET /analytics/catalog]
-    B --> C{Request succeeded?}
-    C -- No --> C1[Show authentication, disabled-feature, or retry state]
-    C -- Yes --> D[Keep model_version, fields, and metric_targets by semantic_view]
-    D --> V[User selects one target and one method]
-    V --> V1[POST /analytics/query-capabilities]
-
-    D --> E[GET /analytics/catalog/availability?semantic_view=...]
-    E --> F{field.available?}
-    F -- No --> F1[Hide or disable that dimension and filter]
-    F -- Yes --> G[Render the dimension or filter control]
-
-    D --> H[GET /analytics/charts/published]
-    H --> I[Index charts by slug and verify chart model_version matches catalog]
-
-    G --> J[POST /analytics/filter-options]
-    J --> K[Populate values from values array]
-    K --> L{has_more?}
-    L -- Yes --> J1[Request next_cursor page]
-    J1 --> J
-    L -- No --> M[User selects filters and date or timezone]
-    I --> M
-
-    M --> N{Published dashboard card?}
-    N -- Yes --> O[POST /analytics/charts/chart_id/data]
-    N -- No, guided exploration --> V1
-    V1 --> P[Choose allowed dimensions and filters, then POST /analytics/query]
-    O --> Q[Read schema, flat rows, row_count, warnings, freshness_time, model_version]
+    A[開啟 Dashboard 路由] --> B[GET /analytics/catalog]
+    B --> C{請求成功？}
+    C -- 否 --> C1[顯示驗證、功能停用或重試狀態]
+    C -- 是 --> D[保存 model_version、field 與 metric_targets]
+    D --> E[GET /analytics/charts/published]
+    D --> F[使用者選擇衡量目標與方法]
+    F --> G[POST /analytics/query-capabilities]
+    D --> H[GET /analytics/catalog/availability]
+    H --> I{field.available？}
+    I -- 否 --> I1[隱藏或停用該 dimension／filter]
+    I -- 是 --> J[顯示 dimension／filter 控制項]
+    J --> K[POST /analytics/filter-options]
+    K --> L{has_more？}
+    L -- 是 --> K1[以 next_cursor 載入下一頁]
+    K1 --> K
+    L -- 否 --> M[使用者選擇 filter、日期及時區]
+    E --> M
+    M --> N{已發佈 Dashboard 卡片？}
+    N -- 是 --> O[POST /analytics/charts/chart_id/data]
+    N -- 否 --> P[依 capability 組合 POST /analytics/query]
+    O --> Q[讀取 schema、rows、warning、freshness_time、model_version]
     P --> Q
-    Q --> R[Render chart or KPI]
-
-    R --> S{Filters changed?}
-    S -- Yes --> T[Reload dependent filter-options with current compatible filters]
-    T --> M
-    S -- No --> U{Catalog model_version changed on a later refresh?}
-    U -- Yes --> B
-    U -- No --> R
+    Q --> R[呈現圖表或 KPI]
+    R --> S{Filter 已變更？}
+    S -- 是 --> K
+    S -- 否 --> T{Catalog model_version 已變更？}
+    T -- 是 --> B
+    T -- 否 --> R
 ```
 
-## Frontend request sequence
+## 初始化與探索端點
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User
-    participant FE as Frontend
-    participant API as CLSense API
-    participant Cube as Private Cube
-
-    User->>FE: Open dashboard
-    FE->>API: GET /analytics/catalog
-    API-->>FE: model_version, semantic_views, fields, metric_targets
-    User->>FE: Choose one result target and method
-    FE->>API: POST /analytics/query-capabilities
-    API-->>FE: Allowed dimensions, filters, time dimensions, result type
-
-    loop Each semantic view used by the page
-        FE->>API: GET /analytics/catalog/availability?semantic_view=view
-        API-->>FE: fields with available and availability_rate
-    end
-
-    FE->>API: GET /analytics/charts/published
-    API-->>FE: Published chart definitions and IDs
-
-    loop Each visible filter control
-        FE->>API: POST /analytics/filter-options
-        API->>Cube: Governed dimension/count query
-        Cube-->>API: Non-null values and counts
-        API-->>FE: values, next_cursor, has_more, freshness_time
-    end
-
-    User->>FE: Select filters, date range, and timezone
-    FE->>API: POST /analytics/charts/{chart_id}/data
-    API->>Cube: Published chart query plus safe overrides
-    Cube-->>API: Aggregate result
-    API-->>FE: chart, schema, flat rows, row_count, warnings, freshness_time, model_version
-    FE-->>User: Render dashboard card
-```
-
-## What each discovery response means
-
-| Call | Frontend use |
+| 呼叫 | 前端用途 |
 | --- | --- |
-| `GET /analytics/catalog` | The allowlist of role-visible semantic views, dimensions, logical `metric_targets`, and chart types. Its `combinations` object supplies query limits, grain meaning, and chart shapes. Only send target/method pairs returned by this response. |
-| `POST /analytics/query-capabilities` | Validates the selected target/method and returns allowed dimensions, filter members/operators, time dimensions, and result type. Use this response to build the remaining controls. |
-| `GET /analytics/query-combinations?semantic_view=...` | A finite collection of directly executable, active-catalog-validated query templates. Use this for guided exploration; preserve dimensions, the one metric/aggregation pair, time dimension, and grain, and change only the listed `allowed_overrides`. |
-| `GET /analytics/catalog/availability?semantic_view=...` | Whether each catalog field has at least one non-null value in that view. Show fields where `available` is `true`; an availability rate below 1 still means the field can be used. |
-| `GET /analytics/charts/published` | The governed dashboard cards visible to the caller. Store both `id` (for the data URL) and `slug` (stable frontend lookup). |
-| `POST /analytics/filter-options` | Non-null dropdown values for one available dimension. Send already selected compatible filters to implement dependent selectors and follow `next_cursor` while `has_more` is true. |
-| `POST /analytics/charts/{chart_id}/data` | Preferred path for a predefined dashboard card. Dimensions and the one metric/aggregation pair stay governed; the frontend may override filters, time range/granularity, timezone, order, and limit. |
-| `POST /analytics/query` | Post the goal-first query with its metric, aggregation, dimensions, filters, and optional time controls. Do not send `semantic_view`: the response reports the resolved grain. Curated templates remain available from `GET /analytics/query-combinations`. |
+| `GET /analytics/catalog` | 角色可見的 semantic view、dimension、邏輯 `metric_targets` 與 chart type allowlist。`combinations` 提供 query limit、grain 含義與 chart shape。只可傳送這個回應中的 target／method pair。 |
+| `POST /analytics/query-capabilities` | 驗證已選 target／method，回傳允許的 dimension、filter member／operator、time dimension 與 result type。用它建立其餘 selector。 |
+| `GET /analytics/query-combinations?semantic_view=...` | 已經 active-catalog 驗證、可直接執行的有限 query template 集合。引導式探索保留其 dimension、metric／aggregation、time dimension 及 grain，只修改 `allowed_overrides` 中列出的欄位。 |
+| `GET /analytics/catalog/availability?semantic_view=...` | 各 catalog field 在 view 中是否至少有一個非 null 值。只顯示 `available: true` 的 field；availability rate 小於 1 並不代表不可使用。 |
+| `GET /analytics/charts/published` | 呼叫端可見的受治理 Dashboard card。保存 `id`（data URL 使用）與 `slug`（穩定前端查找）。 |
+| `POST /analytics/filter-options` | 一個可用 dimension 的非 null 下拉值。傳送已選且相容的 filter 建立相依 selector；`has_more` 為 true 時以 `next_cursor` 繼續。 |
+| `POST /analytics/charts/{chart_id}/data` | 預先定義 Dashboard card 的優先路徑。dimension 與單一 metric／aggregation 維持受治理；前端只能覆寫 filter、time range／granularity、timezone、order 及 limit。 |
+| `POST /analytics/query` | 傳送目標優先 query 的 metric、aggregation、dimension、filter 與可選 time control。不必傳 `semantic_view`；回應會列出伺服器解析出的 grain。 |
 
-Catalog membership and data availability are different: a field may be
-published in the catalog but have `available: false` for the current BU. The
-frontend must also keep assignment filters on their matching grain:
-`topic` with `survey_topics`, `department` with `survey_departments`, and
-`keyword` with `survey_keywords`. Response, store, and channel fields can also
-appear in assignment views, but then every metric uses that assignment view's
-row grain. Always take the final member list from the selected view's catalog
-entry.
+Catalog membership 與 data availability 不相同：field 可以在 catalog 發佈，卻對目前 BU 回傳 `available: false`。Assignment filter 必須留在相符 grain：`topic` 對 `survey_topics`、`department` 對 `survey_departments`、`keyword` 對 `survey_keywords`。response、store 與 channel field 也可出現在 assignment view，但其 metric 會依該 assignment view 的 row grain 計算。
 
-## View-scoped catalog workflow
+## 建議的介面模式
 
-The recommended free-form selector is the chart builder flow below. The older
-view-scoped catalog endpoints remain useful for availability, capabilities, and
-curated templates, but `semantic_view` is internal routing state there—not a
-field in a `POST /analytics/query` payload. The server is authoritative for
-selecting the final grain.
+預設使用 **引導模式**：從 `GET /analytics/query-combinations` 顯示已命名的業務問題，使用者只調整 `allowed_overrides`。這是最容易理解的常見操作路徑。
 
-When using the view-scoped discovery endpoints, their legacy selector order is:
+將下列 **進階探索模式** 留給需要自由組合的人員：
 
 ```text
-What does one row mean? -> What should be measured? -> How?        -> Group/filter by?
-Semantic View           -> Logical target           -> Aggregation -> Capabilities
+衡量什麼 → 依什麼拆分 → 再依什麼拆分（或按時間） → 如何彙總 → 繪製何種圖表
 ```
 
-Do not present raw semantic-view names as a required query choice. If the UI
-uses this legacy discovery flow, it may retain the corresponding
-`semantic_view` internally only to call its view-scoped endpoints:
+前端不應將 raw `semantic_view` 呈現為必填 query choice。它是可在 view-scoped discovery endpoint 內部使用的路由狀態，伺服器才是選擇最終 grain 的權威。
 
-| User-facing choice | `semantic_view` | One fact row | Default target + aggregation |
+舊式 view-scoped selector 的語意如下：
+
+| 使用者看到的選擇 | `semantic_view` | 一筆 fact row 的意義 | 預設 target + aggregation |
 | --- | --- | --- | --- |
-| Survey responses | `survey_responses` | One response | `survey` + `count` |
-| Topic mentions | `survey_topics` | One topic assignment | `topic_assignment` + `count` |
-| Department assignments | `survey_departments` | One department assignment | `department_assignment` + `count` |
-| Keyword mentions | `survey_keywords` | One keyword assignment | `keyword_assignment` + `count` |
+| 問卷回應 | `survey_responses` | 一個 response | `survey` + `count` |
+| 主題提及 | `survey_topics` | 一個 topic assignment | `topic_assignment` + `count` |
+| 部門 assignment | `survey_departments` | 一個 department assignment | `department_assignment` + `count` |
+| 關鍵字提及 | `survey_keywords` | 一個 keyword assignment | `keyword_assignment` + `count` |
 
-Use the labels above for presentation only. At runtime, read `grain`,
-`assignment_dimension`, and the dimension list from
-`catalog.combinations.semantic_views`, then read executable pairs from
-`catalog.metric_targets[semantic_view]`; do not duplicate those compatibility
-lists in frontend code.
+執行時應從 `catalog.combinations.semantic_views` 讀取 `grain`、`assignment_dimension` 與 dimension list，再從 `catalog.metric_targets[semantic_view]` 讀取可執行 pair；不可在前端硬編碼相容性清單。
 
-```mermaid
-flowchart LR
-    A[Load GET /analytics/catalog] --> B[User chooses analysis unit]
-    B --> C[Resolve combinations.semantic_views entry]
-    C --> D[Clear members and filters from the previous view]
-    D --> E[Fetch availability for selected view]
-    E --> F[Show available dimensions from the view entry]
-    F --> G[User selects 0-3 dimensions]
-    G --> H[Show metric_targets for the same view]
-    H --> I[User selects exactly one target and method]
-    I --> J[POST query-capabilities]
-    J --> K[Add allowed dimensions, filters, and optional time]
-    K --> M[POST /analytics/query]
-    M --> N{Response}
-    N -- 200 --> O[Render from schema and flat rows with value]
-    N -- 422 --> P[Show the governed validation error]
-    N -- 503 --> Q[Show retry state without changing selections]
-```
+## 狀態與請求建立
 
-### 1. Build selector indexes from the catalog
+每次分析單位、目標或方法變更時，清除相依狀態：
 
-The frontend needs both per-view field metadata and the logical targets from
-the top-level `metric_targets` value:
+- View 變更時清除 dimension、filter、time dimension、time range、time granularity、排序與前一個 capability；即使 `topic_sentiment`、`store_name` 或 `survey_id` 同時存在於兩個 view，它們的 row grain 仍可能不同。
+- Target／method 變更後，先呼叫 `/analytics/query-capabilities`，再以其 `allowed_dimensions` 與 availability 回應取交集。
+- 若 availability 的 `model_version` 與 catalog 不同，重新載入 catalog 並重新建立 selector。
+- 選擇帶有封閉 enum 值的 dimension 時，可同時提供逐值 metric target（例如 `topic_sentiment_mixed/count`）和依該 dimension 分組的做法；前者不佔用 group-by slot。
 
-```ts
-type ExplorerState = {
-  semanticView?: string;
-  dimensions: string[];
-  metric?: string;
-  aggregation?: "count" | "distinct_count" | "sum" | "average" | "min" | "max" | "median";
-  filters: Array<{
-    member: string;
-    operator: string;
-    value?: unknown;
-    values?: unknown[];
-  }>;
-  timeDimension?: string;
-  timeRange?: [string, string];
-  timeGranularity?: string;
-  timezone?: string;
-  order: Array<{ member: string; direction: "asc" | "desc" }>;
-  limit: number;
-};
+建立 query 前，前端應驗證：
 
-const viewRules = new Map(
-  catalog.combinations.semantic_views.map(rule => [rule.semantic_view, rule]),
-);
+1. `dimensions` 最多三個，全部屬於目前 catalog／capability 的允許清單。
+2. `metric` 與 `aggregation` 恰各一個，且是 resolved view 中的 active `metric_targets` pair。
+3. `filters` 最多 20 個，每個 member 與 operator 均由 capability 宣告。
+4. `time_dimension` 必須是允許的 date/time field，且不得重複出現在 `dimensions`；`time_range` 與 `time_granularity` 需要 time dimension。
+5. `order[].member` 只能是已選 dimension、所選 time dimension 或固定 key `value`。
+6. `limit` 與其他限制採用 `catalog.combinations.query` 回傳值，不要硬編碼。
 
-function groupByView<T extends { semantic_view: string }>(members: T[]) {
-  const result = new Map<string, T[]>();
-  for (const member of members) {
-    result.set(member.semantic_view, [
-      ...(result.get(member.semantic_view) ?? []),
-      member,
-    ]);
-  }
-  return result;
-}
-
-const fieldsByView = groupByView(catalog.fields);
-const metricTargetsByView = new Map(
-  Object.entries(catalog.metric_targets),
-);
-```
-
-`metric_targets[view]` is the executable result-goal allowlist. Each entry has
-`metric`, `label`, `entity`, and a nested `aggregations` array. A theoretically
-meaningful operation absent from this list must not be sent.
-
-### 2. Handle a Semantic View change
-
-A view change changes the row grain, even when a slug such as
-`topic_sentiment`, `store_name`, or `survey_id` exists in both
-views. Clear all dependent state instead of silently carrying those selections
-into a new meaning:
-
-```ts
-async function selectSemanticView(semanticView: string) {
-  const rule = viewRules.get(semanticView);
-  if (!rule) throw new Error("Semantic View is not in the active catalog");
-
-  state = {
-    semanticView,
-    dimensions: [],
-    metric: semanticView === "survey_responses"
-      ? "survey"
-      : `${semanticView.replace("survey_", "").replace(/s$/, "")}_assignment`,
-    aggregation: "count",
-    filters: [],
-    order: [],
-    limit: 100,
-  };
-
-  availability = await api.getCatalogAvailability(semanticView);
-  if (availability.model_version !== catalog.model_version) {
-    catalog = await api.getCatalog();
-    return selectSemanticView(semanticView);
-  }
-}
-```
-
-Reset `time_dimension`, `time_range`, and `time_granularity` as part of this
-replacement state. Retaining a store or sentiment slug across views is unsafe
-because the later metric counts a different kind of row.
-
-### 3. Offer only valid Dimensions
-
-After choosing the target and method, call `/analytics/query-capabilities` and
-intersect its `allowed_dimensions` with the availability result. Disable or
-hide fields that have no data for the current BU:
-
-```ts
-function dimensionOptions() {
-  const view = state.semanticView;
-  if (!view) return [];
-
-  const allowed = new Set(capabilities.allowed_dimensions.map(field => field.slug));
-  const available = new Map(
-    availability.fields.map(field => [field.slug, field.available]),
-  );
-
-  return (fieldsByView.get(view) ?? []).filter(field =>
-    allowed.has(field.slug) && available.get(field.slug) === true
-  );
-}
-```
-
-Use dimension labels that explain the two sentiment meanings:
-
-| Dimension | Frontend label | Meaning |
-| --- | --- | --- |
-| `topic_sentiment` | Overall response sentiment | Sentiment of the complete survey response; valid in every view |
-| `sentiment` | Topic/Department/Keyword sentiment | Sentiment of the current assignment row; assignment views only |
-
-Useful defaults are the view's `assignment_dimension` (`topic`, `department`,
-or `keyword`) for an assignment view, and `store_name` or `topic_sentiment` for
-common response exploration. Defaults still need to be present in the current
-view's dimension allowlist and availability response.
-
-### 4. Offer only valid targets and methods
-
-The query takes one logical target and one method. Show only targets published
-for the selected view, then only the chosen target's nested methods:
-
-```ts
-function metricTargets() {
-  const view = state.semanticView;
-  if (!view) return [];
-  return metricTargetsByView.get(view) ?? [];
-}
-```
-
-Explain targets by their unit so users do not accidentally change the
-question:
-
-| Target + aggregation | Selector description |
-| --- | --- |
-| `survey` + `count` in `survey_responses` | Number of matching survey responses |
-| `store` + `count` | Number of represented stores having at least one matching response |
-| `<entity>_assignment` + `count` | Number of matching topic, department, or keyword assignments |
-| `survey` + `count` in an assignment view | Number of unique surveys having at least one matching assignment |
-
-For example, `survey_topics + topic + topic_assignment/count` answers "how many
-topic assignments?", while selecting `survey/count` answers "how many surveys
-mentioned this topic?".
-
-### 5. Validate and build the request
-
-Use the limits returned in `catalog.combinations.query`, not hard-coded values.
-The final client-side check should reject stale or cross-view members before
-sending the payload:
-
-```ts
-function buildQuery() {
-  const view = state.semanticView;
-  const rule = view && viewRules.get(view);
-  if (!view || !rule) throw new Error("Choose what to analyse");
-
-  const dimensions = state.dimensions.filter(slug =>
-    rule.dimensions.includes(slug)
-  );
-  const optionIsValid = (metricTargetsByView.get(view) ?? []).some(target =>
-    target.metric === state.metric && target.aggregations.some(
-      option => option.method === state.aggregation
-    )
-  );
-  const filterMembersAreValid = state.filters.every(filter =>
-    capabilities.filter_members.some(member => member.field === filter.member)
-  );
-
-  if (dimensions.length !== state.dimensions.length ||
-      !optionIsValid ||
-      !filterMembersAreValid) {
-    throw new Error("A selection no longer belongs to the selected view");
-  }
-  if (dimensions.length > catalog.combinations.query.max_dimensions ||
-      state.filters.length > catalog.combinations.query.max_filters) {
-    throw new Error("The query exceeds catalog limits");
-  }
-  if (state.timeDimension) {
-    const timeField = (fieldsByView.get(view) ?? []).find(
-      field => field.slug === state.timeDimension,
-    );
-    if (!capabilities.allowed_time_dimensions.some(
-          field => field.slug === state.timeDimension
-        ) || !timeField) {
-      throw new Error("Choose a date/time dimension from the selected view");
-    }
-    if (dimensions.includes(state.timeDimension)) {
-      throw new Error("Do not repeat the time dimension as a dimension");
-    }
-  } else if (state.timeRange || state.timeGranularity) {
-    throw new Error("Time range and granularity require a time dimension");
-  }
-
-  const selected = new Set([
-    ...dimensions,
-    "value",
-    ...(state.timeDimension ? [state.timeDimension] : []),
-  ]);
-  if (state.order.some(item => !selected.has(item.member))) {
-    throw new Error("Order members must also be selected");
-  }
-
-  return {
-    dimensions,
-    metric: state.metric,
-    aggregation: state.aggregation,
-    filters: state.filters,
-    ...(state.timeDimension && { time_dimension: state.timeDimension }),
-    ...(state.timeRange && { time_range: state.timeRange }),
-    ...(state.timeGranularity && {
-      time_granularity: state.timeGranularity,
-    }),
-    ...(state.timezone && { timezone: state.timezone }),
-    order: state.order,
-    limit: state.limit,
-  };
-}
-```
-
-`order[].member` must be one of the selected dimensions, the fixed key `value`,
-or the selected time dimension. A `time_dimension` must be a date/time field from the resolved view;
-`time_range` and `time_granularity` are invalid without it.
-
-### 6. Choose a chart from the query shape
-
-Use `catalog.combinations.charts` as the runtime source of truth. The current
-strict matrix is:
-
-| Query shape | Compatible chart types |
-| --- | --- |
-| No time, 0 dimensions | `kpi`, `table` |
-| No time, 1 dimension | `bar`, `column`, `pie`, `donut`, `table` |
-| No time, 2 dimensions | `stacked_bar`, `heatmap`, `table` |
-| No time, 3 dimensions | `table` |
-| Granular time, 0–1 ordinary dimension | `line`, `area`, `table` |
-| Granular time, 2–3 ordinary dimensions | `table` |
-
-`line` and `area` require `time_dimension` and `time_granularity`; do not offer
-them for a raw or absent time field. Except for `table` and `kpi`, require
-`schema.metric.type === "number"`. `scatter` and `store_map` are not supported.
-
-Render the common response without metric-specific property lookup:
-
-- `line` / `area`: `schema.time_dimension.key` is the X axis; zero ordinary
-  dimensions gives one series and one ordinary dimension provides the series
-  key.
-- `stacked_bar`: first dimension is the category and second is the series.
-- `heatmap`: the two dimension keys identify the cell; `value` is intensity.
-- `kpi`: read the sole row's `value`.
-- `table`: show `schema.dimensions`, optional `schema.time_dimension`, then
-  `schema.metric`, reading the metric cell from `value`.
-
-### 7. Example: Topic sentiment for each store
-
-The user choices translate as follows:
-
-```text
-Analyse:  Survey responses          -> survey_responses
-Group by: Store and overall sentiment -> store_key, store_name, topic_sentiment
-Measure:  Number of responses       -> id + count
-```
+一個可傳送的範例：
 
 ```json
 {
-  "semantic_view": "survey_responses",
+  "dimensions": ["store_format", "topic_sentiment"],
+  "metric": "survey",
+  "aggregation": "count",
+  "filters": [{"member": "region", "operator": "equals", "value": "North"}],
+  "time_dimension": "reported_at",
+  "time_granularity": "day",
+  "timezone": "Asia/Hong_Kong",
+  "order": [{"member": "reported_at", "direction": "asc"}],
+  "limit": 100
+}
+```
+
+伺服器會拒絕 stale／cross-view member、未發佈或 ambiguous pair、超過三個 dimension、無 time dimension 的 time control，以及不相容的 chart shape，通常回傳 `422`。當 Cube 或 Analytics 資料庫無法服務時回傳 `503`；應顯示可重試狀態，而非變更使用者選擇。
+
+## 感情色彩與指標語意
+
+前端必須清楚區分兩種 sentiment：
+
+| Dimension | 建議前端標籤 | 含義 |
+| --- | --- | --- |
+| `topic_sentiment` | 整體回應情緒 | 完整問卷 response 的 sentiment；所有 view 都有效。 |
+| `sentiment` | 主題／部門／關鍵字情緒 | 目前 assignment row 的 sentiment；只適用於 assignment view。 |
+
+Target 同樣需要以單位說明，避免使用者不小心變更問題：
+
+| Target + aggregation | 說明 |
+| --- | --- |
+| `survey` + `count`，在 `survey_responses` | 相符問卷回應數 |
+| `store` + `count` | 至少有一筆相符 response 的相異門市數 |
+| `<entity>_assignment` + `count` | 相符的 topic、department 或 keyword assignment 數 |
+| `survey` + `count`，在 assignment view | 至少有一筆相符 assignment 的相異問卷數 |
+| `cls` + `average` | response-grain 的平均 CLS；不可在 cross-assignment query 中使用。 |
+
+例如，在 `survey_topics` 中以 `topic` 分組並使用 `topic_assignment/count` 回答「有多少個 topic assignment？」；改用 `survey/count` 則回答「有多少份問卷提到此 topic？」。
+
+## 圖表選擇與呈現
+
+以 `catalog.combinations.charts` 為執行時唯一準則。現行嚴格 matrix：
+
+| Query shape | 相容 chart type |
+| --- | --- |
+| 無時間、0 個 dimension | `kpi`、`table` |
+| 無時間、1 個 dimension | `bar`、`column`、`pie`、`donut`、`table` |
+| 無時間、2 個 dimension | `stacked_bar`、`heatmap`、`table` |
+| 無時間、3 個 dimension | `table` |
+| 有粒度時間、0–1 個一般 dimension | `line`、`area`、`table` |
+| 有粒度時間、2–3 個一般 dimension | `table` |
+
+`line` 與 `area` 需要 `time_dimension` 與 `time_granularity`；除 `table` 與 `kpi` 外，metric result 必須是 number。`scatter` 與 `store_map` 不受支援。
+
+共用 aggregate response 使用 `schema` 與 flat `rows`；不要依 metric property name 查值：
+
+- `line`／`area`：`schema.time_dimension.key` 是 X axis；零個一般 dimension 表示單一 series，一個一般 dimension 為 series key。
+- `stacked_bar`：第一個 dimension 是 category，第二個是 series。
+- `heatmap`：兩個 dimension key 標識 cell，`value` 是 intensity。
+- `kpi`：讀取唯一 row 的 `value`。
+- `table`：依序顯示 `schema.dimensions`、可選 `schema.time_dimension`、`schema.metric`；metric cell 一律讀取 `value`。
+
+對 series axis 的圖表，要遵守 response `schema.layout` 所回報的 `series_limit` 與 `truncated_series`。Pie／donut 將其餘值合併為 `Other`；line、area、stacked bar、grouped bar 與 heatmap 會捨棄上限外的 series。Cross tab 需要完整格線時，在 query 加上 `fill_empty: true`，但它需要 column axis。
+
+## 兩個操作範例
+
+### 各門市的整體回應情緒
+
+使用者選擇：
+
+```text
+分析：問卷回應
+依此分組：門市與整體情緒
+衡量：回應數
+```
+
+請求：
+
+```json
+{
   "dimensions": ["store_key", "store_name", "topic_sentiment"],
   "metric": "survey",
   "aggregation": "count",
@@ -443,176 +184,29 @@ Measure:  Number of responses       -> id + count
 }
 ```
 
-If the intended question is instead "what is each store's average sentiment
-score?", keep the response view, remove `topic_sentiment`, and select
-`topic_sentiment_score` + `average`. A second query using `id` + `count` is
-required if the UI also needs the sample size. Do not switch to a topic
-assignment view, because responses with more topics would then carry more
-weight.
+若問題改為「每間門市的平均情緒分數」，保留 response grain，移除 `topic_sentiment`，並選 `topic_sentiment_score` + `average`。若 UI 也需要樣本數，另以 `survey/count` 發出第二個 query。不可切換至 topic assignment view，否則含較多 topic 的 response 會帶有較大權重。
 
-### Guided mode versus advanced mode
+### 自由圖表：MIXED keyword × department
 
-Use `GET /analytics/query-combinations` for the default guided experience. The
-user selects a named business question; its Semantic View, Dimensions, one
-Metric/Aggregation pair, and compatible chart types are already fixed and validated. Apply only the
-returned `allowed_overrides`.
-
-Expose the selector state machine above only as an advanced explorer. This
-keeps the common path finite and understandable while still allowing every
-combination published by the active catalog.
-
-## Chart builder flow
-
-The builder endpoints are the recommended path for a free-form chart designer.
-They invert the selector above: the user starts from what they want to see and
-the server resolves the row grain, so `semantic_view` is never a user-facing
-choice.
+以 Builder API 逐步選取：
 
 ```text
-1. what to measure   GET  /analytics/builder/measures
-2. break down by     POST /analytics/builder/options
-3. and by / over     POST /analytics/builder/options
-4. aggregate         POST /analytics/builder/options
-5. draw as           POST /analytics/builder/options -> compatible_chart_types
-6. run               POST /analytics/builder/query
+measure: topic_sentiment = MIXED
+aggregation: count
+breakdown: keyword
+series: department
+chart_type: grouped_bar
 ```
 
-Re-post the whole partial selection to `builder/options` after every change and
-render only what comes back. The steps are order-independent, so a user may pick
-the breakdowns before the aggregation. Two consequences are worth handling in
-the UI:
+呼叫 `POST /analytics/builder/options` 後，應解析為 `survey_assignments` grain。完成選擇後，以 `POST /analytics/builder/query` 執行。該 grain 的 count 會按 response key 去重，因此同一 response 在每一個 keyword／department cell 至多計算一次。
 
-- `available_series_dimensions` shrinks once a measure is chosen. A response
-  average such as CLS cannot be crossed with a second assignment family, so
-  those options disappear and `warnings` says why.
-- `compatible_chart_types` changes as dimensions are added or removed. Keep the
-  chart picker disabled until it is non-empty, rather than letting the user
-  choose a type the data shape cannot support.
+### 自由圖表：每間門市的每週 CLS
 
-### Worked example: MIXED sentiment by keyword and department
+選取 `cls` + `average`、breakdown 為門市、series 時間為 `reported_at/week`。Builder 會解析為 `survey_responses`，並回傳 `line`／`area` 等相容 chart type。若再加入 keyword、department 或 topic 的第二個 assignment family，組合會失效：該交叉要求 `survey_assignments`，而 `cls/average` 在該 grain 不安全。
 
-```text
-Measure:   Topic sentiment is MIXED   -> topic_sentiment:MIXED + count
-Break by:  Keyword                    -> rows
-And by:    Department                 -> columns
-Draw as:   Grouped bar                -> also valid: heatmap, table
-```
+## 錯誤、快取與測試
 
-```json
-{
-  "measure": {"field": "topic_sentiment", "enum_value": "MIXED"},
-  "aggregation": "count",
-  "breakdown": "keyword",
-  "series": {"dimension": "department"},
-  "chart_type": "grouped_bar",
-  "fill_empty": true,
-  "limit": 200
-}
-```
-
-The server routes this to `survey_assignments` and counts distinct responses per
-cell. `schema.layout` returns `row_dimension: "keyword"` and
-`column_dimension: "department"`, so pivot on those two keys and read `value`.
-Because `keyword` is unbounded, the column axis is capped at ten series by
-default; raise it with `series_limit` and check `layout.truncated_series` before
-claiming the chart is complete. `fill_empty` adds the zero cells that make the
-grid rectangular.
-
-### Worked example: weekly CLS per store
-
-```text
-Measure:   CLS                        -> cls + average
-Break by:  Store                      -> one line each
-Over:      1 week buckets             -> reported_at + week
-Draw as:   Line                       -> also valid: area, table
-```
-
-```json
-{
-  "measure": {"field": "cls"},
-  "aggregation": "average",
-  "breakdown": "store_name_english",
-  "series": {"time": {"field": "reported_at", "interval": "week"}},
-  "chart_type": "line",
-  "timezone": "Asia/Hong_Kong"
-}
-```
-
-This stays on `survey_responses`, the cheapest grain that answers it. The layout
-puts `reported_at` on rows and `store_name_english` on columns, so each store
-becomes one line. With hundreds of stores the default cap keeps the top ten by
-total; show `layout.truncated_series` and let the user filter to specific stores
-rather than raising the cap indefinitely.
-
-## Legacy dashboard replacement map
-
-| Legacy request | New published chart slug | Semantic view |
-| --- | --- | --- |
-| `GET /dashboard/sentiment-distribution` | `dashboard_sentiment_distribution` | `survey_responses` |
-| `GET /dashboard/store-distribution` | `dashboard_store_distribution` | `survey_responses` |
-| `GET /dashboard/store-column-sentiment-distribution` | `dashboard_store_format_distribution` | `survey_responses` |
-| `GET /dashboard/channel-and-delivery-service-distribution` | `dashboard_channel_delivery_distribution` | `survey_responses` |
-| `GET /dashboard/topic-sentiment-score` | `dashboard_topic_sentiment_counts`, `dashboard_overall_topic_sentiment_score`, `dashboard_mixed_topic_sentiment_score` | `survey_responses` |
-| `GET /dashboard/topic-distribution` | `dashboard_topic_distribution` | `survey_topics` |
-| `GET /dashboard/department-distribution` | `dashboard_department_distribution` | `survey_departments` |
-| `GET /dashboard/keyword-analysis` | `dashboard_keyword_analysis` | `survey_keywords` |
-| `GET /dashboard/data-coverage` | `dashboard_first_reported_at`, `dashboard_last_reported_at` | `survey_responses` |
-| `GET /dashboard/last-updated-date` | `dashboard_last_updated_at` | `survey_responses` |
-
-One legacy response can therefore require more than one published chart-data
-request. Resolve the chart IDs from `GET /analytics/charts/published`; do not
-hard-code database IDs.
-
-## Minimal request bodies
-
-Load a filter dropdown after `store_format` was found in the catalog and marked
-available:
-
-```json
-{
-  "semantic_view": "survey_responses",
-  "member": "store_format",
-  "filters": [
-    {"member": "topic_sentiment", "operator": "equals", "value": "NEGATIVE"}
-  ],
-  "timezone": "Asia/Hong_Kong",
-  "limit": 100,
-  "cursor": 0
-}
-```
-
-Run the resolved `dashboard_store_format_distribution` chart with the chosen
-value:
-
-```json
-{
-  "filters": [
-    {"member": "store_format", "operator": "equals", "value": "Mall"}
-  ],
-  "time_range": ["2026-08-01", "2026-08-31"],
-  "timezone": "Asia/Hong_Kong"
-}
-```
-
-Treat `401` as an authentication failure, `404` as analytics disabled or the
-chart not visible, `422` as an invalid member/filter combination, and `503` as
-a retryable analytics dependency failure. Analytics responses are private and
-`no-store`; keep them in application state rather than a shared HTTP cache.
-
-## Pytest coverage
-
-The hermetic API test
-`test_frontend_dashboard_analytics_discovery_and_chart_flow` executes the
-catalog, availability, published-chart, filter-option, and chart-data chain.
-The deployment-level suite in `backend/tests/test_analytics_dashboard_e2e.py`
-adds authentication, every built-in dashboard chart, filter combinations,
-timezone boundaries, assignment-grain rejection, and optional legacy-result
-comparison.
-
-```bash
-.venv/bin/python -m pytest -q backend/tests/test_analytics_api.py \
-  -k frontend_dashboard_analytics_discovery_and_chart_flow
-```
-
-For the live command and required environment variables, see
-[Analytics dashboard test request](ANALYTICS_DASHBOARD_TEST_REQUEST.md#reusable-pytest-runner).
+- `401` 表示缺少、無效、已刪除或錯誤設定檔的 token；`403` 表示角色不足；`404` 表示 Analytics 停用或資源不可見；`422` 表示受治理的輸入或語意 query 無效；`503` 表示 Cube 或資料庫目前無法使用。
+- 所有 Analytics 回應均為 `Cache-Control: no-store, private`。以前端記憶體保存同一個 catalog 的暫存即可；切換帳號、profile 或 model version 時必須丟棄。
+- 每張 API 回應應保存並顯示 `freshness_time` 與 `model_version`。Chart 的 model version 與 catalog 不一致時，重新載入 catalog 和 chart list。
+- 以 [Analytics 儀表板遷移驗證請求](ANALYTICS_DASHBOARD_TEST_REQUEST.md#可重複使用的-pytest-執行器)中的 live pytest suite 驗證登入、filter discovery、viewer/admin 授權、non-UTC time range、assignment-grain isolation、chart／legacy parity 與 freshness metadata。

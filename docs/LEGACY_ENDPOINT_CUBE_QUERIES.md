@@ -1,26 +1,19 @@
-# Legacy endpoint to Cube query book
+# 舊端點至 Cube 查詢對照表
 
-This document preserves the pre-0012 mapping of legacy dashboard endpoints for
-historical parity work. The old examples containing `metrics: []` deliberately
-show the retired multi-metric contract and are **not executable**. For current,
-ready-to-send single-metric bodies, use
-[Dashboard analytics migration](DASHBOARD_ANALYTICS_MIGRATION.md).
+本文件保留 pre-0012 舊儀表板端點的遷移脈絡，供歷史等效性工作使用。舊範例中的 `metrics: []` 為已淘汰的多 metric 契約，**不可執行**。目前可直接送出的單一 metric 請求，請使用[儀表板 Analytics 遷移指南](DASHBOARD_ANALYTICS_MIGRATION.md)。
 
-The current `POST /analytics/query` contract requires 0–3 `dimensions`, one raw
-`metric` field, and one `aggregation`; the aggregate is returned under `value`.
-For example:
+目前 `POST /analytics/query` 契約要求 0–3 個 `dimensions`、一個邏輯 `metric` 與一個 `aggregation`；彙總值一律在 `value`：
 
 ```json
 {
-  "semantic_view": "survey_responses",
   "dimensions": ["topic_sentiment"],
-  "metric": "id",
+  "metric": "survey",
   "aggregation": "count",
   "order": [{"member": "value", "direction": "desc"}]
 }
 ```
 
-All current requests require the normal application access token.
+所有目前請求均需要一般應用程式 access token：
 
 ```text
 POST http://localhost:8000/wtchk/api/analytics/query
@@ -28,29 +21,27 @@ Authorization: Bearer <access-token>
 Content-Type: application/json
 ```
 
-## Common filter translation
+## 共用 Filter 轉換
 
-The old dashboard routes accepted query parameters through `FilterRequest`. Use
-the corresponding governed member with `in` for a multi-select:
+舊 dashboard route 經由 `FilterRequest` 接受 query parameter。多選時，使用對應的受治理 member 搭配 `in`：
 
-| Legacy query parameter | Cube member | Example |
+| 舊 query parameter | 受治理 member | 範例 |
 | --- | --- | --- |
 | `store_keys` | `store_key` | `{"member":"store_key","operator":"in","values":[101,102]}` |
 | `store_english_names` | `store_name_english` | `{"member":"store_name_english","operator":"in","values":["Central"]}` |
 | `store_local_names` | `store_name_local` | `{"member":"store_name_local","operator":"in","values":["中環"]}` |
-| store attributes (`regions`, `store_formats`, `areas`, etc.) | same singular member (`region`, `store_format`, `area`, etc.) | `{"member":"region","operator":"equals","value":"North"}` |
-| `channel_ids` / `channel_names` | `channel_id` / `channel_name` | `{"member":"channel_name","operator":"in","values":["Web"]}` |
-| `delivery_service_ids` / `delivery_service_names` | `delivery_service_id` / `delivery_service_name` | `{"member":"delivery_service_name","operator":"in","values":["Foodpanda"]}` |
-| `topics` | `topic` in `survey_topics` | `{"member":"topic","operator":"in","values":["Delivery"]}` |
-| `keywords` | `keyword` in `survey_keywords` | `{"member":"keyword","operator":"in","values":["late"]}` |
-| `department_ids` / `department_names` | `department_id` / `department` in `survey_departments` | `{"member":"department","operator":"in","values":["Service"]}` |
+| 門市屬性（`regions`、`store_formats`、`areas` 等） | 相同的單數 member（`region`、`store_format`、`area` 等） | `{"member":"region","operator":"equals","value":"North"}` |
+| `channel_ids`／`channel_names` | `channel_id`／`channel_name` | `{"member":"channel_name","operator":"in","values":["Web"]}` |
+| `delivery_service_ids`／`delivery_service_names` | `delivery_service_id`／`delivery_service_name` | `{"member":"delivery_service_name","operator":"in","values":["Foodpanda"]}` |
+| `topics` | `survey_topics` 的 `topic` | `{"member":"topic","operator":"in","values":["Delivery"]}` |
+| `keywords` | `survey_keywords` 的 `keyword` | `{"member":"keyword","operator":"in","values":["late"]}` |
+| `department_ids`／`department_names` | `survey_departments` 的 `department_id`／`department` | `{"member":"department","operator":"in","values":["Service"]}` |
 | `topic_sentiments` | `topic_sentiment` | `{"member":"topic_sentiment","operator":"in","values":["NEGATIVE","MIXED"]}` |
-| `min_topic_sentiment_score` / `max_topic_sentiment_score` | `topic_sentiment_score` | `{"member":"topic_sentiment_score","operator":"between","values":[-1,1]}` |
-| `min_cls` / `max_cls` | `cls` | `{"member":"cls","operator":"between","values":[0,100]}` |
-| `from_date` / `to_date` | `time_dimension` + `time_range` | see the time example below |
+| `min_topic_sentiment_score`／`max_topic_sentiment_score` | `topic_sentiment_score` | `{"member":"topic_sentiment_score","operator":"between","values":[-1,1]}` |
+| `min_cls`／`max_cls` | `cls` | `{"member":"cls","operator":"between","values":[0,100]}` |
+| `from_date`／`to_date` | `time_dimension` + `time_range` | 見下列時間範例 |
 
-The old date range was inclusive at `from_date` and exclusive at `to_date`.
-Use the same half-open range in Cube:
+舊日期範圍在 `from_date` 為包含、在 `to_date` 為排除。Cube 請使用相同的半開區間：
 
 ```json
 {
@@ -60,24 +51,13 @@ Use the same half-open range in Cube:
 }
 ```
 
-For an old list filter with one value, `equals` is equivalent to a one-element
-`in`. Keep assignment filters on their matching assignment view. For example,
-do not apply a `topic` filter to a department query; that cross-assignment join
-was possible in the old SQL path but is intentionally rejected by the governed
-model.
+舊清單 filter 只有一個值時，`equals` 等同單元素 `in`。Assignment filter 必須限於相符的 assignment view。例如，不得對 department query 套用 `topic` filter；舊 SQL path 可建立這種 cross-assignment join，但受治理模型刻意拒絕。
 
-## Default graph presentation
+## 預設圖表呈現
 
-Each query below is the default data contract for the graph named here. The
-default chart objects are seeded by Alembic revision
-`0012_single_metric_charts`. The frontend should load the published
-chart definition from
-`GET /analytics/charts/published` and call
-`POST /analytics/charts/{chart_id}/data`; the raw `POST /analytics/query` body
-is included as the canonical query definition and is useful while charts are
-being published.
+每個下列 query 都是指定圖表的預設資料契約。預設 chart object 由 Alembic revision `0012_single_metric_charts` 建立。前端應從 `GET /analytics/charts/published` 載入已發佈 chart definition，再呼叫 `POST /analytics/charts/{chart_id}/data`；`POST /analytics/query` 請求本文則作為 chart 正式定義及 chart 發佈期間的輔助工具。
 
-The migration creates these chart slugs:
+遷移會建立以下 chart slug：
 
 ```text
 dashboard_sentiment_distribution
@@ -95,353 +75,42 @@ dashboard_last_reported_at
 dashboard_last_updated_at
 ```
 
-The `store-column` route is parameterized in the legacy API, so
-`dashboard_store_format_distribution` is the seeded default. Additional store
-column graphs can be created from the same definition with another allowlisted
-store dimension.
+`store-column` route 在舊 API 中可參數化，因此 `dashboard_store_format_distribution` 是建立的預設圖。其他門市欄位圖可由同一定義改用另一個 allowlisted store dimension 建立。
 
-| Legacy endpoint | Default graph | Graph axes / values |
+| 舊端點 | 替代的已發佈圖表 | 使用的受治理查詢 |
 | --- | --- | --- |
-| `/dashboard/sentiment-distribution` | Line | X: reported day; Y: four sentiment counts and average score |
-| `/dashboard/store-distribution` | Bar | X: store; Y: positive, negative, neutral, and mixed counts |
-| `/dashboard/store-column-sentiment-distribution` | Bar | X: selected store attribute; Y: four sentiment counts |
-| `/dashboard/channel-and-delivery-service-distribution` | Bar | X: channel + delivery service; Y: four sentiment counts |
-| `/dashboard/topic-sentiment-score` | KPI tiles (`kpi`) | Four counts, overall average, and mixed-only average |
-| `/dashboard/topic-distribution` | Bar | X: topic; Y: assignment sentiment counts |
-| `/dashboard/department-distribution` | Bar | X: department; Y: assignment sentiment counts |
-| `/dashboard/keyword-analysis` | Bar | X: keyword; Y: assignment sentiment counts; top `k` |
-| `/dashboard/data-coverage` | KPI tiles (`kpi`) | First and last reported timestamps |
-| `/dashboard/last-updated-date` | KPI | Latest active survey update timestamp |
+| `/dashboard/sentiment-distribution` | `dashboard_sentiment_distribution` | `survey_responses` 依 `topic_sentiment` 及 `reported_at/day` 分組，`survey/count`。 |
+| `/dashboard/store-distribution` | `dashboard_store_distribution` | `survey_responses` 依門市及 `topic_sentiment` 分組，`survey/count`。 |
+| `/dashboard/store-column-sentiment-distribution` | `dashboard_store_format_distribution` | `survey_responses` 依已允許的門市 dimension 與 `topic_sentiment` 分組，`survey/count`。 |
+| `/dashboard/channel-and-delivery-service-distribution` | `dashboard_channel_delivery_distribution` | `survey_responses` 依渠道、外送服務及 `topic_sentiment` 分組，`survey/count`。 |
+| `/dashboard/topic-sentiment-score` | `dashboard_topic_sentiment_counts`、`dashboard_overall_topic_sentiment_score`、`dashboard_mixed_topic_sentiment_score` | 情緒計數、整體平均分數及只限 `MIXED` 的平均分數，各以一個 query 提供。 |
+| `/dashboard/topic-distribution` | `dashboard_topic_distribution` | `survey_topics` 依 `topic` 與 assignment `sentiment` 分組，`topic_assignment/count`。 |
+| `/dashboard/department-distribution` | `dashboard_department_distribution` | `survey_departments` 依 `department` 與 assignment `sentiment` 分組，`department_assignment/count`。 |
+| `/dashboard/keyword-analysis?k=10` | `dashboard_keyword_analysis` | `survey_keywords` 依 `keyword` 與 assignment `sentiment` 分組，`keyword_assignment/count`，並使用 `limit: 10`。 |
+| `/dashboard/data-coverage` | `dashboard_first_reported_at`、`dashboard_last_reported_at` | 兩個 KPI query：`reported_at/min` 與 `reported_at/max`。 |
+| `/dashboard/last-updated-date` | `dashboard_last_updated_at` | `survey_responses` 的 `updated_at/max`。 |
 
-The `total_count_for_option` and zero-fill requests documented below are graph
-support data. They should not be rendered as additional series unless the
-product explicitly wants a comparison or tooltip for the selected option.
+完整、可傳送的請求本文請參閱[儀表板 Analytics 遷移指南](DASHBOARD_ANALYTICS_MIGRATION.md#3-dashboard-端點替代方案)。
 
-## Historical pre-0012 request examples
+## 已淘汰的 pre-0012 多 Metric 契約
 
-The examples in this section are retained solely to explain how the legacy
-multi-series responses were calculated. Split them into the current
-single-metric requests documented in `DASHBOARD_ANALYTICS_MIGRATION.md`; sending
-these `metrics` arrays now returns `422`.
+下列行為僅供理解舊系統的結果塑形；不要再送出 `metrics` array，伺服器會回傳 `422`。
 
-### `GET /dashboard/sentiment-distribution`
+- 情緒分布曾在單一 request 中要求正向、負向、中性、混合計數和平均分數。現在使用依 `topic_sentiment` 分組的 `survey/count`，平均分數另以 `topic_sentiment_score/average` 查詢。
+- 門市、渠道和門市欄位分布曾在同一 row 帶有多個情緒 metric。現在以 sentiment dimension 分組，由前端使用 `value` 繪製 series。
+- Topic、department、keyword 分布曾取得多個 assignment-sentiment metric。現在依該 assignment view 的 `sentiment` 分組，並使用相符的 `*_assignment/count`。
+- 資料涵蓋範圍曾在同一 response 取得最早與最晚時間。現在分別查詢 `reported_at/min` 與 `reported_at/max`。
+- `last-updated-date` 現在回傳有效 Analytics fact 中最新的 `updated_at`。語意 view 會排除軟刪除問卷；舊 route 未排除，兩者意義不同。
 
-Legacy response: one row per local reported date with `year`, `month`, `day`,
-four response-level sentiment counts, and the average response sentiment score.
-Default graph: line chart.
+若前端在過渡期仍需舊 DTO，應將單一 metric 結果的 `rows` 依 dimension key 合併、將 `value` 對應回舊 property name，並將每個 day bucket 的 `reported_at` 起點轉為 `year`／`month`／`day`。
 
-```json
-{
-  "semantic_view": "survey_responses",
-  "metrics": [
-    "topic_sentiment_positive_count",
-    "topic_sentiment_negative_count",
-    "topic_sentiment_neutral_count",
-    "topic_sentiment_mixed_count",
-    "topic_sentiment_score_average"
-  ],
-  "time_dimension": "reported_at",
-  "time_granularity": "day",
-  "time_range": ["2024-08-01T00:00:00Z", "2024-09-01T00:00:00Z"],
-  "timezone": "Asia/Hong_Kong",
-  "order": [{"member": "reported_at", "direction": "asc"}],
-  "limit": 1000
-}
-```
+## `total_count_for_option` 與零填補
 
-The Cube `reported_at` value is the start of each day bucket. Shape that value
-into the old `year`/`month`/`day` fields in the client.
+`total_count_for_option` 是圖表支援資料，不應除非產品明確需要比較或 tooltip，否則呈現為額外 series。
 
-### `GET /dashboard/store-distribution`
+要取得某個 selected option 的總數，呼叫 `POST /analytics/filter-options`，並傳入所有*其他*共用 filter，排除目標 member 的 filter。其 `count` 即為舊端點的 option total。例如門市格式 selector 要傳 region 與 date filter，但不可傳 `store_format` filter。
 
-Legacy response: one row per store with store identity, open/close dates,
-response-level sentiment counts, average score, and `total_count_for_option`.
-Default graph: bar chart; store identity is the category axis and the
-four sentiment counts are stacked values.
-
-Main Cube query:
-
-```json
-{
-  "semantic_view": "survey_responses",
-  "dimensions": [
-    "store_key",
-    "store_name_english",
-    "store_name_local",
-    "store_open_date",
-    "store_close_date"
-  ],
-  "metrics": [
-    "topic_sentiment_positive_count",
-    "topic_sentiment_negative_count",
-    "topic_sentiment_neutral_count",
-    "topic_sentiment_mixed_count",
-    "topic_sentiment_score_average"
-  ],
-  "order": [{"member": "topic_sentiment_negative_count", "direction": "desc"}],
-  "limit": 1000
-}
-```
-
-To reproduce `total_count_for_option`, run a second query with the same active
-filters except all `store_key`, `store_name_english`, and `store_name_local`
-filters. Group by `store_key` and request `response_count`:
-
-```json
-{
-  "semantic_view": "survey_responses",
-  "dimensions": ["store_key"],
-  "metrics": ["response_count"],
-  "order": [{"member": "store_key", "direction": "asc"}],
-  "limit": 1000
-}
-```
-
-Join the two responses by `store_key`. If the UI must retain the old rows for
-stores with no matching survey, fetch all master values with the governed
-record query shown in the [master-data appendix](#legacy-master-data-reads),
-then zero-fill missing aggregate rows.
-
-### `GET /dashboard/store-column-sentiment-distribution?column={column}`
-
-Legacy response: one row per non-null selected store attribute with response-
-level sentiment counts, average score, and `total_count_for_option`.
-Default graph: bar chart; the selected `column` is the category axis.
-
-Use the allowlisted Cube member corresponding to `column`; never construct a
-member from arbitrary client input. The old `column` values map as follows:
-
-```text
-bu_key, area_manager, store_format, store_type, operations_controller,
-regional_manager, px, csr, dr, mag_type, cf_grouping, store_brand,
-competitor, region, area, province, territory, toh, district, city,
-operations_manager, district_manager, sic, soc, tech_life_type,
-operation_manager_tl, region_manager_tl, relocation, latitude, longitude,
-store_open_date, store_close_date, is_closed, store_key,
-store_english_name, store_local_name
-```
-
-For example, `column=store_format` becomes:
-
-```json
-{
-  "semantic_view": "survey_responses",
-  "dimensions": ["store_format"],
-  "metrics": [
-    "topic_sentiment_positive_count",
-    "topic_sentiment_negative_count",
-    "topic_sentiment_neutral_count",
-    "topic_sentiment_mixed_count",
-    "topic_sentiment_score_average"
-  ],
-  "filters": [{"member": "store_format", "operator": "set"}],
-  "order": [{"member": "topic_sentiment_negative_count", "direction": "desc"}],
-  "limit": 1000
-}
-```
-
-For `total_count_for_option`, run the same query with only `response_count` as
-the metric and remove filters for the selected member. Join by the selected
-dimension. The `set` filter on the main query preserves the old non-null
-behaviour.
-
-### `GET /dashboard/channel-and-delivery-service-distribution`
-
-Legacy response: one row per observed channel/delivery-service combination,
-including null values, response-level sentiment counts, average score, and the
-combination total.
-Default graph: bar chart with channel and delivery service as the
-category key.
-
-Main query:
-
-```json
-{
-  "semantic_view": "survey_responses",
-  "dimensions": ["channel_name", "delivery_service_name"],
-  "metrics": [
-    "topic_sentiment_positive_count",
-    "topic_sentiment_negative_count",
-    "topic_sentiment_neutral_count",
-    "topic_sentiment_mixed_count",
-    "topic_sentiment_score_average"
-  ],
-  "order": [{"member": "topic_sentiment_negative_count", "direction": "desc"}],
-  "limit": 1000
-}
-```
-
-Run a second query with the same filters except channel and delivery-service
-filters, request `response_count`, and keep both dimensions. Join by the pair
-`(channel_name, delivery_service_name)` to obtain the old total.
-
-### `GET /dashboard/topic-sentiment-score`
-
-Legacy response: counts of responses by `surveys.topic_sentiment`, the overall
-average response score, and the average score for mixed responses.
-Default graph: KPI group. Use one KPI tile per returned metric; the mixed-only
-average comes from the second query.
-
-Main query:
-
-```json
-{
-  "semantic_view": "survey_responses",
-  "metrics": [
-    "topic_sentiment_positive_count",
-    "topic_sentiment_negative_count",
-    "topic_sentiment_neutral_count",
-    "topic_sentiment_mixed_count",
-    "topic_sentiment_score_average"
-  ],
-  "limit": 1
-}
-```
-
-Mixed-only average query:
-
-```json
-{
-  "semantic_view": "survey_responses",
-  "metrics": ["topic_sentiment_score_average"],
-  "filters": [{"member": "topic_sentiment", "operator": "equals", "value": "MIXED"}],
-  "limit": 1
-}
-```
-
-Map the five returned values to the old response property names on the client.
-
-### `GET /dashboard/topic-distribution`
-
-Legacy response: every topic master value, assignment-level neutral/positive/
-negative counts, and `total_count_for_option`. Counts are based on
-`survey_topics.sentiment`, not response-level `topic_sentiment`.
-Default graph: bar chart.
-
-```json
-{
-  "semantic_view": "survey_topics",
-  "dimensions": ["topic"],
-  "metrics": [
-    "assignment_count",
-    "topic_assignment_positive_count",
-    "topic_assignment_negative_count",
-    "topic_assignment_neutral_count"
-  ],
-  "order": [{"member": "assignment_count", "direction": "desc"}],
-  "limit": 1000
-}
-```
-
-The `assignment_count` value is the old total count for an unfiltered topic
-query. For a selected topic filter, calculate the old
-`total_count_for_option` with `POST /analytics/filter-options` using
-`semantic_view: "survey_topics"`, `member: "topic"`, and every
-other active filter, but omit the topic filter itself. Fetch all topic master
-values with the record query in the appendix and zero-fill groups absent from
-the Cube result.
-
-### `GET /dashboard/department-distribution`
-
-Legacy response: every department master value, assignment-level neutral/
-positive/negative counts, and `total_count_for_option`.
-Default graph: bar chart.
-
-```json
-{
-  "semantic_view": "survey_departments",
-  "dimensions": ["department"],
-  "metrics": [
-    "assignment_count",
-    "department_assignment_positive_count",
-    "department_assignment_negative_count",
-    "department_assignment_neutral_count"
-  ],
-  "order": [{"member": "assignment_count", "direction": "desc"}],
-  "limit": 1000
-}
-```
-
-Use `POST /analytics/filter-options` with `member: "department"` and all
-other active filters, excluding the department filter, for option totals. Use
-the master-data record query and zero-fill to retain unused departments.
-
-### `GET /dashboard/keyword-analysis?k=10`
-
-Legacy response: the top `k` keyword values with assignment-level neutral,
-positive, and negative counts. `k` maps directly to Cube `limit`.
-Default graph: bar chart limited to the top `k` keywords.
-
-```json
-{
-  "semantic_view": "survey_keywords",
-  "dimensions": ["keyword"],
-  "metrics": [
-    "assignment_count",
-    "keyword_assignment_positive_count",
-    "keyword_assignment_negative_count",
-    "keyword_assignment_neutral_count"
-  ],
-  "order": [{"member": "assignment_count", "direction": "desc"}],
-  "limit": 10
-}
-```
-
-### `GET /dashboard/data-coverage`
-
-Legacy response: first and last non-deleted `reported_at` timestamps, formatted
-in the requested timezone.
-Default graph: two-value KPI group.
-
-```json
-{
-  "semantic_view": "survey_responses",
-  "metrics": ["first_reported_at", "last_reported_at"],
-  "timezone": "Asia/Hong_Kong",
-  "limit": 1
-}
-```
-
-The response metrics are the direct replacements for
-`first_data_reported_date` and `last_data_reported_date`.
-
-### `GET /dashboard/last-updated-date`
-
-```json
-{
-  "semantic_view": "survey_responses",
-  "metrics": ["last_updated_at"],
-  "timezone": "Asia/Hong_Kong",
-  "limit": 1
-}
-```
-
-This returns the latest `updated_at` among active analytics facts. The legacy
-route queried the operational survey table without excluding soft-deleted rows;
-the governed model intentionally excludes deleted surveys. Treat this as the
-documented freshness semantic for the replacement.
-Default graph: single KPI tile.
-
-## Legacy master-data reads
-
-These routes are read endpoints, but they are not aggregate Cube queries. Use
-`POST /analytics/records/query` against the live database:
-
-| Legacy route | Replacement body |
-| --- | --- |
-| `GET /channels/` | `{ "resource": "channels", "page": 1, "size": 1000 }` |
-| `GET /channels/{channel_id}` | `{ "resource": "channels", "filters": [{"member":"id","operator":"equals","value":123}], "page": 1, "size": 1 }` |
-| `GET /delivery_services/` | `{ "resource": "delivery_services", "page": 1, "size": 1000 }` |
-| `GET /delivery_services/{delivery_service_id}` | `{ "resource": "delivery_services", "filters": [{"member":"id","operator":"equals","value":123}], "page": 1, "size": 1 }` |
-| `GET /topics/` | `{ "resource": "topics", "page": 1, "size": 1000 }` |
-| `GET /topics/{topic_id}` | `{ "resource": "topics", "filters": [{"member":"id","operator":"equals","value":123}], "page": 1, "size": 1 }` |
-| `GET /surveys` | `{ "resource": "surveys", "page": 1, "size": 100 }` |
-| `GET /surveys/{survey_id}` | `{ "resource": "surveys", "filters": [{"member":"id","operator":"equals","value":123}], "page": 1, "size": 1 }` |
-| `GET /surveys/download` | `POST /analytics/exports` with `record_query: {"resource":"surveys", ...}` and `export_format: "csv"` or `"xlsx"` |
-| `GET /stores` | `{ "resource": "stores", "page": 1, "size": 1000 }` |
-| `GET /departments` | `{ "resource": "departments", "page": 1, "size": 1000 }` |
-
-For the dashboard zero-fill path, the relevant master query is:
+受治理 aggregate query 刻意只回傳觀察到的 group。若 UI 需顯示沒有相符問卷的門市、topic 或 department，使用 `POST /analytics/records/query` 讀取 master data，再將缺少的 aggregate row 補零：
 
 ```json
 {
@@ -452,49 +121,36 @@ For the dashboard zero-fill path, the relevant master query is:
 }
 ```
 
-Replace `stores` with `topics` or `departments` for the corresponding card.
-The record API returns master values that are not referenced by any survey,
-which is why it is the correct source for the old zero-filled rows.
+將 `stores` 置換為 `topics` 或 `departments`，即可支援相應 card。Record API 會回傳完全未被 survey 參照的 master value，因此它才是舊零填補列的正確資料來源。
 
-## Response shaping and parity checklist
+## 舊主資料讀取
 
-The governed API returns a common aggregate envelope:
+這些舊 route 是讀取端點，但不是 aggregate Cube query。請改用即時資料庫上的 `POST /analytics/records/query`：
 
-```json
-{
-  "query_id": "…",
-  "model_version": 8,
-  "semantic_view": "survey_responses",
-  "timezone": "UTC",
-  "schema": {
-    "dimensions": [],
-    "time_dimension": null,
-    "metric": {
-      "field": "id",
-      "aggregation": "count",
-      "label": "Response Count",
-      "type": "number",
-      "key": "value"
-    }
-  },
-  "rows": [{"value": 120}],
-  "row_count": 1,
-  "warnings": [],
-  "freshness_time": "…"
-}
-```
+| 舊 route | 替代本文 |
+| --- | --- |
+| `GET /channels/` | `{ "resource": "channels", "page": 1, "size": 1000 }` |
+| `GET /channels/{channel_id}` | `{ "resource": "channels", "filters": [{"member":"id","operator":"equals","value":123}], "page": 1, "size": 1 }` |
+| `GET /delivery_services/` | `{ "resource": "delivery_services", "page": 1, "size": 1000 }` |
+| `GET /delivery_services/{delivery_service_id}` | `{ "resource": "delivery_services", "filters": [{"member":"id","operator":"equals","value":123}], "page": 1, "size": 1 }` |
+| `GET /topics/` | `{ "resource": "topics", "page": 1, "size": 1000 }` |
+| `GET /topics/{topic_id}` | `{ "resource": "topics", "filters": [{"member":"id","operator":"equals","value":123}], "page": 1, "size": 1 }` |
+| `GET /surveys` | `{ "resource": "surveys", "page": 1, "size": 100 }` |
+| `GET /surveys/{survey_id}` | `{ "resource": "surveys", "filters": [{"member":"id","operator":"equals","value":123}], "page": 1, "size": 1 }` |
+| `GET /surveys/download` | 以 `record_query: {"resource":"surveys", ...}` 及 `export_format: "csv"` 或 `"xlsx"` 呼叫 `POST /analytics/exports`。 |
+| `GET /stores` | `{ "resource": "stores", "page": 1, "size": 1000 }` |
+| `GET /departments` | `{ "resource": "departments", "page": 1, "size": 1000 }` |
 
-The client should:
+## 回應塑形與等效性檢核
 
-1. Read aggregate values from `rows`, not from the legacy list response.
-2. Join second-query counts by the dimension key to recreate
-   `total_count_for_option`.
-3. Zero-fill stores, topics, and departments from the master-data record query.
-4. Convert daily time buckets and map metric slugs to the old property names
-   where an unchanged response DTO is temporarily required.
-5. Keep topic, department, and keyword assignment filters scoped to their own
-   semantic view.
+受治理 API 會回傳共同的 aggregate envelope，其中包含 `query_id`、`model_version`、`semantic_view`、`timezone`、`schema`、flat `rows`、`row_count`、`warnings` 與 `freshness_time`。
 
-Aggregate queries are capped at 1,000 rows. Paginate filter options or use a
-governed export for larger reports. Cube results are also freshness-based; use
-the returned `freshness_time` when the UI needs to show data currency.
+用戶端應：
+
+1. 從 `rows` 讀取 aggregate value，而非從舊 list response 讀取。
+2. 需要重現 `total_count_for_option` 時，以 dimension key 合併第二個 query 的 count。
+3. 從 master-data record query 為門市、topic 與 department 補零。
+4. 過渡期需要維持舊 response DTO 時，轉換 daily time bucket，並將 metric 對應回舊 property name。
+5. 將 topic、department 與 keyword assignment filter 限制於各自 semantic view。
+
+Aggregate query 最多 1,000 列。大型報表應分頁取得 filter option，或使用受治理 export。Cube 結果也以新鮮度為準；UI 需顯示資料時效時，使用回傳的 `freshness_time`。

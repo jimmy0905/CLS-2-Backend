@@ -1,61 +1,37 @@
-# Replacing dashboard routes with governed analytics queries
+# 以受治理的 Analytics 查詢取代儀表板路由
 
-> This query book uses the current logical-target contract described in
-> [Goal-first analytics query contract](ANALYTICS_GOAL_FIRST_CONTRACT.md).
+> 此 query book 使用 [目標優先的 Analytics 查詢契約](ANALYTICS_GOAL_FIRST_CONTRACT.md) 所述的目前 logical-target contract。
 
-This is the migration query book for the existing `/dashboard/*` API. It uses
-`POST /analytics/query` and the governed semantic catalog rather than direct
-SQL. It is written for the `wtchk_cls` data model, where the canonical response
-sentiment is `surveys.topic_sentiment`. The legacy `surveys.sentiment` field is
-not used.
+這是既有 `/dashboard/*` API 的遷移 query book。它使用 `POST /analytics/query` 及受治理的 semantic catalog，而非直接 SQL。文件以 `wtchk_cls` 資料模型為準，其標準 response sentiment 是 `surveys.topic_sentiment`；不使用舊有的 `surveys.sentiment` 欄位。
 
-For the frontend bootstrap sequence—from catalog and field availability through
-filter options and published chart data—see
-[Frontend dashboard analytics workflow](FRONTEND_DASHBOARD_ANALYTICS_WORKFLOW.md).
+如需從 catalog、field availability、filter option 到已發佈 chart data 的前端初始化順序，請參閱[前端儀表板 Analytics 工作流程](FRONTEND_DASHBOARD_ANALYTICS_WORKFLOW.md)。
 
-There is not one request that can replace all dashboard cards: each card asks a
-question at a different row grain. The requests below replace each endpoint
-with the built-in single-metric catalog. A frontend may run the request body
-verbatim after adding its current common filters.
+沒有單一請求能取代所有 dashboard card：每張卡片提問時使用的 row grain 不同。以下請求以內建 single-metric catalog 取代各端點。前端可在加入目前共用 filter 後，直接執行請求本文。
 
-Base URL in the local profile:
+本機設定檔的 Base URL：
 
 ```text
 http://localhost:8000/wtchk/api
 ```
 
-All examples require:
+所有範例皆需：
 
 ```http
 Authorization: Bearer <access-token>
 Content-Type: application/json
 ```
 
-## 1. Single-metric dashboard contract
+## 1. 單一 Metric 儀表板契約
 
-Every aggregate request selects exactly one logical `metric` target and one
-`aggregation`; the removed `metrics: []` field is rejected. Common pairs are
-`survey/count`, `topic_assignment/count`, `department_assignment/count`,
-`keyword_assignment/count`, `store/count`, `cls/average`, and
-`topic_sentiment_score/average`. Use only methods advertised inside
-`GET /analytics/catalog` under `metric_targets`.
+每個 aggregate request 恰好選取一個邏輯 `metric` target 與一個 `aggregation`；已移除的 `metrics: []` 欄位會被拒絕。常用 pair 包含 `survey/count`、`topic_assignment/count`、`department_assignment/count`、`keyword_assignment/count`、`store/count`、`cls/average` 及 `topic_sentiment_score/average`。只可使用 `GET /analytics/catalog` 的 `metric_targets` 下所宣告的方法。
 
-`store/count` counts distinct stores over matching response
-rows. It counts stores represented in the current response filters and date
-range; it intentionally does not count stores with zero matching responses.
+`store/count` 會在符合條件的 response row 中計算相異 store。它計算目前 response filter 與 date range 所涵蓋的門市；刻意不計入零筆相符 response 的門市。
 
-Filtered, weighted, variance, standard-deviation, percentile, and confidence-
-interval governed metrics may remain in admin/Cube metadata, but are not public
-query options. Sentiment distributions now group by the relevant sentiment
-Dimension and use a normal row count, rather than selecting several filtered
-metrics in one request.
+經篩選、加權、變異數、標準差、百分位數與 confidence-interval 的受治理 metric 可保留於 admin／Cube metadata，但不屬於公開 query option。情緒分布現在會依相關 sentiment Dimension 分組並使用一般 row count，而非在同一請求中選取多個 filtered metric。
 
-### Response-level sentiment counts
+### Response-level 情緒計數
 
-The response-level governed metrics `topic_sentiment_positive_count`,
-`topic_sentiment_negative_count`, `topic_sentiment_neutral_count`, and
-`topic_sentiment_mixed_count`. They require no setup. The example below is
-kept as a reference for creating comparable BU-specific filtered metrics.
+Response-level 的受治理 metric：`topic_sentiment_positive_count`、`topic_sentiment_negative_count`、`topic_sentiment_neutral_count` 與 `topic_sentiment_mixed_count`。它們無需設定。以下範例保留作為建立可比較、BU 專屬 filtered metric 的參考。
 
 ```bash
 curl -X POST 'http://localhost:8000/wtchk/api/admin/analytics/metrics' \
@@ -71,29 +47,26 @@ curl -X POST 'http://localhost:8000/wtchk/api/admin/analytics/metrics' \
   }'
 ```
 
-These names are retained in governance metadata, not accepted as public query
-`metric` fields. Their historical definitions are:
+這些名稱保留在 governance metadata 中，而非可接受的公開 query `metric` field。其歷史定義如下：
 
-| Slug | Filter value |
+| Slug | 篩選值 |
 | --- | --- |
 | `topic_sentiment_positive_count` | `POSITIVE` |
 | `topic_sentiment_negative_count` | `NEGATIVE` |
 | `topic_sentiment_neutral_count` | `NEUTRAL` |
 | `topic_sentiment_mixed_count` | `MIXED` |
 
-### Assignment-level sentiment counts
+### Assignment-level 情緒計數
 
-The department, topic, and keyword tables have their own assignment
-`sentiment`. These standard `filtered_count` metrics are also built in:
+Department、topic 與 keyword table 各自有其 assignment `sentiment`。下列標準 `filtered_count` metric 亦為內建：
 
-| Semantic view | Positive | Negative | Neutral |
+| Semantic View | Positive | Negative | Neutral |
 | --- | --- | --- | --- |
 | `survey_topics` | `topic_assignment_positive_count` | `topic_assignment_negative_count` | `topic_assignment_neutral_count` |
 | `survey_departments` | `department_assignment_positive_count` | `department_assignment_negative_count` | `department_assignment_neutral_count` |
 | `survey_keywords` | `keyword_assignment_positive_count` | `keyword_assignment_negative_count` | `keyword_assignment_neutral_count` |
 
-For BU-specific filtered metrics beyond this standard pack, use this body as a
-template (with a new unique slug):
+對此標準組合以外的 BU 專屬 filtered metric，請以以下本文作範本（並使用新的唯一 slug）：
 
 ```json
 {
@@ -107,8 +80,7 @@ template (with a new unique slug):
 }
 ```
 
-For each BU-specific metric `id` returned, validate and publish it, then
-activate a catalog version:
+每個回傳的 BU 專屬 metric `id`，均應先驗證並發佈，再啟用 catalog version：
 
 ```bash
 curl -X POST "http://localhost:8000/wtchk/api/admin/analytics/metrics/<id>/validate" \
@@ -120,22 +92,18 @@ curl -X POST 'http://localhost:8000/wtchk/api/admin/analytics/catalog/publish' \
   -d '{"description":"Dashboard semantic metric pack"}'
 ```
 
-Use `GET /analytics/catalog` to verify the executable `metric_targets` after
-the deployment. Metrics can still be governed in the admin UI, but only unique
-logical target/method mappings enter the public query contract.
+部署後，使用 `GET /analytics/catalog` 驗證可執行的 `metric_targets`。Metric 仍可在 admin UI 中受治理，但只有唯一的 logical target／method mapping 會進入公開 query contract。
 
-## 2. Common filter translation
+## 2. 共用 Filter 轉換
 
-The semantic API accepts filters in the JSON body. Convert old dashboard query
-parameters directly to governed member slugs. For example, this old filter
-intent:
+Semantic API 接受 JSON 本文中的 filter。將舊 dashboard query parameter 直接轉換為受治理 member slug。例如，下列舊 filter 目的：
 
 ```text
 regions=Kowloon&store_formats=Mall&topic_sentiments=NEGATIVE
 from_date=2024-08-01T00:00:00Z&to_date=2024-09-01T00:00:00Z
 ```
 
-becomes:
+轉為：
 
 ```json
 "filters": [
@@ -147,26 +115,21 @@ becomes:
 "time_range": ["2024-08-01T00:00:00Z", "2024-09-01T00:00:00Z"]
 ```
 
-Use `in` plus `values` for a multi-select:
+多選時使用 `in` 加上 `values`：
 
 ```json
 {"member": "store_format", "operator": "in", "values": ["Mall", "Commercial"]}
 ```
 
-The new API has deliberately separate assignment views. Do not apply a
-`topic`/`keyword`/`department` assignment filter while querying another
-assignment view: it would reintroduce many-to-many fan-out. Keep those filter
-controls scoped to their matching view.
+新 API 會刻意區分 assignment view。不得在查詢某個 assignment view 時套用 `topic`／`keyword`／`department` assignment filter，否則會重新引入 many-to-many fan-out。應將這些 filter control 限制在相符的 view。
 
-## 3. Dashboard endpoint replacements
+## 3. Dashboard 端點替代方案
 
-In each request below, `filters` may be omitted or replaced with the common
-filters from the previous section. `limit` is the maximum number of aggregated
-groups returned; it is not a survey-row limit.
+以下每個請求中，`filters` 可省略，或由前一節的共用 filter 取代。`limit` 是回傳 aggregate group 的最大數量，不是 survey row 上限。
 
-### `GET /dashboard/sentiment-distribution`
+### `GET /dashboard/sentiment-distribution`（情緒分布）
 
-One row per reported day and sentiment, based on `surveys.topic_sentiment`:
+每個 reported day 與 sentiment 各一列，以 `surveys.topic_sentiment` 為準：
 
 ```json
 {
@@ -182,11 +145,9 @@ One row per reported day and sentiment, based on `surveys.topic_sentiment`:
 }
 ```
 
-The returned `reported_at` is the **start of the day bucket** (for example
-`2024-08-01T00:00:00.000`), not the first matching survey. The metric values
-aggregate every matching response during that day.
+回傳的 `reported_at` 是**日 bucket 的起點**（例如 `2024-08-01T00:00:00.000`），而不是第一份相符 survey 的時間。Metric value 會彙總該日內所有相符的 response。
 
-### `GET /dashboard/store-distribution`
+### `GET /dashboard/store-distribution`（門市分布）
 
 ```json
 {
@@ -202,16 +163,11 @@ aggregate every matching response during that day.
 }
 ```
 
-For more than 1,000 store groups, paginate the selector using
-`POST /analytics/filter-options` with `member: "store_key"`, increasing its
-`cursor`; analytical aggregate queries are intentionally capped at 1,000 rows.
-For a full report, use a governed CSV/XLSX export. See the API reference for
-the filter-options cursor contract.
+當門市 group 超過 1,000 個時，以 `POST /analytics/filter-options` 搭配 `member: "store_key"` 並遞增其 `cursor` 來分頁 selector；分析 aggregate query 刻意限制為最多 1,000 列。完整報表請使用受治理的 CSV/XLSX export。filter-options cursor contract 請參閱 API reference。
 
-### `GET /dashboard/store-column-sentiment-distribution`
+### `GET /dashboard/store-column-sentiment-distribution`（門市欄位情緒分布）
 
-This is the same response-level request with the chosen store field as its
-single dimension. For the existing `column=store_format` case:
+這是相同的 response-level request，只是將所選 store field 作為唯一 dimension。既有的 `column=store_format` 情境：
 
 ```json
 {
@@ -224,12 +180,9 @@ single dimension. For the existing `column=store_format` case:
 }
 ```
 
-Substitute any published store dimension such as `region`, `area`,
-`district`, `area_manager`, `store_brand`, `is_closed`, or `store_open_date`.
-Do not build member names from untrusted client text: only use slugs returned
-by `GET /analytics/catalog`.
+可替換為任何已發佈 store dimension，例如 `region`、`area`、`district`、`area_manager`、`store_brand`、`is_closed` 或 `store_open_date`。不可從不受信任的用戶端文字建構 member name：只能使用 `GET /analytics/catalog` 回傳的 slug。
 
-### `GET /dashboard/channel-and-delivery-service-distribution`
+### `GET /dashboard/channel-and-delivery-service-distribution`（渠道與外送服務分布）
 
 ```json
 {
@@ -242,9 +195,9 @@ by `GET /analytics/catalog`.
 }
 ```
 
-### `GET /dashboard/topic-sentiment-score`
+### `GET /dashboard/topic-sentiment-score`（主題情緒分數）
 
-Run the sentiment-count request:
+執行情緒計數請求：
 
 ```json
 {
@@ -256,7 +209,7 @@ Run the sentiment-count request:
 }
 ```
 
-Run a second request for the overall average:
+再執行第二個請求取得整體平均值：
 
 ```json
 {
@@ -267,8 +220,7 @@ Run a second request for the overall average:
 }
 ```
 
-For `average_mix_topic_score`, run a third request with the same common filters
-plus this filter:
+若為 `average_mix_topic_score`，執行第三個請求，包含相同的共用 filter 及以下 filter：
 
 ```json
 {
@@ -280,13 +232,11 @@ plus this filter:
 }
 ```
 
-These separate requests are intentional: every aggregate has exactly one
-metric field and aggregation.
+這些拆分請求是刻意設計：每個 aggregate 都只有一個 metric field 與 aggregation。
 
-### `GET /dashboard/topic-distribution`
+### `GET /dashboard/topic-distribution`（主題分布）
 
-Use the topic-assignment grain. These counts reflect
-`survey_topics.sentiment`, not the response’s `topic_sentiment`:
+使用 topic-assignment grain。這些計數反映 `survey_topics.sentiment`，而非 response 的 `topic_sentiment`：
 
 ```json
 {
@@ -299,10 +249,9 @@ Use the topic-assignment grain. These counts reflect
 }
 ```
 
-### `GET /dashboard/department-distribution`
+### `GET /dashboard/department-distribution`（部門分布）
 
-Use the department-assignment grain. These counts reflect
-`survey_departments.sentiment`:
+使用 department-assignment grain。這些計數反映 `survey_departments.sentiment`：
 
 ```json
 {
@@ -315,9 +264,9 @@ Use the department-assignment grain. These counts reflect
 }
 ```
 
-### `GET /dashboard/keyword-analysis?k=10`
+### `GET /dashboard/keyword-analysis?k=10`（關鍵字分析）
 
-Use the keyword-assignment grain. `limit: 10` replaces `k=10`:
+使用 keyword-assignment grain。`limit: 10` 取代 `k=10`：
 
 ```json
 {
@@ -330,9 +279,9 @@ Use the keyword-assignment grain. `limit: 10` replaces `k=10`:
 }
 ```
 
-### `GET /dashboard/data-coverage`
+### `GET /dashboard/data-coverage`（資料涵蓋範圍）
 
-Run two KPI queries; the first uses `reported_at/min`:
+執行兩個 KPI query；第一個使用 `reported_at/min`：
 
 ```json
 {
@@ -343,11 +292,11 @@ Run two KPI queries; the first uses `reported_at/min`:
 }
 ```
 
-The second uses the same body with `"aggregation": "max"`.
+第二個使用相同本文，並將 `"aggregation": "max"`。
 
-### `GET /dashboard/last-updated-date`
+### `GET /dashboard/last-updated-date`（最後更新日期）
 
-Query the latest active update directly:
+直接查詢最新的有效更新：
 
 ```json
 {
@@ -358,34 +307,14 @@ Query the latest active update directly:
 }
 ```
 
-The semantic view deliberately excludes soft-deleted surveys. Therefore this
-is the latest update among active survey rows; the legacy endpoint did not
-apply that exclusion. This is normally the safer reporting meaning.
+Semantic view 刻意排除軟刪除 survey。因此，這代表有效 survey row 中的最新更新；舊端點沒有套用此排除。對報表而言，這通常是更安全的意義。
 
-## 4. Differences to resolve before removing `/dashboard/*`
+## 4. 移除 `/dashboard/*` 前需解決的差異
 
-The semantic requests above replace the analytical calculations. Three legacy
-response-shaping behaviours need an explicit frontend/product decision before
-the old endpoints can be removed completely:
+以上 semantic request 取代了分析計算。在完全移除舊端點前，三項舊有 response-shaping 行為需要明確的 frontend／product 決策：
 
-1. **`total_count_for_option`.** Old distribution routes remove their own
-   selected-field filter when calculating option totals. Call
-   `POST /analytics/filter-options` for the target field with every *other*
-   common filter, excluding the target-field filter. Its `count` is the
-   equivalent option total. Example: for a store-format selector, pass region
-   and date filters but do not pass a `store_format` filter.
-2. **Zero-count master values.** Old store/topic/department routes return
-   master-data entries even when they have no matching survey, filled with
-   zeros. Semantic aggregate queries intentionally return observed groups only.
-   Use `POST /analytics/records/query` for the relevant master resource, then
-   join/zero-fill its values against aggregate results when the UI must display
-   inactive stores or unused topic/department definitions.
-3. **Cross-assignment filters.** The old generic filter object can apply a
-   topic filter while rendering a department/keyword card. The semantic layer
-   forbids that fan-out-prone combination. Scope topic, department, and keyword
-   filters to their own cards, or define an approved response-level derived
-   cohort before introducing cross-assignment analysis.
+1. **`total_count_for_option`。** 舊 distribution route 在計算 option total 時會移除自身 selected-field filter。請以目標 field 呼叫 `POST /analytics/filter-options`，傳入所有*其他*共用 filter，但排除目標 field filter。其 `count` 即為等效 option total。範例：對 store-format selector，傳入 region 與 date filter，但不要傳入 `store_format` filter。
+2. **零計數 master value。** 舊 store／topic／department route 即使沒有相符 survey，也會回傳 master-data entry 並以零填補。Semantic aggregate query 刻意只回傳觀察到的 group。當 UI 必須顯示 inactive store 或未使用的 topic／department definition 時，請為對應 master resource 使用 `POST /analytics/records/query`，再將其 value 與 aggregate result join／zero-fill。
+3. **跨 assignment filter。** 舊 generic filter object 可在繪製 department／keyword card 時套用 topic filter。Semantic layer 禁止這種容易 fan-out 的組合。應將 topic、department 與 keyword filter 限制於各自 card，或在引入跨 assignment analysis 前定義已核准的 response-level derived cohort。
 
-With those three UI adaptations and the published metric pack, the semantic
-API supplies the data for every existing dashboard card without calling
-`/dashboard/*`.
+完成上述三項 UI 調整並發佈 metric pack 後，semantic API 即可為現有的每張 dashboard card 提供資料，無須呼叫 `/dashboard/*`。
