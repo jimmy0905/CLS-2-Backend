@@ -3,7 +3,7 @@ from sqlalchemy.orm import sessionmaker
 
 from core.config import SQLALCHEMY_DATABASE_URI
 from core.logging import logger
-from infrastructure.database.base import Base, metadata
+from infrastructure.database.base import Base
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URI,
@@ -68,7 +68,7 @@ def ensure_default_user() -> None:
         logger.info("Default user created")
     except Exception as error:
         db.rollback()
-        logger.error(f"Failed to ensure default user: {error}")
+        logger.exception("Failed to ensure default user: %s", error)
         raise
     finally:
         db.close()

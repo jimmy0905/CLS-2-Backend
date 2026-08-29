@@ -1,6 +1,5 @@
 import asyncio
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -11,9 +10,8 @@ from core.config import (
     DATA_RETENTION_DAYS,
     DEPLOYMENT_PROFILE,
     RETENTION_CHECK_INTERVAL_SECONDS,
-    SERVER_LOG_FILE,
 )
-from core.logging import logger
+from core.logging import logger, purge_rotated_log_files
 from core.time import utc_now
 from features.analytics.service.exports import remove_export_file
 from infrastructure.database.dbo.AnalyticsAuditLog import AnalyticsAuditLog
@@ -57,27 +55,6 @@ def purge_operational_records(cutoff: datetime) -> dict[str, int]:
         raise
     finally:
         db.close()
-
-
-def purge_rotated_log_files(cutoff: datetime) -> int:
-    if not SERVER_LOG_FILE:
-        return 0
-
-    log_path = Path(SERVER_LOG_FILE)
-    if not log_path.parent.exists():
-        return 0
-
-    deleted_count = 0
-    for archived_log in log_path.parent.glob(f"{log_path.name}.*"):
-        if not archived_log.is_file():
-            continue
-        modified_at = datetime.fromtimestamp(
-            archived_log.stat().st_mtime, tz=cutoff.tzinfo
-        )
-        if modified_at < cutoff:
-            archived_log.unlink()
-            deleted_count += 1
-    return deleted_count
 
 
 def purge_analytics_records(now: datetime) -> dict[str, int]:
@@ -140,7 +117,7 @@ def run_retention() -> dict[str, int]:
     now = utc_now()
     cutoff = retention_cutoff(now=now)
     deleted = purge_operational_records(cutoff)
-    deleted["rotated_log_files"] = purge_rotated_log_files(cutoff)
+    deleted["rotated_log_files"] = purge_rotated_log_files(now=now)
     deleted.update(purge_analytics_records(now))
     logger.info(
         "Operational data retention completed",

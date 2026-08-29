@@ -25,6 +25,40 @@ PROFILE_PATTERN = re.compile(r'^\s+profiles:\s*\["([a-z0-9_]+)"\]\s*$', re.MULTI
 CANARIES = frozenset({"wtchk_cls", "wtchk_ecls"})
 SHARD_COUNT = 4
 ROLLOUT_WAVE_SIZE = 10
+DEFAULT_CUBE_REFRESH_TIME_ZONES = "UTC,Asia/Hong_Kong"
+TIMEZONE_BY_BU = {
+    "WTCPH": "Asia/Manila",
+    "WTCMY": "Asia/Kuala_Lumpur",
+    "WTCHK": "Asia/Hong_Kong",
+    "PNSHK": "Asia/Hong_Kong",
+    "FTRHK": "Asia/Hong_Kong",
+    "WWHK": "Asia/Hong_Kong",
+    "WTCTH": "Asia/Bangkok",
+    "WTCID": "Asia/Jakarta",
+    "WTCSG": "Asia/Singapore",
+    "WTCTW": "Asia/Taipei",
+    "WTCVN": "Asia/Ho_Chi_Minh",
+    "WTCCN": "Asia/Shanghai",
+    "SD": "Europe/London",
+    "DRLV": "Europe/Riga",
+    "DRLT": "Europe/Vilnius",
+    "ICIBE": "Europe/Brussels",
+    "ICINL": "Europe/Amsterdam",
+    "KVNL": "Europe/Amsterdam",
+    "KVBE": "Europe/Brussels",
+    "MAT": "Europe/Vienna",
+    "MCH": "Europe/Zurich",
+    "MCZ": "Europe/Prague",
+    "MFR": "Europe/Paris",
+    "MHU": "Europe/Budapest",
+    "MIT": "Europe/Rome",
+    "MRO": "Europe/Bucharest",
+    "MSK": "Europe/Bratislava",
+    "TPS": "Europe/London",
+    "WTCTR": "Europe/Istanbul",
+    "WTCUA": "Europe/Kyiv",
+    "SVRUK": "Europe/Kyiv",
+}
 
 
 def source_profiles() -> list[str]:
@@ -83,6 +117,12 @@ def _service_suffix(profile: str) -> str:
     return profile.replace("_", "-")
 
 
+def _refresh_time_zones(profile: str) -> str:
+    bu = profile.partition("_")[0].upper()
+    timezone = TIMEZONE_BY_BU.get(bu)
+    return f"UTC,{timezone}" if timezone else DEFAULT_CUBE_REFRESH_TIME_ZONES
+
+
 def _yaml_list(values: list[str], indent: int) -> list[str]:
     prefix = " " * indent
     return [f"{prefix}- {value}" for value in values]
@@ -132,7 +172,7 @@ def compose_document(manifest: dict) -> str:
         '  CUBEJS_JWT_ALGS: "HS256"',
         '  CUBEJS_ROLLUP_ONLY: "false"',
         '  CUBEJS_CACHE_AND_QUEUE_DRIVER: "cubestore"',
-        '  CUBEJS_SCHEDULED_REFRESH_TIME_ZONES: "UTC,Asia/Hong_Kong"',
+        f'  CUBEJS_SCHEDULED_REFRESH_TIME_ZONES: "{DEFAULT_CUBE_REFRESH_TIME_ZONES}"',
         '  CUBEJS_DB_QUERY_TIMEOUT: "${ANALYTICS_DB_QUERY_TIMEOUT_SECONDS:-300}"',
         "",
         "x-cubestore-runtime: &cubestore-runtime",
@@ -212,6 +252,7 @@ def compose_document(manifest: dict) -> str:
         profile = entry["name"]
         suffix = _service_suffix(profile)
         prefix = _profile_env_prefix(profile)
+        refresh_time_zones = _refresh_time_zones(profile)
         router = f"cubestore-router-shard-{entry['cube_store_shard']}"
         shard_network = f"analytics_store_shard_{entry['cube_store_shard']}"
         backend = f"backend-{suffix}"
@@ -221,7 +262,7 @@ def compose_document(manifest: dict) -> str:
             f'      CUBEJS_DB_USER: "${{{prefix}_ANALYTICS_DB_USER:-}}"',
             f'      CUBEJS_DB_PASS: "${{{prefix}_ANALYTICS_DB_PASSWORD:-}}"',
             f'      CUBEJS_API_SECRET: "${{{prefix}_CUBE_API_SECRET:-}}"',
-            f'      CUBEJS_SCHEDULED_REFRESH_TIME_ZONES: "${{{prefix}_ANALYTICS_CUBE_REFRESH_TIME_ZONES:-UTC,Asia/Hong_Kong}}"',
+            f'      CUBEJS_SCHEDULED_REFRESH_TIME_ZONES: "${{{prefix}_ANALYTICS_CUBE_REFRESH_TIME_ZONES:-{refresh_time_zones}}}"',
             '      ANALYTICS_PRE_AGGREGATION_REFRESH_EVERY: "${ANALYTICS_PRE_AGGREGATION_REFRESH_EVERY:-15 minute}"',
             f"      CUBEJS_CUBESTORE_HOST: {router}",
             f"      CUBEJS_APP_ID: clsense-{profile}",
@@ -239,7 +280,7 @@ def compose_document(manifest: dict) -> str:
                 f'      ANALYTICS_ENABLED: "${{{prefix}_ANALYTICS_ENABLED:-false}}"',
                 f"      ANALYTICS_CUBE_API_URL: http://cube-api-{suffix}:4000",
                 f'      ANALYTICS_CUBE_API_SECRET: "${{{prefix}_CUBE_API_SECRET:-}}"',
-                f'      ANALYTICS_CUBE_REFRESH_TIME_ZONES: "${{{prefix}_ANALYTICS_CUBE_REFRESH_TIME_ZONES:-UTC,Asia/Hong_Kong}}"',
+                f'      ANALYTICS_CUBE_REFRESH_TIME_ZONES: "${{{prefix}_ANALYTICS_CUBE_REFRESH_TIME_ZONES:-{refresh_time_zones}}}"',
                 f'      ANALYTICS_INTERNAL_METADATA_SECRET: "${{{prefix}_ANALYTICS_METADATA_SECRET:-}}"',
                 "      ANALYTICS_EXPORT_DIR: /app/upload_tasks/analytics_exports",
                 "    volumes:",

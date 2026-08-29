@@ -14,6 +14,40 @@ MANIFEST = ROOT / "deploy" / "analytics" / "profiles.json"
 GENERATOR = ROOT / "scripts" / "generate_analytics_compose.py"
 VALIDATOR = ROOT / "scripts" / "validate_analytics_infra.py"
 
+TIMEZONE_BY_BU = {
+    "WTCPH": "Asia/Manila",
+    "WTCMY": "Asia/Kuala_Lumpur",
+    "WTCHK": "Asia/Hong_Kong",
+    "PNSHK": "Asia/Hong_Kong",
+    "FTRHK": "Asia/Hong_Kong",
+    "WWHK": "Asia/Hong_Kong",
+    "WTCTH": "Asia/Bangkok",
+    "WTCID": "Asia/Jakarta",
+    "WTCSG": "Asia/Singapore",
+    "WTCTW": "Asia/Taipei",
+    "WTCVN": "Asia/Ho_Chi_Minh",
+    "WTCCN": "Asia/Shanghai",
+    "SD": "Europe/London",
+    "DRLV": "Europe/Riga",
+    "DRLT": "Europe/Vilnius",
+    "ICIBE": "Europe/Brussels",
+    "ICINL": "Europe/Amsterdam",
+    "KVNL": "Europe/Amsterdam",
+    "KVBE": "Europe/Brussels",
+    "MAT": "Europe/Vienna",
+    "MCH": "Europe/Zurich",
+    "MCZ": "Europe/Prague",
+    "MFR": "Europe/Paris",
+    "MHU": "Europe/Budapest",
+    "MIT": "Europe/Rome",
+    "MRO": "Europe/Bucharest",
+    "MSK": "Europe/Bratislava",
+    "TPS": "Europe/London",
+    "WTCTR": "Europe/Istanbul",
+    "WTCUA": "Europe/Kyiv",
+    "SVRUK": "Europe/Kyiv",
+}
+
 
 def _source_profiles() -> list[str]:
     return sorted(
@@ -99,6 +133,29 @@ def test_compose_has_private_api_and_refresh_worker_for_every_profile():
             "/app/upload_tasks/analytics_exports"
         )
         assert backend["volumes"] == [f"{profile}_upload_tasks:/app/upload_tasks"]
+
+
+def test_compose_uses_each_business_unit_default_refresh_timezone():
+    services = _compose()["services"]
+
+    for profile in _source_profiles():
+        bu = profile.partition("_")[0].upper()
+        timezone = TIMEZONE_BY_BU.get(bu, "Asia/Hong_Kong")
+        env_prefix = profile.upper()
+        expected = (
+            f"${{{env_prefix}_ANALYTICS_CUBE_REFRESH_TIME_ZONES:-UTC,{timezone}}}"
+        )
+        suffix = profile.replace("_", "-")
+
+        assert services[f"backend-{suffix}"]["environment"][
+            "ANALYTICS_CUBE_REFRESH_TIME_ZONES"
+        ] == expected
+        assert services[f"cube-api-{suffix}"]["environment"][
+            "CUBEJS_SCHEDULED_REFRESH_TIME_ZONES"
+        ] == expected
+        assert services[f"cube-refresh-{suffix}"]["environment"][
+            "CUBEJS_SCHEDULED_REFRESH_TIME_ZONES"
+        ] == expected
 
 
 def test_compose_has_four_isolated_cubestore_clusters_with_two_workers_each():

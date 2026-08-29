@@ -7,7 +7,6 @@ from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
-from features.identity.service.users import user_service
 from features.identity.service.security import (
     create_access_token,
     create_or_update_user_from_azure,
@@ -16,6 +15,7 @@ from features.identity.service.security import (
     oauth,
     verify_azure_token,
 )
+from features.identity.service.users import user_service
 from infrastructure.database.dbo.User import User
 from infrastructure.database.session import get_db
 
@@ -34,7 +34,7 @@ async def azure_login(request: Request):
 @router.get("/azure/callback")
 async def azure_callback(request: Request, db: Session = Depends(get_db)):
     try:
-        # Get token from Azure AD (proxy configuration is handled via environment variables)
+        # Azure proxy configuration is handled through environment variables.
         token_response = await oauth.azure.authorize_access_token(request)
         access_token = token_response.get("access_token")
         id_token = token_response.get("id_token")
@@ -68,7 +68,7 @@ async def azure_callback(request: Request, db: Session = Depends(get_db)):
         )
         user_service(db).record_login(user.id)
 
-        # Use URL fragment (#) instead of query param (?) to avoid token leaking in server logs
+        # Use a URL fragment to avoid token leakage in server logs.
         return RedirectResponse(
             url=f"{FRONTEND_URL}/auth/azure/callback#access_token={app_access_token}"
         )
@@ -81,11 +81,11 @@ async def azure_callback(request: Request, db: Session = Depends(get_db)):
         root_path = os.getenv("FASTAPI_ROOT_PATH", "")
         return RedirectResponse(url=f"{root_path}/auth/azure/login")
     except Exception as e:
-        logger.error("Azure callback failed: %s", e)
+        logger.exception("Azure callback failed: %s", e)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Authentication failed",
-        )
+        ) from e
 
 
 @router.post("/token")

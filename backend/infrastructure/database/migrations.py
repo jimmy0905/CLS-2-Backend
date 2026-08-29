@@ -12,7 +12,6 @@ from core.config import (
 )
 from core.logging import logger
 
-
 GOAL_FIRST_ANALYTICS_REVISION = "0013_goal_first_analytics"
 GOAL_FIRST_ANALYTICS_MIGRATION = (
     Path(__file__).resolve().parents[1]
@@ -54,7 +53,7 @@ def run_database_migrations() -> bool:
 
         return True
     except Exception as error:
-        logger.error(f"Database migration failed: {error}")
+        logger.exception("Database migration failed: %s", error)
         raise
 
 
@@ -81,7 +80,9 @@ def bootstrap_single_metric_analytics_defaults() -> bool:
         if not all(inspector.has_table(table) for table in required_tables):
             return False
         current_revisions = set(
-            connection.execute(text("SELECT version_num FROM alembic_version")).scalars()
+            connection.execute(
+                text("SELECT version_num FROM alembic_version")
+            ).scalars()
         )
         script = ScriptDirectory.from_config(_build_alembic_config())
         applied_revisions = {
@@ -126,7 +127,11 @@ def _get_generated_revision_paths(generated_revision: object) -> list[Path]:
     if generated_revision is None:
         return []
 
-    revisions = generated_revision if isinstance(generated_revision, list) else [generated_revision]
+    revisions = (
+        generated_revision
+        if isinstance(generated_revision, list)
+        else [generated_revision]
+    )
     return [Path(revision.path) for revision in revisions if hasattr(revision, "path")]
 
 

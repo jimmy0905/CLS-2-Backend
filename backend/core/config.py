@@ -3,7 +3,6 @@ from pathlib import Path
 
 import dotenv
 
-
 dotenv.load_dotenv()
 
 # This module moved under ``core``; runtime storage remains rooted at backend/.
@@ -81,12 +80,17 @@ FASTAPI_ROOT_PATH = os.getenv("FASTAPI_ROOT_PATH", "")
 CORS_ORIGINS = parse_csv_env("CORS_ORIGINS", "*")
 COOKIE_SECURE = parse_strict_bool_env("COOKIE_SECURE", default=True)
 
-# Server logging is written to stdout by default for container collection.
+# Server logging is always written to stdout for container collection. Docker
+# profiles additionally provide a writable, persistent SERVER_LOG_FILE.
 SERVER_LOG_LEVEL = os.getenv("SERVER_LOG_LEVEL", "INFO").upper()
 SERVER_LOG_FORMAT = os.getenv("SERVER_LOG_FORMAT", "json").lower()
 SERVER_LOG_FILE = os.getenv("SERVER_LOG_FILE", "").strip()
+SERVER_LOG_RETENTION_DAYS = parse_positive_int_env(
+    "SERVER_LOG_RETENTION_DAYS", default=30
+)
 
-# Retention applies only to operational/audit records and optional rotated log files.
+# Retention applies only to operational/audit records. Rotated application logs
+# use SERVER_LOG_RETENTION_DAYS so their lifecycle is independently configurable.
 DATA_RETENTION_DAYS = parse_positive_int_env("DATA_RETENTION_DAYS", default=30)
 RETENTION_CHECK_INTERVAL_SECONDS = parse_positive_int_env(
     "RETENTION_CHECK_INTERVAL_SECONDS", default=86_400

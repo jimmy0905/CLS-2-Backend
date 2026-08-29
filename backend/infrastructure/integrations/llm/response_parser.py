@@ -43,7 +43,7 @@ def _validated_total_response(
 
         return TotalResponse.model_validate(response_json), response.usage.model_dump()
     except Exception as error:
-        logger.error(
+        logger.exception(
             log_message,
             extra={
                 "event": log_event,

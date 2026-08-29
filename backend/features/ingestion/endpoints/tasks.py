@@ -45,10 +45,12 @@ def background_process_upload_task(file_path: str, upload_task_id: str):
             # Process the upload task with multi-threading
             await process_upload_task(file_path, db, upload_task_id)
 
-        except Exception as e:
+        except Exception:
             # Log error and update task status
-            logger.error(
-                f"Background task failed for upload_task_id {upload_task_id}: {e}"
+            logger.exception(
+                "Background task failed for upload_task_id %s",
+                upload_task_id,
+                extra={"upload_task_id": upload_task_id},
             )
 
             # Update task status to failed
@@ -68,9 +70,11 @@ def background_process_upload_task(file_path: str, upload_task_id: str):
     def run_in_thread():
         try:
             asyncio.run(async_process())
-        except Exception as e:
-            logger.error(
-                f"Thread execution failed for upload_task_id {upload_task_id}: {e}"
+        except Exception:
+            logger.exception(
+                "Thread execution failed for upload_task_id %s",
+                upload_task_id,
+                extra={"upload_task_id": upload_task_id},
             )
 
     # Start the processing in a daemon thread

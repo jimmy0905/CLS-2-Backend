@@ -29,8 +29,8 @@ COPY . .
 
 # Create non-root user for security
 RUN adduser --disabled-password --gecos '' appuser \
-    && mkdir -p /app/upload_tasks \
-    && chown -R appuser:appuser /app
+    && mkdir -p /app/upload_tasks /var/log/clsense \
+    && chown -R appuser:appuser /app /var/log/clsense
 USER appuser
 
 # Expose port

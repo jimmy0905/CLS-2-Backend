@@ -35,7 +35,8 @@ x-backend-environment: &backend-environment
   BOOTSTRAP_DEFAULT_ADMIN_PASSWORD: "${BOOTSTRAP_DEFAULT_ADMIN_PASSWORD:-}"
   SERVER_LOG_LEVEL: "${SERVER_LOG_LEVEL:-INFO}"
   SERVER_LOG_FORMAT: "${SERVER_LOG_FORMAT:-json}"
-  SERVER_LOG_FILE: "${SERVER_LOG_FILE:-}"
+  SERVER_LOG_FILE: "${SERVER_LOG_FILE:-/var/log/clsense/server.log}"
+  SERVER_LOG_RETENTION_DAYS: "${SERVER_LOG_RETENTION_DAYS:-30}"
   DATA_RETENTION_DAYS: "${DATA_RETENTION_DAYS:-30}"
   RETENTION_CHECK_INTERVAL_SECONDS: "${RETENTION_CHECK_INTERVAL_SECONDS:-86400}"
   MAX_WORKER_THREADS: "${MAX_WORKER_THREADS:-4}"
@@ -144,6 +145,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
+      - wtchk_cls_logs:/var/log/clsense
       - wtchk_cls_upload_tasks:/app/upload_tasks
 
   backend-wtctw-cls:
@@ -219,6 +221,7 @@ services:
     ports:
       - "8001:8000"
     volumes:
+      - wtctw_cls_logs:/var/log/clsense
       - wtctw_cls_upload_tasks:/app/upload_tasks
 
   backend-wtcmy-cls:
@@ -294,6 +297,7 @@ services:
     ports:
       - "8002:8000"
     volumes:
+      - wtcmy_cls_logs:/var/log/clsense
       - wtcmy_cls_upload_tasks:/app/upload_tasks
 
   backend-kvnl-cls:
@@ -369,6 +373,7 @@ services:
     ports:
       - "8004:8000"
     volumes:
+      - kvnl_cls_logs:/var/log/clsense
       - kvnl_cls_upload_tasks:/app/upload_tasks
 
   backend-sd-cls:
@@ -444,6 +449,7 @@ services:
     ports:
       - "8005:8000"
     volumes:
+      - sd_cls_logs:/var/log/clsense
       - sd_cls_upload_tasks:/app/upload_tasks
 
   backend-wtcsg-cls:
@@ -519,6 +525,7 @@ services:
     ports:
       - "8006:8000"
     volumes:
+      - wtcsg_cls_logs:/var/log/clsense
       - wtcsg_cls_upload_tasks:/app/upload_tasks
 
   backend-wwhk-cls:
@@ -594,6 +601,7 @@ services:
     ports:
       - "8007:8000"
     volumes:
+      - wwhk_cls_logs:/var/log/clsense
       - wwhk_cls_upload_tasks:/app/upload_tasks
 
   backend-pnshk-cls:
@@ -669,6 +677,7 @@ services:
     ports:
       - "8008:8000"
     volumes:
+      - pnshk_cls_logs:/var/log/clsense
       - pnshk_cls_upload_tasks:/app/upload_tasks
 
   backend-ftrhk-cls:
@@ -744,6 +753,7 @@ services:
     ports:
       - "8009:8000"
     volumes:
+      - ftrhk_cls_logs:/var/log/clsense
       - ftrhk_cls_upload_tasks:/app/upload_tasks
 
   backend-wtcth-cls:
@@ -819,6 +829,7 @@ services:
     ports:
       - "8010:8000"
     volumes:
+      - wtcth_cls_logs:/var/log/clsense
       - wtcth_cls_upload_tasks:/app/upload_tasks
 
   backend-wtcid-cls:
@@ -894,6 +905,7 @@ services:
     ports:
       - "8011:8000"
     volumes:
+      - wtcid_cls_logs:/var/log/clsense
       - wtcid_cls_upload_tasks:/app/upload_tasks
 
   backend-wtcvn-cls:
@@ -969,6 +981,7 @@ services:
     ports:
       - "8012:8000"
     volumes:
+      - wtcvn_cls_logs:/var/log/clsense
       - wtcvn_cls_upload_tasks:/app/upload_tasks
 
   backend-wtccn-cls:
@@ -1044,6 +1057,7 @@ services:
     ports:
       - "8013:8000"
     volumes:
+      - wtccn_cls_logs:/var/log/clsense
       - wtccn_cls_upload_tasks:/app/upload_tasks
 
   backend-wtcph-cls:
@@ -1119,6 +1133,7 @@ services:
     ports:
       - "8014:8000"
     volumes:
+      - wtcph_cls_logs:/var/log/clsense
       - wtcph_cls_upload_tasks:/app/upload_tasks
 
   backend-drlv-cls:
@@ -1194,6 +1209,7 @@ services:
     ports:
       - "8015:8000"
     volumes:
+      - drlv_cls_logs:/var/log/clsense
       - drlv_cls_upload_tasks:/app/upload_tasks
 
   backend-drlt-cls:
@@ -1269,6 +1285,7 @@ services:
     ports:
       - "8016:8000"
     volumes:
+      - drlt_cls_logs:/var/log/clsense
       - drlt_cls_upload_tasks:/app/upload_tasks
 
   backend-icibe-cls:
@@ -1344,6 +1361,7 @@ services:
     ports:
       - "8017:8000"
     volumes:
+      - icibe_cls_logs:/var/log/clsense
       - icibe_cls_upload_tasks:/app/upload_tasks
 
   backend-kvbe-cls:
@@ -1419,6 +1437,7 @@ services:
     ports:
       - "8018:8000"
     volumes:
+      - kvbe_cls_logs:/var/log/clsense
       - kvbe_cls_upload_tasks:/app/upload_tasks
 
   backend-tps-cls:
@@ -1494,6 +1513,7 @@ services:
     ports:
       - "8019:8000"
     volumes:
+      - tps_cls_logs:/var/log/clsense
       - tps_cls_upload_tasks:/app/upload_tasks
 
   backend-wtcua-cls:
@@ -1569,6 +1589,7 @@ services:
     ports:
       - "8020:8000"
     volumes:
+      - wtcua_cls_logs:/var/log/clsense
       - wtcua_cls_upload_tasks:/app/upload_tasks
 
   backend-wtctr-cls:
@@ -1644,6 +1665,7 @@ services:
     ports:
       - "8021:8000"
     volumes:
+      - wtctr_cls_logs:/var/log/clsense
       - wtctr_cls_upload_tasks:/app/upload_tasks
 
   backend-mat-cls:
@@ -1719,6 +1741,7 @@ services:
     ports:
       - "8022:8000"
     volumes:
+      - mat_cls_logs:/var/log/clsense
       - mat_cls_upload_tasks:/app/upload_tasks
 
   backend-mch-cls:
@@ -1794,6 +1817,7 @@ services:
     ports:
       - "8023:8000"
     volumes:
+      - mch_cls_logs:/var/log/clsense
       - mch_cls_upload_tasks:/app/upload_tasks
 
   backend-mcz-cls:
@@ -1869,6 +1893,7 @@ services:
     ports:
       - "8024:8000"
     volumes:
+      - mcz_cls_logs:/var/log/clsense
       - mcz_cls_upload_tasks:/app/upload_tasks
 
   backend-mfr-cls:
@@ -1944,6 +1969,7 @@ services:
     ports:
       - "8025:8000"
     volumes:
+      - mfr_cls_logs:/var/log/clsense
       - mfr_cls_upload_tasks:/app/upload_tasks
 
   backend-mhu-cls:
@@ -2019,6 +2045,7 @@ services:
     ports:
       - "8026:8000"
     volumes:
+      - mhu_cls_logs:/var/log/clsense
       - mhu_cls_upload_tasks:/app/upload_tasks
 
   backend-mit-cls:
@@ -2094,6 +2121,7 @@ services:
     ports:
       - "8027:8000"
     volumes:
+      - mit_cls_logs:/var/log/clsense
       - mit_cls_upload_tasks:/app/upload_tasks
 
   backend-mro-cls:
@@ -2169,6 +2197,7 @@ services:
     ports:
       - "8028:8000"
     volumes:
+      - mro_cls_logs:/var/log/clsense
       - mro_cls_upload_tasks:/app/upload_tasks
 
   backend-msk-cls:
@@ -2244,6 +2273,7 @@ services:
     ports:
       - "8029:8000"
     volumes:
+      - msk_cls_logs:/var/log/clsense
       - msk_cls_upload_tasks:/app/upload_tasks
 
   backend-icinl-cls:
@@ -2319,6 +2349,7 @@ services:
     ports:
       - "8030:8000"
     volumes:
+      - icinl_cls_logs:/var/log/clsense
       - icinl_cls_upload_tasks:/app/upload_tasks
 
   backend-wtchk-ecls:
@@ -2394,6 +2425,7 @@ services:
     ports:
       - "8003:8000"
     volumes:
+      - wtchk_ecls_logs:/var/log/clsense
       - wtchk_ecls_upload_tasks:/app/upload_tasks
 
   backend-wtcph-ecls:
@@ -2469,6 +2501,7 @@ services:
     ports:
       - "8031:8000"
     volumes:
+      - wtcph_ecls_logs:/var/log/clsense
       - wtcph_ecls_upload_tasks:/app/upload_tasks
 
   backend-wtcmy-ecls:
@@ -2544,6 +2577,7 @@ services:
     ports:
       - "8032:8000"
     volumes:
+      - wtcmy_ecls_logs:/var/log/clsense
       - wtcmy_ecls_upload_tasks:/app/upload_tasks
 
   backend-ftrhk-ecls:
@@ -2619,6 +2653,7 @@ services:
     ports:
       - "8033:8000"
     volumes:
+      - ftrhk_ecls_logs:/var/log/clsense
       - ftrhk_ecls_upload_tasks:/app/upload_tasks
 
   backend-pnshk-ecls:
@@ -2694,6 +2729,7 @@ services:
     ports:
       - "8034:8000"
     volumes:
+      - pnshk_ecls_logs:/var/log/clsense
       - pnshk_ecls_upload_tasks:/app/upload_tasks
 
   backend-wwhk-ecls:
@@ -2769,6 +2805,7 @@ services:
     ports:
       - "8035:8000"
     volumes:
+      - wwhk_ecls_logs:/var/log/clsense
       - wwhk_ecls_upload_tasks:/app/upload_tasks
 
   backend-wtcth-ecls:
@@ -2844,6 +2881,7 @@ services:
     ports:
       - "8036:8000"
     volumes:
+      - wtcth_ecls_logs:/var/log/clsense
       - wtcth_ecls_upload_tasks:/app/upload_tasks
 
   backend-wtcsg-ecls:
@@ -2919,6 +2957,7 @@ services:
     ports:
       - "8037:8000"
     volumes:
+      - wtcsg_ecls_logs:/var/log/clsense
       - wtcsg_ecls_upload_tasks:/app/upload_tasks
 
   backend-wtctw-ecls:
@@ -2994,6 +3033,7 @@ services:
     ports:
       - "8038:8000"
     volumes:
+      - wtctw_ecls_logs:/var/log/clsense
       - wtctw_ecls_upload_tasks:/app/upload_tasks
 
   backend-wtcvn-ecls:
@@ -3069,6 +3109,7 @@ services:
     ports:
       - "8039:8000"
     volumes:
+      - wtcvn_ecls_logs:/var/log/clsense
       - wtcvn_ecls_upload_tasks:/app/upload_tasks
 
   backend-wtccn-ecls:
@@ -3144,6 +3185,7 @@ services:
     ports:
       - "8040:8000"
     volumes:
+      - wtccn_ecls_logs:/var/log/clsense
       - wtccn_ecls_upload_tasks:/app/upload_tasks
 
   backend-wtcid-ecls:
@@ -3219,6 +3261,7 @@ services:
     ports:
       - "8041:8000"
     volumes:
+      - wtcid_ecls_logs:/var/log/clsense
       - wtcid_ecls_upload_tasks:/app/upload_tasks
 
   backend-sd-ecls:
@@ -3294,6 +3337,7 @@ services:
     ports:
       - "8042:8000"
     volumes:
+      - sd_ecls_logs:/var/log/clsense
       - sd_ecls_upload_tasks:/app/upload_tasks
 
   backend-drlv-ecls:
@@ -3369,6 +3413,7 @@ services:
     ports:
       - "8043:8000"
     volumes:
+      - drlv_ecls_logs:/var/log/clsense
       - drlv_ecls_upload_tasks:/app/upload_tasks
 
   backend-drlt-ecls:
@@ -3444,6 +3489,7 @@ services:
     ports:
       - "8044:8000"
     volumes:
+      - drlt_ecls_logs:/var/log/clsense
       - drlt_ecls_upload_tasks:/app/upload_tasks
 
   backend-icibe-ecls:
@@ -3519,6 +3565,7 @@ services:
     ports:
       - "8045:8000"
     volumes:
+      - icibe_ecls_logs:/var/log/clsense
       - icibe_ecls_upload_tasks:/app/upload_tasks
 
   backend-icinl-ecls:
@@ -3594,6 +3641,7 @@ services:
     ports:
       - "8046:8000"
     volumes:
+      - icinl_ecls_logs:/var/log/clsense
       - icinl_ecls_upload_tasks:/app/upload_tasks
 
   backend-kvnl-ecls:
@@ -3669,6 +3717,7 @@ services:
     ports:
       - "8047:8000"
     volumes:
+      - kvnl_ecls_logs:/var/log/clsense
       - kvnl_ecls_upload_tasks:/app/upload_tasks
 
   backend-kvbe-ecls:
@@ -3744,6 +3793,7 @@ services:
     ports:
       - "8048:8000"
     volumes:
+      - kvbe_ecls_logs:/var/log/clsense
       - kvbe_ecls_upload_tasks:/app/upload_tasks
 
   backend-mat-ecls:
@@ -3819,6 +3869,7 @@ services:
     ports:
       - "8049:8000"
     volumes:
+      - mat_ecls_logs:/var/log/clsense
       - mat_ecls_upload_tasks:/app/upload_tasks
 
   backend-mch-ecls:
@@ -3894,6 +3945,7 @@ services:
     ports:
       - "8050:8000"
     volumes:
+      - mch_ecls_logs:/var/log/clsense
       - mch_ecls_upload_tasks:/app/upload_tasks
 
   backend-mcz-ecls:
@@ -3969,6 +4021,7 @@ services:
     ports:
       - "8051:8000"
     volumes:
+      - mcz_ecls_logs:/var/log/clsense
       - mcz_ecls_upload_tasks:/app/upload_tasks
 
   backend-mfr-ecls:
@@ -4044,6 +4097,7 @@ services:
     ports:
       - "8052:8000"
     volumes:
+      - mfr_ecls_logs:/var/log/clsense
       - mfr_ecls_upload_tasks:/app/upload_tasks
 
   backend-mhu-ecls:
@@ -4119,6 +4173,7 @@ services:
     ports:
       - "8053:8000"
     volumes:
+      - mhu_ecls_logs:/var/log/clsense
       - mhu_ecls_upload_tasks:/app/upload_tasks
 
   backend-mit-ecls:
@@ -4194,6 +4249,7 @@ services:
     ports:
       - "8054:8000"
     volumes:
+      - mit_ecls_logs:/var/log/clsense
       - mit_ecls_upload_tasks:/app/upload_tasks
 
   backend-mro-ecls:
@@ -4269,6 +4325,7 @@ services:
     ports:
       - "8055:8000"
     volumes:
+      - mro_ecls_logs:/var/log/clsense
       - mro_ecls_upload_tasks:/app/upload_tasks
 
   backend-msk-ecls:
@@ -4344,6 +4401,7 @@ services:
     ports:
       - "8056:8000"
     volumes:
+      - msk_ecls_logs:/var/log/clsense
       - msk_ecls_upload_tasks:/app/upload_tasks
 
   backend-tps-ecls:
@@ -4419,6 +4477,7 @@ services:
     ports:
       - "8057:8000"
     volumes:
+      - tps_ecls_logs:/var/log/clsense
       - tps_ecls_upload_tasks:/app/upload_tasks
 
   backend-wtctr-ecls:
@@ -4494,6 +4553,7 @@ services:
     ports:
       - "8058:8000"
     volumes:
+      - wtctr_ecls_logs:/var/log/clsense
       - wtctr_ecls_upload_tasks:/app/upload_tasks
 
   backend-wtcua-ecls:
@@ -4569,6 +4629,7 @@ services:
     ports:
       - "8059:8000"
     volumes:
+      - wtcua_ecls_logs:/var/log/clsense
       - wtcua_ecls_upload_tasks:/app/upload_tasks
 
   backend-svruk-ecls:
@@ -4644,69 +4705,131 @@ services:
     ports:
       - "8060:8000"
     volumes:
+      - svruk_ecls_logs:/var/log/clsense
       - svruk_ecls_upload_tasks:/app/upload_tasks
 
 volumes:
+  wtchk_cls_logs:
   wtchk_cls_upload_tasks:
+  wtctw_cls_logs:
   wtctw_cls_upload_tasks:
+  wtcmy_cls_logs:
   wtcmy_cls_upload_tasks:
+  kvnl_cls_logs:
   kvnl_cls_upload_tasks:
+  sd_cls_logs:
   sd_cls_upload_tasks:
+  wtcsg_cls_logs:
   wtcsg_cls_upload_tasks:
+  wwhk_cls_logs:
   wwhk_cls_upload_tasks:
+  pnshk_cls_logs:
   pnshk_cls_upload_tasks:
+  ftrhk_cls_logs:
   ftrhk_cls_upload_tasks:
+  wtcth_cls_logs:
   wtcth_cls_upload_tasks:
+  wtcid_cls_logs:
   wtcid_cls_upload_tasks:
+  wtcvn_cls_logs:
   wtcvn_cls_upload_tasks:
+  wtccn_cls_logs:
   wtccn_cls_upload_tasks:
+  wtcph_cls_logs:
   wtcph_cls_upload_tasks:
+  drlv_cls_logs:
   drlv_cls_upload_tasks:
+  drlt_cls_logs:
   drlt_cls_upload_tasks:
+  icibe_cls_logs:
   icibe_cls_upload_tasks:
+  kvbe_cls_logs:
   kvbe_cls_upload_tasks:
+  tps_cls_logs:
   tps_cls_upload_tasks:
+  wtcua_cls_logs:
   wtcua_cls_upload_tasks:
+  wtctr_cls_logs:
   wtctr_cls_upload_tasks:
+  mat_cls_logs:
   mat_cls_upload_tasks:
+  mch_cls_logs:
   mch_cls_upload_tasks:
+  mcz_cls_logs:
   mcz_cls_upload_tasks:
+  mfr_cls_logs:
   mfr_cls_upload_tasks:
+  mhu_cls_logs:
   mhu_cls_upload_tasks:
+  mit_cls_logs:
   mit_cls_upload_tasks:
+  mro_cls_logs:
   mro_cls_upload_tasks:
+  msk_cls_logs:
   msk_cls_upload_tasks:
+  icinl_cls_logs:
   icinl_cls_upload_tasks:
+  wtchk_ecls_logs:
   wtchk_ecls_upload_tasks:
+  wtcph_ecls_logs:
   wtcph_ecls_upload_tasks:
+  wtcmy_ecls_logs:
   wtcmy_ecls_upload_tasks:
+  ftrhk_ecls_logs:
   ftrhk_ecls_upload_tasks:
+  pnshk_ecls_logs:
   pnshk_ecls_upload_tasks:
+  wwhk_ecls_logs:
   wwhk_ecls_upload_tasks:
+  wtcth_ecls_logs:
   wtcth_ecls_upload_tasks:
+  wtcsg_ecls_logs:
   wtcsg_ecls_upload_tasks:
+  wtctw_ecls_logs:
   wtctw_ecls_upload_tasks:
+  wtcvn_ecls_logs:
   wtcvn_ecls_upload_tasks:
+  wtccn_ecls_logs:
   wtccn_ecls_upload_tasks:
+  wtcid_ecls_logs:
   wtcid_ecls_upload_tasks:
+  sd_ecls_logs:
   sd_ecls_upload_tasks:
+  drlv_ecls_logs:
   drlv_ecls_upload_tasks:
+  drlt_ecls_logs:
   drlt_ecls_upload_tasks:
+  icibe_ecls_logs:
   icibe_ecls_upload_tasks:
+  icinl_ecls_logs:
   icinl_ecls_upload_tasks:
+  kvnl_ecls_logs:
   kvnl_ecls_upload_tasks:
+  kvbe_ecls_logs:
   kvbe_ecls_upload_tasks:
+  mat_ecls_logs:
   mat_ecls_upload_tasks:
+  mch_ecls_logs:
   mch_ecls_upload_tasks:
+  mcz_ecls_logs:
   mcz_ecls_upload_tasks:
+  mfr_ecls_logs:
   mfr_ecls_upload_tasks:
+  mhu_ecls_logs:
   mhu_ecls_upload_tasks:
+  mit_ecls_logs:
   mit_ecls_upload_tasks:
+  mro_ecls_logs:
   mro_ecls_upload_tasks:
+  msk_ecls_logs:
   msk_ecls_upload_tasks:
+  tps_ecls_logs:
   tps_ecls_upload_tasks:
+  wtctr_ecls_logs:
   wtctr_ecls_upload_tasks:
+  wtcua_ecls_logs:
   wtcua_ecls_upload_tasks:
+  svruk_ecls_logs:
   svruk_ecls_upload_tasks:
 
 networks:

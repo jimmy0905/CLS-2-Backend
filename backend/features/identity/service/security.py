@@ -173,7 +173,14 @@ async def verify_azure_token(token: str) -> Dict[str, Any]:
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Token verification failed: %s", e)
+        logger.error(
+            "Token verification failed: %s",
+            e,
+            extra={
+                "event": "auth.token_verification_failed",
+                "error_type": type(e).__name__,
+            },
+        )
         raise HTTPException(
             status_code=401, detail="Token verification failed"
         )

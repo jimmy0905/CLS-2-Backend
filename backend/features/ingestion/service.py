@@ -165,8 +165,10 @@ def parse_flexible_date(
         )
         return None
 
-    except Exception as e:
-        logger.error(f"{row_context}Unexpected error parsing date '{date_input}': {e}")
+    except Exception as error:
+        logger.exception(
+            "%sUnexpected error parsing date %r: %s", row_context, date_input, error
+        )
         return None
 
 
@@ -770,12 +772,14 @@ async def process_single_row(
                     total_sentiment = normalized_total.overall_sentiment.upper() if normalized_total.overall_sentiment else None
                     total_keywords = normalized_total.keywords if normalized_total.keywords else []
 
-        except Exception as e:
-            logger.error(
-                f"Row {index + 1}: Failed to extract topics and sentiment. Error: {e}"
+        except Exception as error:
+            logger.exception(
+                "Row %s: Failed to extract topics and sentiment. Error: %s",
+                index + 1,
+                error,
             )
             llm_processing_failed = True
-            llm_error_message = f"Error conducting AI Analysis for topics: {e}"
+            llm_error_message = f"Error conducting AI Analysis for topics: {error}"
         
         # If LLM processing failed, check if we need to update an existing record
         if llm_processing_failed:
@@ -1002,9 +1006,11 @@ async def process_single_row(
         )
         return result
 
-    except Exception as e:
-        logger.error(f"Row {index + 1}: Unexpected error during processing: {e}")
-        result["error"] = f"Unexpected error: {e}"
+    except Exception as error:
+        logger.exception(
+            "Row %s: Unexpected error during processing: %s", index + 1, error
+        )
+        result["error"] = f"Unexpected error: {error}"
         return result
     finally:
         db.close()
@@ -1040,9 +1046,9 @@ async def process_upload_task(file_path, db, upload_task_id):
                 keep_default_na=False,
             )
             logger.info(f"Successfully parsed CSV file with {len(df)} rows for processing")
-        except Exception as e:
-            logger.error(f"Failed to read CSV file {file_path}: {e}")
-            raise Exception(f"Failed to read CSV file: {e}")
+        except Exception as error:
+            logger.exception("Failed to read CSV file %s: %s", file_path, error)
+            raise Exception(f"Failed to read CSV file: {error}") from error
 
         affected_months = sorted(
             set(affected_reporting_months(df))
@@ -1130,9 +1136,11 @@ async def process_upload_task(file_path, db, upload_task_id):
                     else:
                         failed_tasks += 1
 
-                except Exception as e:
+                except Exception as error:
                     failed_tasks += 1
-                    logger.error(f"Error processing row {row_index + 1}: {e}")
+                    logger.exception(
+                        "Error processing row %s: %s", row_index + 1, error
+                    )
 
         # Update final task status
         upload_task = db.query(UploadTask).filter(UploadTask.id == upload_task_id).first()
@@ -1164,12 +1172,15 @@ async def process_upload_task(file_path, db, upload_task_id):
         logger.info(
             f"Processing rate: {rows_per_second:.2f} rows/second with {max_workers} threads."
         )
-    except Exception as e:
-        logger.error(f"Failed to process upload task {upload_task_id}: {e}")
-        raise Exception(f"Failed to process upload task: {e}")
+    except Exception as error:
+        logger.exception(
+            "Failed to process upload task %s: %s", upload_task_id, error,
+            extra={"upload_task_id": upload_task_id},
+        )
+        raise Exception(f"Failed to process upload task: {error}") from error
     finally:
         #Remove the upload task file
         try:
             os.remove(file_path)
-        except Exception as e:
-            logger.error(f"Failed to remove upload task file {file_path}: {e}")
+        except Exception as error:
+            logger.exception("Failed to remove upload task file %s: %s", file_path, error)

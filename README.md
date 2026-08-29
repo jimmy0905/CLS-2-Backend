@@ -78,15 +78,14 @@ docker compose \\
 
 ## 可觀測性與資料保留
 
-伺服器會將結構化 JSON 日誌輸出至 stdout，適合交由 Docker 或集中式日誌收集器處理。每個請求都會產生完成紀錄，包含 UTC 時間戳記、服務、設定檔、請求 ID、方法、路徑、狀態、耗時與用戶端 IP。請求 ID 亦會在 `X-Request-ID` 回傳；請求中介層絕不記錄查詢字串或憑證。未預期錯誤會包含堆疊追蹤。
+伺服器會同步將結構化 JSON 日誌輸出至 stdout 與每日輪替的持久化檔案。`docker logs` 可查看即時及近期紀錄；每個設定檔專屬的 `/var/log/clsense/server.log` volume 則保存完整歷史。每個請求都會產生完成紀錄，包含 UTC 時間戳記、服務、設定檔、請求 ID、方法、路徑、狀態、耗時、用戶端 IP、程式來源與執行緒。請求 ID 亦會在 `X-Request-ID` 回傳；請求中介層絕不記錄 query string、HTTP body 或憑證。未預期錯誤會包含類型、原因與堆疊追蹤。
 
-Docker 將每個服務的本機 JSON 日誌檔限制為十個、每個 10 MiB。若要額外建立每日輪替的應用程式日誌，僅在提供可寫入的日誌掛載時設定 `SERVER_LOG_FILE`；否則 Compose 依設計使用唯讀的應用程式檔案系統。
+`SERVER_LOG_RETENTION_DAYS=30` 為預設值，定義於 `.env.example`，並控制每日輪替應用程式日誌的保存期。無法建立或寫入持久化檔案時，服務會繼續只輸出 stdout，並在 `docker logs` 寫出一筆 `CRITICAL` 診斷事件。Docker 仍將每個服務的本機 JSON log 限制為十個、每個 10 MiB，因此精確的 30 天歷史應從持久化 volume 讀取。
 
-`DATA_RETENTION_DAYS=30` 為預設值，定義於 `.env.example`。資料保留會在啟動後及每個 `RETENTION_CHECK_INTERVAL_SECONDS`（預設為 86400）週期執行。它只會清除早於截止日的營運資料：
+`DATA_RETENTION_DAYS=30` 只控制營運資料。資料保留會在啟動後及每個 `RETENTION_CHECK_INTERVAL_SECONDS`（預設為 86400）週期執行，並只會清除早於截止日的資料：
 
 - 登入紀錄；
 - 已完成或失敗的上傳工作及其錯誤列；
-- 設定 `SERVER_LOG_FILE` 時已輪替的應用程式日誌檔。
 
 它絕不刪除問卷、使用者、門市、部門、主題、外送服務或其他業務資料。
 

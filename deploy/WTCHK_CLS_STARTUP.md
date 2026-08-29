@@ -215,6 +215,23 @@ docker compose \
   cubestore-router-shard-4
 ```
 
+後端同時將 JSON 日誌保存到設定檔專屬的持久化 volume；`docker compose logs`
+提供即時與近期輸出，而完整的 30 天歷史可直接查看：
+
+```bash
+docker compose \
+  -f docker-compose.yml \
+  -f docker-compose.analytics.yml \
+  --profile wtchk_cls \
+  --env-file .env \
+  --env-file deploy/profile/wtchk_cls.env \
+  exec backend-wtchk-cls tail -f /var/log/clsense/server.log
+```
+
+以 `.env` 的 `SERVER_LOG_RETENTION_DAYS` 調整保存天數；預設為 30。若持久化
+檔案無法寫入，服務會維持 stdout 輸出，並在 `docker compose logs` 顯示 `CRITICAL`
+診斷事件。
+
 ## 8. 啟用互動式 Analytics
 
 遷移、中繼資料編譯及 shadow 比較皆健康後，將設定檔設定改為：
