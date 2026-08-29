@@ -1,5 +1,5 @@
 from utils.database import Base
-from sqlalchemy import Column, Integer, String, ForeignKey, Index, Boolean, Double, Date
+from sqlalchemy import Column, Integer, String, Index, Boolean, Double, Date
 from sqlalchemy.orm import relationship
 
 class Store(Base):

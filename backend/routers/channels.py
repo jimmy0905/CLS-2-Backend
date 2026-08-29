@@ -3,7 +3,6 @@ from utils.database import get_db
 from models.Channel import Channel
 from utils.security import get_current_user, require_admin
 from pydantic import BaseModel
-from typing import List
 from sqlalchemy.orm import Session
 
 router = APIRouter(

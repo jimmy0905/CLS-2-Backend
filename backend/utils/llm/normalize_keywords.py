@@ -1,10 +1,9 @@
 import os
 import json
-from fastapi.concurrency import run_in_threadpool
-from utils.llm.text_cleaning_helper import _clean_response_content
 from utils.llm.models import TotalResponse
 from utils.llm.client import get_azure_openai_client
 from utils.logger import logger
+from utils.llm.response_parser import _validated_total_response
 
 # Configs for normalize keywords
 NORMALIZE_KEYWORDS_MODEL = os.getenv("NORMALIZE_KEYWORDS_MODEL", "gpt-4.1-mini-CLS-DataUpload")
@@ -656,7 +655,9 @@ Output:
 </Stop Condition>
 """
 
-def _normalize_keywords_sync(comment: str, result_json: dict) -> tuple[TotalResponse, dict]:
+def _normalize_keywords_sync(
+    comment: str, result_json: dict
+) -> tuple[TotalResponse, dict | None]:
     content = f"""
     comment: {comment}
     result_json: {json.dumps(result_json, indent=4, ensure_ascii=False, default=str)}
@@ -667,49 +668,10 @@ def _normalize_keywords_sync(comment: str, result_json: dict) -> tuple[TotalResp
         temperature=NORMALIZE_KEYWORDS_TEMPERATURE,
         response_format={"type": "json_object"},
     )
-    response_content = response.choices[0].message.content
-    if response_content is None:
-      # Return empty NormalizeKeywordsResponse when no content
-        empty_response = TotalResponse(
-            topics=[],
-            departments=[],
-            keywords=[],
-            overall_sentiment="neutral",
-            cannot_classified=True,
-        )
-        return empty_response, None
-    try:
-        cleaned_response_content = _clean_response_content(response_content)
-        response_json = json.loads(cleaned_response_content)
-        # Handle the case where only cannot_classified=True is returned
-        if response_json.get("cannot_classified") is True:
-            # Fill with empty arrays and default values to match TotalResponse model
-            complete_response = {
-                "topics": [],
-                "departments": [],
-                "keywords": [],
-                "overall_sentiment": "neutral",
-                "cannot_classified": True,
-            }
-            return TotalResponse.model_validate(complete_response), response.usage.model_dump()
-
-        # For normal case, ensure cannot_classified is set to False if not present
-        if "cannot_classified" not in response_json:
-            response_json["cannot_classified"] = False
-
-        # Create and return TotalResponse object
-        return TotalResponse.model_validate(response_json), response.usage.model_dump()
-
-    except Exception as error:
-        logger.error(
-            "Keyword-normalization response validation failed",
-            extra={
-                "event": "llm.response_validation_failed",
-                "response_length": len(response_content),
-                "error_type": type(error).__name__,
-            },
-        )
-        raise Exception("Failed to validate keywords response") from error
-
-def normalize_keywords(comment: str, result_json: dict) -> tuple[TotalResponse, dict]:
-    return run_in_threadpool(_normalize_keywords_sync, comment, result_json)
+    return _validated_total_response(
+        response,
+        logger=logger,
+        log_message="Keyword-normalization response validation failed",
+        log_event="llm.response_validation_failed",
+        failure_message="Failed to validate keywords response",
+    )

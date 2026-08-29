@@ -15,17 +15,15 @@ from models.SurveyDepartments import SurveyDepartments
 from models.Channel import Channel
 from models.DeliveryService import DeliveryService
 from datetime import datetime
-from utils.llm.extract_total import extract_total, _extract_total_retry_sync
-from utils.llm.normalize_keywords import normalize_keywords, _normalize_keywords_sync
+from utils.llm.extract_total import _extract_total_retry_sync
+from utils.llm.normalize_keywords import _normalize_keywords_sync
 from utils.logger import logger
 from utils.utc import as_utc, utc_now
-import dateutil.parser
 from typing import Union, Optional, List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import asyncio
 import time
-from functools import partial
 from sqlalchemy.orm import sessionmaker
 from utils.database import engine
 from config import (

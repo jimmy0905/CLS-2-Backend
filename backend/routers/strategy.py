@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from utils.database import get_db
-from models.User import User
 from utils.conditionFilter import build_survey_query, build_optimized_query
 from utils.security import get_current_user
 from models.Survey import Survey
-from typing import List, Optional
+from typing import Awaitable, Callable, List, Optional
 from utils.llm.generate_strategy import (
     generate_store_strategy,
     generate_region_strategy,
@@ -16,16 +15,15 @@ from pydantic import BaseModel, Field
 from models.Store import Store
 from models.Channel import Channel
 from models.DeliveryService import DeliveryService
-from sqlalchemy import or_, func, case
+from sqlalchemy import func, case
 from utils.conditionFilter import FilterRequest, get_filter_params
-from models.enum.Sentiment import TopicSentiment, Sentiment
+from models.enum.Sentiment import TopicSentiment
 from datetime import datetime, date
 from io import BytesIO
 import requests
 from openpyxl import Workbook
 import os
 import asyncio
-from fastapi import BackgroundTasks
 from utils.utc import utc_isoformat
 
 
@@ -191,21 +189,36 @@ class StrategyByStoreIdsRequest(BaseModel):
     )
 
 
-@router.post("/get_strategy_for_store_by_ids")
-async def get_strategy_for_store_by_ids(
-    request: StrategyByStoreIdsRequest,
-    db: Session = Depends(get_db),
+async def _generate_positive_strategy(
+    db: Session,
+    *,
+    filter_key: str,
+    filter_values: list[str] | list[int],
+    generator: Callable[[list[Survey]], Awaitable[tuple[str, dict]]],
 ) -> str:
     filter_dict = {
-        "store_keys": request.store_keys,
+        filter_key: filter_values,
         "topic_sentiments": [TopicSentiment.POSITIVE],
     }
     filtered_query, _, _ = build_optimized_query(db, filter_dict)
     surveys = (
         filtered_query.order_by(func.length(Survey.comment).desc()).limit(30).all()
     )
-    strategy, _ = await generate_store_strategy(surveys)
+    strategy, _ = await generator(surveys)
     return strategy
+
+
+@router.post("/get_strategy_for_store_by_ids")
+async def get_strategy_for_store_by_ids(
+    request: StrategyByStoreIdsRequest,
+    db: Session = Depends(get_db),
+) -> str:
+    return await _generate_positive_strategy(
+        db,
+        filter_key="store_keys",
+        filter_values=request.store_keys,
+        generator=generate_store_strategy,
+    )
 
 
 class TopKPerformanceColumnResponse(BaseModel):
@@ -550,16 +563,12 @@ async def get_top_k_performance_channels_by_ids(
     request: TopKPerformanceByChannelIdsRequest,
     db: Session = Depends(get_db),
 ) -> str:
-    filter_dict = {
-        "channel_ids": request.channel_ids,
-        "topic_sentiments": [TopicSentiment.POSITIVE],
-    }
-    filtered_query, _, _ = build_optimized_query(db, filter_dict)
-    surveys = (
-        filtered_query.order_by(func.length(Survey.comment).desc()).limit(30).all()
+    return await _generate_positive_strategy(
+        db,
+        filter_key="channel_ids",
+        filter_values=request.channel_ids,
+        generator=generate_channel_strategy,
     )
-    strategy, _ = await generate_channel_strategy(surveys)
-    return strategy
 
 class DeliveryServiceResponse(BaseModel):
     id: int
@@ -643,16 +652,12 @@ async def get_top_k_performance_delivery_services_by_ids(
     request: TopKPerformanceByDeliveryServiceIdsRequest,
     db: Session = Depends(get_db),
 ) -> str:
-    filter_dict = {
-        "delivery_service_ids": request.delivery_service_ids,
-        "topic_sentiments": [TopicSentiment.POSITIVE],
-    }
-    filtered_query, _, _ = build_optimized_query(db, filter_dict)
-    surveys = (
-        filtered_query.order_by(func.length(Survey.comment).desc()).limit(30).all()
+    return await _generate_positive_strategy(
+        db,
+        filter_key="delivery_service_ids",
+        filter_values=request.delivery_service_ids,
+        generator=generate_delivery_service_strategy,
     )
-    strategy, _ = await generate_delivery_service_strategy(surveys)
-    return strategy
 
 @router.get("/get_strategy_v2")
 async def get_strategy_v2(

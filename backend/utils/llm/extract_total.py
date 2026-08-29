@@ -1,10 +1,8 @@
 import os
-import json
-from fastapi.concurrency import run_in_threadpool
-from utils.llm.text_cleaning_helper import _clean_response_content
 from utils.llm.models import TotalResponse
 from utils.llm.client import get_azure_openai_client
 from utils.logger import logger
+from utils.llm.response_parser import _validated_total_response
 
 # Configs for extract departments, topics, total sentiment
 EXTRACT_TOTAL_MODEL = os.getenv("EXTRACT_TOTAL_MODEL", "gpt-4.1-mini-CLS-DataUpload")
@@ -823,63 +821,44 @@ Stop Condition
 
 system_prompt = ecls_system_prompt if IS_ECLS_ENABLED else cls_system_prompt
 
-def _extract_total_sync(text: str) -> tuple[TotalResponse, dict]:
+def _extract_total_with_settings(
+    text: str,
+    *,
+    model: str,
+    temperature: float,
+    log_message: str,
+    log_event: str,
+    failure_message: str,
+) -> tuple[TotalResponse, dict | None]:
     user_prompt = f"""{text}"""
 
     response = get_azure_openai_client().chat.completions.create(
-        model=EXTRACT_TOTAL_MODEL,
+        model=model,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        temperature=EXTRACT_TOTAL_TEMPERATURE,
+        temperature=temperature,
         response_format={"type": "json_object"},
     )
-    response_content = response.choices[0].message.content
-    if response_content is None:
-        # Return empty TotalResponse when no content
-        empty_response = TotalResponse(
-            topics=[],
-            departments=[],
-            keywords=[],
-            overall_sentiment="neutral",
-            cannot_classified=True,
-        )
-        return empty_response, None
-    try:
-        cleaned_response_content = _clean_response_content(response_content)
-        response_json = json.loads(cleaned_response_content)
-        # Handle the case where only cannot_classified=True is returned
-        if response_json.get("cannot_classified") is True:
-            # Fill with empty arrays and default values to match TotalResponse model
-            complete_response = {
-                "topics": [],
-                "departments": [],
-                "keywords": [],
-                "overall_sentiment": "neutral",
-                "cannot_classified": True,
-            }
-            return (
-                TotalResponse.model_validate(complete_response),
-                response.usage.model_dump(),
-            )
+    return _validated_total_response(
+        response,
+        logger=logger,
+        log_message=log_message,
+        log_event=log_event,
+        failure_message=failure_message,
+    )
 
-        # For normal case, ensure cannot_classified is set to False if not present
-        if "cannot_classified" not in response_json:
-            response_json["cannot_classified"] = False
 
-        # Create and return TotalResponse object
-        return TotalResponse.model_validate(response_json), response.usage.model_dump()
-    except Exception as error:
-        logger.error(
-            "Classifier response validation failed",
-            extra={
-                "event": "llm.response_validation_failed",
-                "response_length": len(response_content),
-                "error_type": type(error).__name__,
-            },
-        )
-        raise Exception("Failed to validate classifier response") from error
+def _extract_total_sync(text: str) -> tuple[TotalResponse, dict | None]:
+    return _extract_total_with_settings(
+        text,
+        model=EXTRACT_TOTAL_MODEL,
+        temperature=EXTRACT_TOTAL_TEMPERATURE,
+        log_message="Classifier response validation failed",
+        log_event="llm.response_validation_failed",
+        failure_message="Failed to validate classifier response",
+    )
 
 
 EXTRACT_TOTAL_RETRY_MODEL = os.getenv(
@@ -890,67 +869,12 @@ EXTRACT_TOTAL_RETRY_TEMPERATURE = float(
 )
 
 
-def _extract_total_retry_sync(text: str) -> tuple[TotalResponse, dict]:
-    user_prompt = f"""{text}"""
-    response = get_azure_openai_client().chat.completions.create(
+def _extract_total_retry_sync(text: str) -> tuple[TotalResponse, dict | None]:
+    return _extract_total_with_settings(
+        text,
         model=EXTRACT_TOTAL_RETRY_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
         temperature=EXTRACT_TOTAL_RETRY_TEMPERATURE,
-        response_format={"type": "json_object"},
+        log_message="Classifier retry response validation failed",
+        log_event="llm.retry_response_validation_failed",
+        failure_message="Failed to validate classifier retry response",
     )
-    response_content = response.choices[0].message.content
-    if response_content is None:
-        # Return empty TotalResponse when no content
-        empty_response = TotalResponse(
-            topics=[],
-            departments=[],
-            keywords=[],
-            overall_sentiment="neutral",
-            cannot_classified=True,
-        )
-        return empty_response, None
-    try:
-        cleaned_response_content = _clean_response_content(response_content)
-        response_json = json.loads(cleaned_response_content)
-        # Handle the case where only cannot_classified=True is returned
-        if response_json.get("cannot_classified") is True:
-            # Fill with empty arrays and default values to match TotalResponse model
-            complete_response = {
-                "topics": [],
-                "departments": [],
-                "keywords": [],
-                "overall_sentiment": "neutral",
-                "cannot_classified": True,
-            }
-            return (
-                TotalResponse.model_validate(complete_response),
-                response.usage.model_dump(),
-            )
-
-        # For normal case, ensure cannot_classified is set to False if not present
-        if "cannot_classified" not in response_json:
-            response_json["cannot_classified"] = False
-
-        # Create and return TotalResponse object
-        return TotalResponse.model_validate(response_json), response.usage.model_dump()
-    except Exception as error:
-        logger.error(
-            "Classifier retry response validation failed",
-            extra={
-                "event": "llm.retry_response_validation_failed",
-                "response_length": len(response_content),
-                "error_type": type(error).__name__,
-            },
-        )
-        raise Exception("Failed to validate classifier retry response") from error
-
-
-async def extract_total(text: str) -> tuple[TotalResponse, dict]:
-    return await run_in_threadpool(_extract_total_sync, text)
-
-
-async def extract_total_retry(text: str) -> tuple[TotalResponse, dict]:
-    return await run_in_threadpool(_extract_total_retry_sync, text)

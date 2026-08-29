@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_, distinct, case, and_, cast, Float, extract
+from sqlalchemy import func, case, extract
 from models.Survey import Survey
 from models.Topic import Topic
 from models.Keyword import Keyword

@@ -56,7 +56,6 @@ from utils.analytics import (
     Visibility,
     allowed_filter_operators,
     chart_combination_rules,
-    chart_layout,
     compile_cube_query,
     metric_result_type,
     metric_target_candidates,

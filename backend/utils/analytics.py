@@ -199,9 +199,6 @@ ASSIGNMENT_DIMENSION_FAMILIES = {
     "topic": "topic",
     "topic_assignment_sentiment": "topic",
 }
-CROSS_ASSIGNMENT_DIMENSIONS = frozenset(ASSIGNMENT_DIMENSION_FAMILIES)
-
-
 def validate_identifier(value: str) -> str:
     """Validate the deliberately narrow identifier grammar used by the catalog."""
 
@@ -224,28 +221,6 @@ def allowed_aggregations(field_type: FieldType | str) -> frozenset[Aggregation]:
     elif field_type in {FieldType.DATE, FieldType.TIME}:
         allowed.update({Aggregation.MIN, Aggregation.MAX})
     return frozenset(allowed)
-
-
-def allowed_query_aggregations(
-    field_type: FieldType | str,
-) -> frozenset[Aggregation]:
-    """Return the intentionally small aggregate-query surface for a raw field."""
-
-    field_type = FieldType(field_type)
-    result = {Aggregation.COUNT, Aggregation.DISTINCT_COUNT}
-    if field_type is FieldType.NUMBER:
-        result.update(
-            {
-                Aggregation.SUM,
-                Aggregation.AVERAGE,
-                Aggregation.MIN,
-                Aggregation.MAX,
-                Aggregation.MEDIAN,
-            }
-        )
-    elif field_type in {FieldType.DATE, FieldType.TIME}:
-        result.update({Aggregation.MIN, Aggregation.MAX})
-    return frozenset(result)
 
 
 class _CatalogModel(BaseModel):

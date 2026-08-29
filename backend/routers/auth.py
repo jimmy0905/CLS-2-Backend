@@ -13,7 +13,6 @@ from utils.security import (
     create_or_update_user_from_azure,
 )
 from authlib.integrations.base_client import OAuthError
-from pydantic import BaseModel
 import os
 import logging
 from utils.security import oauth

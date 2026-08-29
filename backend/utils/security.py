@@ -7,8 +7,6 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 import os
-import json
-import uuid
 import logging
 from dotenv import load_dotenv
 from authlib.integrations.starlette_client import OAuth

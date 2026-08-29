@@ -1,4 +1,3 @@
-from re import S
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from utils.database import get_db
@@ -11,11 +10,6 @@ router = APIRouter(
     tags=["topics"],
     dependencies=[Depends(get_db), Depends(get_current_user)],
 )
-
-
-class TopicResponse(BaseModel):
-    id: int
-    topic: str
 
 
 @router.get("/")

@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_, func, or_, select
 from models.Survey import Survey
 from models.Topic import Topic
 from models.Keyword import Keyword
@@ -21,7 +20,7 @@ from utils.conditionFilter import (
     get_filter_params,
 )
 from utils.security import get_current_user, require_admin
-from fastapi_pagination import Page, paginate
+from fastapi_pagination import Page
 from fastapi.responses import StreamingResponse
 from utils.utc import as_utc, resolve_timezone, utc_isoformat, utc_now
 from openpyxl import Workbook
@@ -34,12 +33,6 @@ router = APIRouter(
     tags=["surveys"],
     dependencies=[Depends(get_db), Depends(get_current_user)],
 )
-
-
-class HierarchyResponse(BaseModel):
-    id: int
-    name: str
-    level: int
 
 
 class StoreResponse(BaseModel):

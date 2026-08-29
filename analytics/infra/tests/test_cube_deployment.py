@@ -159,6 +159,7 @@ def test_cube_models_keep_assignment_grains_separate_and_use_stable_percentiles(
     models = {path.stem: path.read_text() for path in model_files}
 
     assert set(models) == {
+        "survey_assignments",
         "survey_departments",
         "survey_keywords",
         "survey_responses",
@@ -200,6 +201,7 @@ def test_cube_models_keep_assignment_grains_separate_and_use_stable_percentiles(
 def test_cube_primary_key_dimensions_are_public():
     model_dir = ROOT / "cube" / "model" / "core"
     expected_primary_keys = {
+        "survey_assignments.combination_id",
         "survey_departments.assignment_id",
         "survey_keywords.assignment_id",
         "survey_responses.id",

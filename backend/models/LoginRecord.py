@@ -1,5 +1,5 @@
 from utils.database import Base
-from sqlalchemy import Column, Integer, ForeignKey, String, DateTime, CHAR 
+from sqlalchemy import Column, Integer, ForeignKey, DateTime, CHAR
 from datetime import datetime
 from utils.utc import utc_now
 

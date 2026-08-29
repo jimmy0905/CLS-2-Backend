@@ -8,11 +8,8 @@ from models.SurveyDepartments import SurveyDepartments
 from models.Keyword import Keyword
 from models.Channel import Channel
 from models.DeliveryService import DeliveryService
-from models.enum.Sentiment import Sentiment, TopicSentiment
 from sqlalchemy import and_
-from sqlalchemy.orm import joinedload
 from sqlalchemy.orm import Query
-from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 from typing import List
 from fastapi import HTTPException, Query
