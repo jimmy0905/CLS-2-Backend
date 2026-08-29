@@ -33,14 +33,12 @@ from features.analytics.model.semantic import (
     AnalyticsValidationError,
     CatalogField,
     CatalogMetric,
-    ChartType,
     FieldType,
     FilterControl,
     FilterSpec,
     MAX_AGGREGATE_ROWS,
     MAX_DIMENSIONS,
     MAX_FILTERS,
-    MAX_SERIES,
     OrderSpec,
     QueryAggregation,
     QuerySpec,
@@ -48,14 +46,12 @@ from features.analytics.model.semantic import (
     SemanticCatalog,
     Visibility,
     allowed_filter_operators,
-    chart_combination_rules,
     compile_cube_query,
     metric_result_type,
     metric_target_candidates,
     metric_targets,
     resolve_query_metric,
     resolve_semantic_view,
-    shape_chart_rows,
     validate_query_fields,
     validate_identifier,
     validate_metric,
@@ -110,37 +106,20 @@ SemanticView = Literal[
 ]
 
 _PROFILE = re.compile(r"^[a-z0-9]+_(?:cls|ecls)$")
-_CHART_TYPES = (
-    "kpi",
-    "table",
-    "bar",
-    "column",
-    "stacked_bar",
-    "grouped_bar",
-    "line",
-    "area",
-    "pie",
-    "donut",
-    "polar_area",
-    "radar",
-    "heatmap",
-)
-
 # OpenAPI descriptions deliberately mirror the public analytics contract.  The
 # Markdown reference gives examples; these strings keep Swagger/ReDoc useful to
 # frontend and integration clients without exposing Cube member names or SQL.
 _ENDPOINT_DESCRIPTIONS = {
     "viewer_catalog": "Return the active immutable catalog visible to the current role. "
     "It includes published fields and logical metric targets plus machine-readable semantic-view, "
-    "query-limit, and chart-shape combination rules. Draft definitions, source keys, "
+    "and query-limit combination rules. Draft definitions, source keys, "
     "and raw payload fields are never exposed.",
     "viewer_availability": "Report field-level non-null counts and availability rates "
     "for one semantic view. Results include only fields visible to the current role "
     "and are cached for up to 15 minutes to avoid repeated reporting scans.",
     "viewer_query_combinations": "Return a finite, curated collection of executable "
     "aggregate query templates. Every template is validated against the active, "
-    "role-visible catalog and includes compatible chart types plus the request fields "
-    "that a frontend may safely override.",
+    "role-visible catalog and identifies the request fields that a frontend may safely override.",
     "viewer_filter_options": "Return distinct non-null values for one published "
     "dimension, with matching-row counts. Optional governed filters and string search "
     "narrow the list for a frontend filter control; use cursor to page beyond 1,000 values.",
@@ -150,18 +129,16 @@ _ENDPOINT_DESCRIPTIONS = {
     "viewer_query_capabilities": "Resolve one logical metric target and aggregation "
     "against the active catalog, then return the exact dimensions, filters, typed operators, "
     "and granular time fields that the same caller may use in an aggregate query.",
-    "viewer_builder_measures": "List everything a chart can measure, flattened across "
+    "viewer_builder_measures": "List everything analytics can measure, flattened across "
     "row grains and with enum dimensions expanded into one target per value. Each entry "
     "reports its available aggregations and whether it survives crossing two assignment "
     "families, so a caller can start from the question rather than the row grain.",
-    "viewer_builder_options": "Report what remains selectable for a partial chart "
+    "viewer_builder_options": "Report what remains selectable for a partial analytics "
     "builder selection, in any order. The response resolves the narrowest row grain that "
     "can answer the selection, lists the still-valid breakdowns, series, time fields and "
-    "intervals, gives the compatible chart types, and returns the executable query once "
-    "the selection is complete.",
-    "viewer_builder_query": "Run a complete chart builder selection. The server chooses "
-    "the narrowest row grain that answers it, validates the chart shape against the data "
-    "shape, caps unbounded series, and reports the row and column layout with the result.",
+    "intervals, and returns the executable query once the selection is complete.",
+    "viewer_builder_query": "Run a complete analytics builder selection. The server chooses "
+    "the narrowest row grain that answers it and returns governed long-format rows.",
     "viewer_records_query": "Return role-authorized, paginated records from the live database. "
     "Survey records exclude soft-deleted rows, preserve the legacy and canonical "
     "sentiment fields, and use EXISTS predicates for assignment filters so each "
@@ -523,30 +500,6 @@ _QUERY_COMBINATION_DEFINITIONS: tuple[dict[str, Any], ...] = (
 )
 
 
-_CHART_DIMENSION_FIELDS = {
-    "topic_sentiment",
-    "sentiment",
-    "keyword_sentiment",
-    "department_sentiment",
-    "topic_assignment_sentiment",
-    "store_name",
-    "store_name_english",
-    "store_name_local",
-    "store_format",
-    "store_type",
-    "store_brand",
-    "region",
-    "area",
-    "province",
-    "territory",
-    "district",
-    "city",
-    "channel_name",
-    "delivery_service_name",
-    "topic",
-    "department",
-    "keyword",
-}
 _ASSIGNMENT_SCOPE_FIELDS = {
     "assignment_id",
     "sentiment",
@@ -602,7 +555,6 @@ def _core_field(
             if semantic_view != "survey_responses" and slug in _ASSIGNMENT_SCOPE_FIELDS
             else "response"
         ),
-        usage="chart" if slug in _CHART_DIMENSION_FIELDS else "table_only",
         filterable=True,
         filter_control=filter_control,
         minimum_search_length=minimum_search_length,
@@ -1055,7 +1007,6 @@ class CatalogFieldOutput(_StrictOutput):
     data_type: FieldType
     visibility: Visibility
     scope: Literal["response", "assignment"]
-    usage: Literal["chart", "table_only"]
     filterable: bool
     filter_control: FilterControl
     minimum_search_length: int
@@ -1098,20 +1049,9 @@ class SemanticViewCombinationOutput(_StrictOutput):
     assignment_sentiment_dimensions: dict[str, str] = Field(default_factory=dict)
 
 
-class ChartCombinationOutput(_StrictOutput):
-    chart_type: str
-    min_dimensions: int
-    max_dimensions: int
-    time_dimension: Literal["required", "optional", "forbidden"]
-    requires_time_granularity: bool
-    numeric_metric_required: bool
-    exact_metric_count: Literal[1]
-
-
 class CatalogCombinationsOutput(_StrictOutput):
     query: QueryCombinationRulesOutput
     semantic_views: tuple[SemanticViewCombinationOutput, ...]
-    charts: tuple[ChartCombinationOutput, ...]
 
 
 class AnalyticsCatalogResponse(_StrictOutput):
@@ -1119,7 +1059,6 @@ class AnalyticsCatalogResponse(_StrictOutput):
     semantic_views: tuple[str, ...]
     fields: tuple[CatalogFieldOutput, ...]
     metric_targets: dict[str, tuple[MetricTargetOutput, ...]]
-    chart_types: tuple[str, ...]
     combinations: CatalogCombinationsOutput
 
 
@@ -1130,7 +1069,6 @@ class QueryCombinationOutput(_StrictOutput):
     semantic_view: str
     grain: str
     query: QuerySpec
-    compatible_chart_types: tuple[str, ...]
     allowed_overrides: tuple[
         Literal["filters", "time_range", "timezone", "order", "limit"], ...
     ]
@@ -1260,7 +1198,6 @@ class BuilderSelectionInput(_StrictInput):
         description="Primary group-by dimension; the 'for every X' of a request.",
     )
     series: BuilderSeriesInput | None = None
-    chart_type: ChartType | None = None
     filters: tuple[FilterSpec, ...] = Field(default=(), max_length=MAX_FILTERS)
     time_range: tuple[str, str] | None = None
     timezone: str | None = None
@@ -1274,8 +1211,6 @@ class BuilderSelectionInput(_StrictInput):
 class BuilderQueryInput(BuilderSelectionInput):
     order: tuple[OrderSpec, ...] = Field(default=(), max_length=8)
     limit: int = Field(default=MAX_AGGREGATE_ROWS, ge=1, le=MAX_AGGREGATE_ROWS)
-    series_limit: int | None = Field(default=None, ge=1, le=MAX_SERIES)
-    fill_empty: bool = False
 
     @model_validator(mode="after")
     def _requires_a_measure(self) -> "BuilderQueryInput":
@@ -1328,7 +1263,6 @@ class BuilderOptionsResponse(_StrictOutput):
     available_series_dimensions: tuple[BuilderDimensionOutput, ...]
     available_time_fields: tuple[BuilderDimensionOutput, ...]
     available_intervals: tuple[str, ...]
-    compatible_chart_types: tuple[str, ...]
     query: QuerySpec | None
     warnings: tuple[str, ...]
 
@@ -1943,7 +1877,6 @@ def _catalog_from_version(
                 data_type=item["dataType"],
                 visibility=item["visibility"],
                 scope=item.get("scope", "response"),
-                usage=item.get("usage", "table_only"),
                 filterable=item.get("filterable", True),
                 filter_control=item.get("filterControl", "input"),
                 minimum_search_length=item.get("minimumSearchLength", 0),
@@ -2199,7 +2132,6 @@ def _query_schema(
             "type": result_type,
             "key": "value",
         },
-        "layout": None,
     }
 
 
@@ -2347,8 +2279,6 @@ async def _execute_query(
         schema = _query_schema(query, catalog, role)
         columns = _column_metadata(schema)
         rows = _format_rows(formatted_result["rows"], query, columns)
-        rows, layout = shape_chart_rows(rows, query)
-        schema["layout"] = layout.model_dump() if layout is not None else None
     except _AnalyticsCatalogChangedError as error:
         query_log.status = "failed"
         query_log.error_message = "Analytics catalog changed during query execution"
@@ -2646,18 +2576,7 @@ def _builder_query(
         time_granularity=time_granularity,
         order=selection.order,
         limit=selection.limit,
-        chart_type=selection.chart_type,
-        series_limit=selection.series_limit,
-        fill_empty=selection.fill_empty,
     )
-
-
-def _compatible_chart_types(
-    query: QuerySpec, catalog: SemanticCatalog, role: str
-) -> tuple[str, ...]:
-    """Chart type is a client rendering choice, not a governed query constraint."""
-
-    return _CHART_TYPES
 
 
 def _breakdown_is_honest(
@@ -2723,20 +2642,18 @@ def _builder_options(
                 f"{selection.aggregation.value} is not available for {key}"
             )
 
-    chart_types: tuple[str, ...] = ()
     query: QuerySpec | None = None
 
     # Offer dimensions from every grain. A current narrow selection can still
     # add another assignment family when the metric survives the combination
     # grain; _breakdown_is_honest filters unsafe additions below.
     scoped_views = SEMANTIC_VIEW_PREFERENCE
-    chartable = _distinct_by_slug(
+    selectable_dimensions = _distinct_by_slug(
         field
         for view in scoped_views
         for field in catalog.fields
         if field.semantic_view == view
             and field.published
-        and field.usage == "chart"
         and (role == "admin" or field.visibility is Visibility.VIEWER)
     )
     series_dimension = (
@@ -2745,13 +2662,13 @@ def _builder_options(
     # A dimension already used on one axis cannot also occupy the other.
     breakdowns = tuple(
         _builder_dimension_output(field)
-        for field in chartable
+        for field in selectable_dimensions
         if field.slug != series_dimension
         and _breakdown_is_honest(selection, catalog, field, role)
     )
     series_dimensions = tuple(
         _builder_dimension_output(field)
-        for field in chartable
+        for field in selectable_dimensions
         if field.slug != selection.breakdown
         and _breakdown_is_honest(selection, catalog, field, role)
     )
@@ -2785,7 +2702,6 @@ def _builder_options(
                 ),
                 semantic_view,
             )
-            chart_types = _compatible_chart_types(candidate, catalog, role)
             query = validate_query(candidate, catalog, role)
         except (AnalyticsValidationError, ValueError) as error:
             warnings.append(str(error))
@@ -2802,7 +2718,6 @@ def _builder_options(
         available_series_dimensions=series_dimensions,
         available_time_fields=time_fields,
         available_intervals=_BUILDER_INTERVALS,
-        compatible_chart_types=chart_types,
         query=query,
         warnings=tuple(warnings),
     )
@@ -2854,7 +2769,6 @@ def _catalog_response(
             data_type=field.data_type,
             visibility=field.visibility,
             scope=field.scope,
-            usage=field.usage,
             filterable=field.filterable,
             filter_control=field.filter_control,
             minimum_search_length=field.minimum_search_length,
@@ -2886,16 +2800,11 @@ def _catalog_response(
         _semantic_view_combination(catalog, semantic_view, role)
         for semantic_view in sorted(catalog.views)
     )
-    chart_rules = tuple(
-        ChartCombinationOutput(**rule)
-        for rule in chart_combination_rules()
-    )
     return AnalyticsCatalogResponse(
         model_version=model_version,
         semantic_views=tuple(sorted(catalog.views)),
         fields=fields,
         metric_targets=targets,
-        chart_types=_CHART_TYPES,
         combinations=CatalogCombinationsOutput(
             query=QueryCombinationRulesOutput(
                 max_dimensions=MAX_DIMENSIONS,
@@ -2907,7 +2816,6 @@ def _catalog_response(
                 time_dimension_must_not_be_dimension=True,
             ),
             semantic_views=semantic_view_combinations,
-            charts=chart_rules,
         ),
     )
 
@@ -2975,21 +2883,12 @@ def _query_capabilities_response(
             data_type=field.data_type,
             visibility=field.visibility,
             scope=field.scope,
-            usage=field.usage,
             filterable=field.filterable,
             filter_control=field.filter_control,
             minimum_search_length=field.minimum_search_length,
             time_dimension=field.time_dimension,
         )
 
-    table_only_count = sum(field.usage == "table_only" for field in fields)
-    warnings = (
-        (
-            f"{table_only_count} dimensions are limited to table visualizations",
-        )
-        if table_only_count
-        else ()
-    )
     return QueryCapabilitiesResponse(
         model_version=model_version,
         semantic_view=payload.semantic_view,
@@ -3019,7 +2918,7 @@ def _query_capabilities_response(
             output(field) for field in fields if field.time_dimension
         ),
         result_type=result_type,
-        warnings=warnings,
+        warnings=(),
     )
 
 
@@ -3049,7 +2948,6 @@ def _query_combinations_response(
                 semantic_view=query.semantic_view,
                 grain=_SEMANTIC_VIEW_GRAINS[query.semantic_view],
                 query=query,
-                compatible_chart_types=_compatible_chart_types(query, catalog, role),
                 allowed_overrides=definition["allowed_overrides"],
             )
         )
@@ -3101,15 +2999,7 @@ def _chart_query(
     values.update(update)
     dimensions = tuple(values["dimensions"])
 
-    requested_limit = int(values["limit"])
-    query_limit = min(requested_limit, 1_000)
-    if chart["chart_type"] in {"pie", "donut"}:
-        # The chart contract is always metric-desc top 12; an additional
-        # governed aggregate query computes the remaining categories.
-        values["order"] = ({"member": "value", "direction": "desc"},)
-        # Fetch one sentinel group so exactly twelve categories can be
-        # distinguished from a real tail that must be represented as Other.
-        query_limit = 13
+    query_limit = min(int(values["limit"]), MAX_AGGREGATE_ROWS)
     query = QuerySpec(
         semantic_view=chart["semantic_view"],
         dimensions=dimensions,
@@ -3122,52 +3012,9 @@ def _chart_query(
         time_granularity=values.get("time_granularity"),
         order=values["order"],
         limit=query_limit,
-        # Carrying the type lets the shared shaping report the row/column layout.
-        # A slice chart is capped here to twelve and its remainder is replaced by
-        # the accurate total from the follow-up query in the endpoint.
-        chart_type=chart["chart_type"],
     )
     query = validate_query(query, catalog, role)
     return query, compile_cube_query(query, catalog, role, _validated=True)
-
-
-def _shape_chart_rows(
-    chart: dict[str, Any],
-    response: dict[str, Any],
-    other_value: Any = None,
-    other_response: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    if chart["chart_type"] not in {"pie", "donut"}:
-        return response
-    definition = chart.get("definition") or {}
-    dimensions = list(definition.get("dimensions") or [])
-    rows = response.get("rows") or []
-    if len(dimensions) != 1 or not definition.get("metric"):
-        return response
-    dimension = dimensions[0]
-    shaped = rows[:12]
-    has_other = isinstance(other_value, (int, float)) and not isinstance(
-        other_value, bool
-    )
-    if has_other:
-        other_total = float(other_value)
-    else:
-        other_total = 0.0
-    if has_other:
-        shaped.append(
-            {
-                dimension: "Other",
-                "value": int(other_total) if other_total.is_integer() else other_total,
-            }
-        )
-        if other_response:
-            metadata = other_response.get("warnings")
-            if isinstance(metadata, list):
-                response.setdefault("warnings", []).extend(
-                    str(item)[:1_000] for item in metadata[:20]
-                )
-    response["rows"] = shaped
-    return response
 
 
 def _current_published_records(
@@ -3215,7 +3062,6 @@ def _catalog_from_records(
             data_type=field.data_type,
             visibility=field.visibility,
             scope=(getattr(field, "definition", None) or {}).get("scope", "response"),
-            usage=(getattr(field, "definition", None) or {}).get("usage", "table_only"),
             filterable=(getattr(field, "definition", None) or {}).get("filterable", True),
             filter_control=(getattr(field, "definition", None) or {}).get(
                 "filter_control", "input"
@@ -3488,7 +3334,6 @@ def _cube_catalog_payload(
                 "sourceKey": field.source_key,
                 "visibility": field.visibility,
                 "scope": (getattr(field, "definition", None) or {}).get("scope", "response"),
-                "usage": (getattr(field, "definition", None) or {}).get("usage", "table_only"),
                 "filterable": (getattr(field, "definition", None) or {}).get("filterable", True),
                 "filterControl": (getattr(field, "definition", None) or {}).get(
                     "filter_control", "input"
@@ -4086,63 +3931,7 @@ async def get_published_chart_data(
         pinned_catalog=catalog,
     )
     response["chart"] = chart
-    other_value: Any = None
-    other_response: dict[str, Any] | None = None
-    if chart["chart_type"] in {"pie", "donut"} and len(response.get("rows") or []) > 12:
-        definition = chart.get("definition") or {}
-        dimension = definition["dimensions"][0]
-        top_values = tuple(
-            row.get(dimension)
-            for row in response["rows"][:12]
-            if row.get(dimension) is not None
-        )
-        if top_values:
-            remainder_query = query.model_copy(
-                update={
-                    "dimensions": (),
-                    "filters": (
-                        *query.filters,
-                        FilterSpec(
-                            member=dimension,
-                            operator="not_in",
-                            values=top_values,
-                        ),
-                    ),
-                    "time_granularity": None,
-                    "order": (),
-                    "limit": 1,
-                }
-            )
-            remainder_cube_query = compile_cube_query(
-                remainder_query, catalog, role
-            )
-            # Cube combines top-level filters with AND. The tail must include
-            # both non-top values and the NULL category, so make just this
-            # governed exclusion an explicit OR group.
-            exclusion = remainder_cube_query["filters"].pop()
-            remainder_cube_query["filters"].append(
-                {
-                    "or": [
-                        exclusion,
-                        {
-                            "member": f"{chart['semantic_view']}.{dimension}",
-                            "operator": "notSet",
-                        },
-                    ]
-                }
-            )
-            remainder = await _execute_query(
-                remainder_query,
-                db,
-                current_user,
-                cube_query_override=remainder_cube_query,
-                pinned_version=version,
-                pinned_catalog=catalog,
-            )
-            if remainder.get("rows"):
-                other_value = remainder["rows"][0].get("value")
-                other_response = remainder
-    return _shape_chart_rows(chart, response, other_value, other_response)
+    return response
 
 
 def _metadata_now() -> int:

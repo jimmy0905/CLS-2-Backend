@@ -107,7 +107,7 @@ Dimension 與 time value 會保留 `schema` 宣告的 key。未選 time dimensio
 
 ### `GET /analytics/catalog`
 
-回傳目前角色可使用的 active immutable catalog，包括 active model version、semantic view、可見 field、可執行的邏輯 `metric_targets` 與支援 chart type。不會揭露 candidate header、admin-only field、raw payload key、SQL expression、governed Cube metric slug 或 draft definition。每個 field 另提供 `filter_control`（`select`、`search` 或 `input`）及 `minimum_search_length`；前端必須依此決定是否可載入 option。
+回傳目前角色可使用的 active immutable catalog，包括 active model version、semantic view、可見 field 與可執行的邏輯 `metric_targets`。不會揭露 candidate header、admin-only field、raw payload key、SQL expression、governed Cube metric slug 或 draft definition。每個 field 另提供 `filter_control`（`select`、`search` 或 `input`）及 `minimum_search_length`；前端必須依此決定是否可載入 option。
 
 在建立探索 UI 前先呼叫此 endpoint。用戶端只能將本 response 回傳的 slug 送至 query endpoint。`combinations` 提供可供機器讀取的 query limit 與 grain definition；chart renderer compatibility 由前端依 response shape 決定。
 
@@ -208,18 +208,7 @@ Survey page 上限 100，預設 `reported_at DESC, id DESC`；master-data page �
 
 以 numeric ID 執行已發佈 chart。Chart 的 dimension、metric、aggregation 固定於已發佈 definition；caller 只可提供安全的 exploration override：`filters`、`time_range`、`time_granularity`、`timezone`、`order` 與 `limit`。
 
-Response 包含 `chart` 及與 `/analytics/query` 相同的 `schema`、flat `rows`、`row_count`、`warnings`、freshness field。Pie／donut 會回傳前 12 個 category 加上 `Other`。
-
-| Query shape | 相容 chart type |
-| --- | --- |
-| 無時間、0 個 dimension | `kpi`、`table` |
-| 無時間、1 個 dimension | `bar`、`column`、`line`、`area`、`pie`、`donut`、`polar_area`、`radar`、`table` |
-| 無時間、2 個 dimension | `stacked_bar`、`grouped_bar`、`heatmap`、`table` |
-| 無時間、3 個 dimension | `table` |
-| 有粒度時間、0–1 個一般 dimension | `line`、`area`、`table` |
-| 有粒度時間、2–3 個一般 dimension | `table` |
-
-這是前端 renderer 的選擇矩陣；`/analytics/query` 不以 `chart_type` 驗證 dimension/metric shape，後端只回傳 governed schema 與 flat rows。選擇 time dimension 時，`line` 與 `area` 仍需要 time granularity；無時間的一般分類資料也可選用它們。除 `table` 與 `kpi` 外 metric result 必須為 numeric。`scatter` 與 `store_map` 不受支援。不存在或不可見的 chart 回傳 `404`。
+Response 包含 `chart` 及與 `/analytics/query` 相同的 `schema`、flat `rows`、`row_count`、`warnings`、freshness field。後端不按 `chart_type` 截斷 series、加入 `Other` 或補零；renderer 使用完整 governed rows 自行呈現。不存在或不可見的 chart 回傳 `404`。
 
 ### `POST /analytics/drilldown`
 

@@ -66,11 +66,10 @@ Content-Type: application/json
 Catalog field 包含：
 
 - `scope`：`response` 或 `assignment`
-- `usage`：`chart` 或 `table_only`
 - `filterable`：是否可用於篩選
 - `time_dimension`：是否可作為具粒度的時間
 
-受治理 field 可以是 dimension，卻不是 metric target。identifier、free-text、coordinate 與其他高 cardinality field 通常是 `table_only`；在適當情況下，它們仍可用於 table 及受控 filter。
+受治理 field 可以是 dimension，卻不是 metric target。所有角色可見的 dimension 都可用於 query；renderer 自行決定如何呈現 identifier、free-text、coordinate 與其他高 cardinality 欄位。
 
 ## 查詢範例
 
@@ -171,16 +170,6 @@ Catalog field 包含：
       "label": "Survey Count",
       "type": "number",
       "key": "value"
-    },
-    "layout": {
-      "chart_type": null,
-      "row_dimension": "store_format",
-      "column_dimension": null,
-      "value_key": "value",
-      "series_limit": null,
-      "truncated_series": false,
-      "other_series_label": null,
-      "filled_cells": 0
     }
   },
   "rows": [{"store_format": "Mall", "value": 42}],
@@ -192,27 +181,6 @@ Catalog field 包含：
 
 未選擇時間時，`schema.time_dimension` 一律為 `null`。即使結果為空，`rows` 與 `warnings` 仍會存在。
 
-`schema.layout` 會標示座標軸，因此用戶端毋須從 long-format row 推導它們。交叉表會將第一個 dimension 放在列，第二個放在欄；time chart 會將 time bucket 放在列，其餘 dimension 放在欄，使其中每個值各形成一條線。只有 KPI 等沒有需要排版的內容時，它才是 `null`。
+## Renderer-neutral query
 
-## 圖表相容性
-
-| 形狀 | 相容圖表類型 |
-| --- | --- |
-| 無時間、0 個 dimension | KPI、table |
-| 無時間、1 個 dimension | bar、column、line、area、pie、donut、polar area、radar、table |
-| 無時間、2 個 dimension | stacked bar、grouped bar、heatmap、table |
-| 無時間、3 個 dimension | table |
-| 有時間、0–1 個一般 dimension | line、area、table |
-| 有時間、2–3 個一般 dimension | table |
-
-除 table 與 KPI 外，結果必須為數值。任何選取的 `table_only` dimension 都會將結果限制為 table。`scatter` 與 `store_map` 不屬於公開圖表契約。
-
-Aggregate query 的 `chart_type` 為選填 renderer metadata；前端應依回傳資料形狀選擇圖型，伺服器不以它驗證或拒絕 query。
-
-### Series 上限與格線補值
-
-圖型的相容性由 frontend renderer 依 response shape 決定，後端不以 `chart_type` 拒絕 query。圖表在查詢失效前很久就可能難以閱讀，因此帶有 series axis 的 chart type 會設上限：pie 與 donut 保留前十二個 slice，將其餘彙總為 `Other`，因為部分仍必須加總為整體；line、area、stacked bar、grouped bar 與 heatmap 保留前十個 series 並捨棄其餘，因為彙總額外的線或欄沒有意義。`series_limit` 可將上限覆寫至最多五十；`schema.layout` 同時回報套用的上限及是否有內容遭捨棄。
-
-上限針對無界 dimension 而設。`keyword` 可有數萬個值，`store_name_english` 可有數百個值；`topic` 與 `department` 則來自約二十與十個項目的封閉擷取清單，所以預設永不截斷。
-
-設定 `fill_empty` 可將交叉表補成完整格線，為已觀察到但沒有回傳資料的 row／column 組合加入零值列。它需要 column axis，否則會被拒絕。
+`/analytics/query` 與 builder query 只接受 governed metric、dimension、filter、time、order 與 limit，並回傳 long-format rows。它們不接受 `chart_type`、`series_limit` 或 `fill_empty`，也不提供 layout、series truncation、`Other` bucket 或補零格線。前端 renderer 依 `schema.dimensions`、`schema.time_dimension`、`schema.metric` 與 rows 自行選圖及處理高 cardinality 資料。

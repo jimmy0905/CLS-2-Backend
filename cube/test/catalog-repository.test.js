@@ -240,7 +240,7 @@ test('published local members are inserted without evaluating metadata as code',
   assert.match(result, /type: avg/);
   assert.match(result, /query_target: score/);
   assert.match(result, /public_aggregation: average/);
-  assert.match(result, /usage: table_only/);
+  assert.doesNotMatch(result, /usage:/);
 });
 
 test('metrics resolve fixed core sources and weights without catalog field duplication', () => {

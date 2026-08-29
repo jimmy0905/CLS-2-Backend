@@ -4,13 +4,6 @@
       "AnalyticsCatalogResponse": {
         "additionalProperties": false,
         "properties": {
-          "chart_types": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Chart Types",
-            "type": "array"
-          },
           "combinations": {
             "$ref": "#/components/schemas/CatalogCombinationsOutput"
           },
@@ -48,7 +41,6 @@
           "semantic_views",
           "fields",
           "metric_targets",
-          "chart_types",
           "combinations"
         ],
         "title": "AnalyticsCatalogResponse",
@@ -364,13 +356,6 @@
             "title": "Available Time Fields",
             "type": "array"
           },
-          "compatible_chart_types": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Compatible Chart Types",
-            "type": "array"
-          },
           "grain": {
             "anyOf": [
               {
@@ -430,7 +415,6 @@
           "available_series_dimensions",
           "available_time_fields",
           "available_intervals",
-          "compatible_chart_types",
           "query",
           "warnings"
         ],
@@ -461,37 +445,6 @@
             ],
             "description": "Primary group-by dimension; the 'for every X' of a request.",
             "title": "Breakdown"
-          },
-          "chart_type": {
-            "anyOf": [
-              {
-                "enum": [
-                  "kpi",
-                  "table",
-                  "bar",
-                  "column",
-                  "stacked_bar",
-                  "grouped_bar",
-                  "line",
-                  "area",
-                  "pie",
-                  "donut",
-                  "polar_area",
-                  "radar",
-                  "heatmap"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Chart Type"
-          },
-          "fill_empty": {
-            "default": false,
-            "title": "Fill Empty",
-            "type": "boolean"
           },
           "filters": {
             "default": [],
@@ -537,19 +490,6 @@
                 "type": "null"
               }
             ]
-          },
-          "series_limit": {
-            "anyOf": [
-              {
-                "maximum": 50.0,
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Series Limit"
           },
           "time_range": {
             "anyOf": [
@@ -611,32 +551,6 @@
             ],
             "description": "Primary group-by dimension; the 'for every X' of a request.",
             "title": "Breakdown"
-          },
-          "chart_type": {
-            "anyOf": [
-              {
-                "enum": [
-                  "kpi",
-                  "table",
-                  "bar",
-                  "column",
-                  "stacked_bar",
-                  "grouped_bar",
-                  "line",
-                  "area",
-                  "pie",
-                  "donut",
-                  "polar_area",
-                  "radar",
-                  "heatmap"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Chart Type"
           },
           "filters": {
             "default": [],
@@ -761,13 +675,6 @@
       "CatalogCombinationsOutput": {
         "additionalProperties": false,
         "properties": {
-          "charts": {
-            "items": {
-              "$ref": "#/components/schemas/ChartCombinationOutput"
-            },
-            "title": "Charts",
-            "type": "array"
-          },
           "query": {
             "$ref": "#/components/schemas/QueryCombinationRulesOutput"
           },
@@ -781,8 +688,7 @@
         },
         "required": [
           "query",
-          "semantic_views",
-          "charts"
+          "semantic_views"
         ],
         "title": "CatalogCombinationsOutput",
         "type": "object"
@@ -834,14 +740,6 @@
             "title": "Time Dimension",
             "type": "boolean"
           },
-          "usage": {
-            "enum": [
-              "chart",
-              "table_only"
-            ],
-            "title": "Usage",
-            "type": "string"
-          },
           "visibility": {
             "$ref": "#/components/schemas/Visibility"
           }
@@ -853,7 +751,6 @@
           "data_type",
           "visibility",
           "scope",
-          "usage",
           "filterable",
           "filter_control",
           "minimum_search_length",
@@ -938,56 +835,6 @@
           "name"
         ],
         "title": "ChannelResponse",
-        "type": "object"
-      },
-      "ChartCombinationOutput": {
-        "additionalProperties": false,
-        "properties": {
-          "chart_type": {
-            "title": "Chart Type",
-            "type": "string"
-          },
-          "exact_metric_count": {
-            "const": 1,
-            "title": "Exact Metric Count",
-            "type": "integer"
-          },
-          "max_dimensions": {
-            "title": "Max Dimensions",
-            "type": "integer"
-          },
-          "min_dimensions": {
-            "title": "Min Dimensions",
-            "type": "integer"
-          },
-          "numeric_metric_required": {
-            "title": "Numeric Metric Required",
-            "type": "boolean"
-          },
-          "requires_time_granularity": {
-            "title": "Requires Time Granularity",
-            "type": "boolean"
-          },
-          "time_dimension": {
-            "enum": [
-              "required",
-              "optional",
-              "forbidden"
-            ],
-            "title": "Time Dimension",
-            "type": "string"
-          }
-        },
-        "required": [
-          "chart_type",
-          "min_dimensions",
-          "max_dimensions",
-          "time_dimension",
-          "requires_time_granularity",
-          "numeric_metric_required",
-          "exact_metric_count"
-        ],
-        "title": "ChartCombinationOutput",
         "type": "object"
       },
       "ChartDataInput": {
@@ -2860,13 +2707,6 @@
             "title": "Allowed Overrides",
             "type": "array"
           },
-          "compatible_chart_types": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Compatible Chart Types",
-            "type": "array"
-          },
           "description": {
             "title": "Description",
             "type": "string"
@@ -2898,7 +2738,6 @@
           "semantic_view",
           "grain",
           "query",
-          "compatible_chart_types",
           "allowed_overrides"
         ],
         "title": "QueryCombinationOutput",
@@ -3013,33 +2852,6 @@
           "aggregation": {
             "$ref": "#/components/schemas/QueryAggregation"
           },
-          "chart_type": {
-            "anyOf": [
-              {
-                "enum": [
-                  "kpi",
-                  "table",
-                  "bar",
-                  "column",
-                  "stacked_bar",
-                  "grouped_bar",
-                  "line",
-                  "area",
-                  "pie",
-                  "donut",
-                  "polar_area",
-                  "radar",
-                  "heatmap"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Optional intended rendering. When present the server validates the dimension, time, and metric-type shape against the chart contract and reports the row/column layout with the result.",
-            "title": "Chart Type"
-          },
           "dimensions": {
             "default": [],
             "items": {
@@ -3048,12 +2860,6 @@
             "maxItems": 3,
             "title": "Dimensions",
             "type": "array"
-          },
-          "fill_empty": {
-            "default": false,
-            "description": "Complete a cross tabulation into a full grid by adding zero-valued rows for observed row/column pairs that returned no data.",
-            "title": "Fill Empty",
-            "type": "boolean"
           },
           "filters": {
             "default": [],
@@ -3097,20 +2903,6 @@
             "deprecated": true,
             "description": "Deprecated compatibility field. The server infers the row grain from the metric, dimensions, time dimension, and filters; any supplied value is ignored.",
             "title": "Semantic View"
-          },
-          "series_limit": {
-            "anyOf": [
-              {
-                "maximum": 50.0,
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Optional cap on the number of series a chart renders. Applies to the column dimension of a cross tabulation and to the series dimension of a time chart; unbounded dimensions such as keyword need it.",
-            "title": "Series Limit"
           },
           "time_dimension": {
             "anyOf": [
@@ -5975,7 +5767,7 @@
     },
     "/analytics/builder/measures": {
       "get": {
-        "description": "List everything a chart can measure, flattened across row grains and with enum dimensions expanded into one target per value. Each entry reports its available aggregations and whether it survives crossing two assignment families, so a caller can start from the question rather than the row grain.",
+        "description": "List everything analytics can measure, flattened across row grains and with enum dimensions expanded into one target per value. Each entry reports its available aggregations and whether it survives crossing two assignment families, so a caller can start from the question rather than the row grain.",
         "operationId": "get_builder_measures_analytics_builder_measures_get",
         "responses": {
           "200": {
@@ -6002,7 +5794,7 @@
     },
     "/analytics/builder/options": {
       "post": {
-        "description": "Report what remains selectable for a partial chart builder selection, in any order. The response resolves the narrowest row grain that can answer the selection, lists the still-valid breakdowns, series, time fields and intervals, gives the compatible chart types, and returns the executable query once the selection is complete.",
+        "description": "Report what remains selectable for a partial analytics builder selection, in any order. The response resolves the narrowest row grain that can answer the selection, lists the still-valid breakdowns, series, time fields and intervals, and returns the executable query once the selection is complete.",
         "operationId": "post_builder_options_analytics_builder_options_post",
         "requestBody": {
           "content": {
@@ -6056,7 +5848,7 @@
     },
     "/analytics/builder/query": {
       "post": {
-        "description": "Run a complete chart builder selection. The server chooses the narrowest row grain that answers it, validates the chart shape against the data shape, caps unbounded series, and reports the row and column layout with the result.",
+        "description": "Run a complete analytics builder selection. The server chooses the narrowest row grain that answers it and returns governed long-format rows.",
         "operationId": "post_builder_query_analytics_builder_query_post",
         "requestBody": {
           "content": {
@@ -6105,7 +5897,7 @@
     },
     "/analytics/catalog": {
       "get": {
-        "description": "Return the active immutable catalog visible to the current role. It includes published fields and logical metric targets plus machine-readable semantic-view, query-limit, and chart-shape combination rules. Draft definitions, source keys, and raw payload fields are never exposed.",
+        "description": "Return the active immutable catalog visible to the current role. It includes published fields and logical metric targets plus machine-readable semantic-view, and query-limit combination rules. Draft definitions, source keys, and raw payload fields are never exposed.",
         "operationId": "get_catalog_analytics_catalog_get",
         "responses": {
           "200": {
@@ -6628,7 +6420,7 @@
     },
     "/analytics/query-combinations": {
       "get": {
-        "description": "Return a finite, curated collection of executable aggregate query templates. Every template is validated against the active, role-visible catalog and includes compatible chart types plus the request fields that a frontend may safely override.",
+        "description": "Return a finite, curated collection of executable aggregate query templates. Every template is validated against the active, role-visible catalog and identifies the request fields that a frontend may safely override.",
         "operationId": "get_query_combinations_analytics_query_combinations_get",
         "parameters": [
           {

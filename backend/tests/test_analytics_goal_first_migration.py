@@ -12,7 +12,7 @@ import sqlalchemy as sa
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from features.analytics.endpoints.analytics import _catalog_from_records
-from features.analytics.model.semantic import metric_targets, validate_chart_definition
+from features.analytics.model.semantic import QuerySpec, metric_targets, validate_query
 
 
 MIGRATION_PATH = (
@@ -61,15 +61,9 @@ def test_goal_first_defaults_have_unique_stable_slugs_and_public_targets() -> No
             definition["aggregation"],
         ) in published[chart["semantic_view"]]
         assert definition["metric"] not in {"id", "assignment_id", "survey_id"}
-        validate_chart_definition(
-            chart["chart_type"],
-            definition["dimensions"],
-            definition["metric"],
-            definition["aggregation"],
+        assert validate_query(
+            QuerySpec(semantic_view=chart["semantic_view"], **definition),
             catalog,
-            semantic_view=chart["semantic_view"],
-            time_dimension=definition.get("time_dimension"),
-            time_granularity=definition.get("time_granularity"),
         )
 
 

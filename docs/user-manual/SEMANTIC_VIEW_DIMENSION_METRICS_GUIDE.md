@@ -10,7 +10,7 @@
 
 1. API 語法是否合法；
 2. 組合的分析意義是否正確；
-3. 組合是否符合指定 Chart 類型的形狀要求。
+3. renderer 如何以結果資料呈現。
 
 最重要的使用者選擇次序是：
 
@@ -697,8 +697,8 @@ metric target，命名為 `<field>_<value>`：
 | 一次看到全部情緒分佈 | `dimensions: ["topic_sentiment"]` + `survey/count` | 用掉 1 個 |
 | 只看 MIXED，並用兩個維度交叉 | `metric: "topic_sentiment_mixed"` | 用掉 0 個 |
 
-因為 Chart 最多只能有 2 個 Dimension 畫成交叉表，所以「每個 keyword ×
-每個 department 的 MIXED 數量」只能用後者。
+由於 aggregate query 最多三個 Dimension，「每個 keyword × 每個 department
+的 MIXED 數量」可用後者而不佔用額外分組名額。
 
 Enum target **只提供 `count`**。情緒是字串，加總或平均它沒有意義；要平均
 數值，就直接測量那個數值欄位。
@@ -714,72 +714,11 @@ Enum target **只提供 `count`**。情緒是字串，加總或平均它沒有�
 一般字串欄位（例如 `store_name_english`、`comment`）不會被展開，因為它
 沒有封閉值域。
 
-## 13. Chart Dimension／Metric 形狀限制
+## 13. Renderer-neutral aggregate query
 
-即使 `/analytics/query` 合法，也不代表可以發布成所有 Chart 類型。
+`/analytics/query` 和 builder query 的上限為三個 Dimension、一個 metric／aggregation，並依 visibility、grain、filter 與 time 規則驗證。所有可見 Dimension 都可選取，包括 ID、文字與座標欄位。
 
-| Query shape | 可用 Chart |
-| --- | --- |
-| 無 time、0 Dimensions | `kpi`, `table` |
-| 無 time、1 Dimension | `bar`, `column`, `line`, `area`, `pie`, `donut`, `polar_area`, `radar`, `table` |
-| 無 time、2 Dimensions | `stacked_bar`, `grouped_bar`, `heatmap`, `table` |
-| 無 time、3 Dimensions | `table` |
-| 有 granular time、0–1 普通 Dimensions | `line`, `area`, `table` |
-| 有 granular time、2–3 普通 Dimensions | `table` |
-
-所有 Chart 都只有一個 Metric/Aggregation。圖型選擇由 frontend renderer
-依 response shape 決定，後端不以 `chart_type` 驗證組合。`line`／`area`
-在有 time dimension 時需要 `time_granularity`，無 time 的單一分類 dimension
-亦可選用。除了 `table` 和 `kpi`，Metric 結果必須是 number。`scatter` 與
-`store_map` 已移除。
-
-例如以下 aggregate query 合法：
-
-```json
-{
-  "dimensions": ["store_format", "region"],
-  "metric": "survey",
-  "aggregation": "count"
-}
-```
-
-但不能用作 Pie Chart，因為 Pie 只接受一個 Dimension。它可以用於
-Table、Stacked Bar、Grouped Bar 或 Heatmap。
-
-`/analytics/query` 的 `chart_type` 是選填的 renderer metadata。前端根據
-response shape 選圖；伺服器不會用它驗證或拒絕 query。
-
-### 13.1 Series 上限與補空格
-
-即使查詢完全合法，圖也可能因為系列太多而無法閱讀，所以有系列軸的圖型
-會自動截斷：
-
-| 圖型 | 預設上限 | 剩下的部分 |
-| --- | --- | --- |
-| `pie`, `donut` | 12 | 合併成 `Other`，因為各部分必須加總成整體 |
-| `line`, `area`, `stacked_bar`, `grouped_bar`, `heatmap` | 10 | 直接捨棄，因為多一條「其他」線沒有意義 |
-
-上限是為**無界的軸**而存在。以本專案實際資料為例：`keyword` 有 22,623
-個值、`store_name_english` 有 343 個；而 `topic`（21 個）與
-`department`（9 個）來自抽取 prompt 的封閉清單，在預設上限下永遠不會被
-截斷。
-
-`series_limit` 可覆寫上限（最高 50），`schema.layout.truncated_series`
-會告訴你有沒有東西被丟掉。
-
-`fill_empty: true` 會把交叉表補成完整矩陣：用實際出現的 row 值 × col 值
-組合，為沒有資料的格子補上 0。它需要有欄軸，否則回 `422`。
-
-### 13.2 `schema.layout`：哪個維度是 row、哪個是 col
-
-查詢結果是長格式（每行一個組合），所以回應會附上 `layout` 說明軸的
-對應，前端不需要自己猜：
-
-| 查詢形狀 | `row_dimension` | `column_dimension` |
-| --- | --- | --- |
-| 2 個 Dimensions | 第 1 個 | 第 2 個 |
-| 有 granular time + 1 Dimension | 時間欄位 | 那個 Dimension（每個值一條線） |
-| 1 個 Dimension | 該 Dimension | `null` |
+Query request 不接受 `chart_type`、`series_limit` 或 `fill_empty`，response 也不提供 `schema.layout`、自動 top-N、`Other` bucket 或補零格線。前端以 `schema.dimensions`、`schema.time_dimension`、`schema.metric` 與 long-format rows 選擇 renderer、軸、series 與高 cardinality 策略。
 
 ## 14. 實際選擇流程
 
@@ -825,8 +764,7 @@ reported_at, channel_name
 2. 選主分組        POST /analytics/builder/options
 3. 選第二分組或時間間隔  POST /analytics/builder/options
 4. 選聚合方式      POST /analytics/builder/options
-5. 選圖型          POST /analytics/builder/options -> compatible_chart_types
-6. 執行            POST /analytics/builder/query
+5. 執行            POST /analytics/builder/query
 ```
 
 四個步驟**任何順序都可以**。每次改動就把目前的部分選擇整份重送
@@ -848,7 +786,6 @@ reported_at, channel_name
 測量：  Topic sentiment 是 MIXED   -> topic_sentiment:MIXED + count
 主分組：keyword                    -> row
 第二：  department                 -> col
-圖型：  grouped_bar（也可 heatmap／table）
 ```
 
 ```json
@@ -856,14 +793,11 @@ reported_at, channel_name
   "measure": {"field": "topic_sentiment", "enum_value": "MIXED"},
   "aggregation": "count",
   "breakdown": "keyword",
-  "series": {"dimension": "department"},
-  "chart_type": "grouped_bar",
-  "fill_empty": true
+  "series": {"dimension": "department"}
 }
 ```
 
-路由到 `survey_assignments`，每格算 distinct Survey 數。`schema.layout`
-回傳 `row_dimension: "keyword"`、`column_dimension: "department"`。
+路由到 `survey_assignments`，每個 keyword／department 組合計算 distinct Survey 數。renderer 直接使用返回的 long-format rows。
 
 ### 範例二：每個 store 的 CLS，以 1 week 為間隔
 
@@ -871,7 +805,6 @@ reported_at, channel_name
 測量：  CLS                        -> cls + average
 主分組：store                      -> 每個 store 一條線
 時間：  reported_at，week
-圖型：  line（也可 area／table）
 ```
 
 ```json
@@ -879,8 +812,7 @@ reported_at, channel_name
   "measure": {"field": "cls"},
   "aggregation": "average",
   "breakdown": "store_name_english",
-  "series": {"time": {"field": "reported_at", "interval": "week"}},
-  "chart_type": "line"
+  "series": {"time": {"field": "reported_at", "interval": "week"}}
 }
 ```
 
@@ -912,7 +844,6 @@ Catalog response 的 `combinations` 是正式、機器可讀的組合合約：
 combinations.query          = query 數量及同 View 限制
 metric_targets              = 每個 View 可執行的業務 Target／Aggregation methods
 combinations.semantic_views = 每個 View 的 grain 和 Dimensions
-combinations.charts         = 每種 Chart 的 Dimension／Metric shape
 ```
 
 前端應直接使用這個結構建立選擇器。例如選定 `survey_topics` 後，只顯示
@@ -928,7 +859,7 @@ GET /analytics/query-combinations?semantic_view=survey_responses
 ```
 
 每個項目的 `query` 都可以直接送到 `POST /analytics/query`，並附有
-`compatible_chart_types` 和 `allowed_overrides`。前端只應修改
+`allowed_overrides`。前端只應修改
 `allowed_overrides` 列出的 filters、日期範圍、timezone、order 或 limit；
 不要自行把 time dimension 再加入 `dimensions`。例如每日趨勢模板會使用
 `time_dimension=reported_at` 和 `time_granularity=day`，而

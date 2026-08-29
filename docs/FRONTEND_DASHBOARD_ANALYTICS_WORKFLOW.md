@@ -46,7 +46,7 @@ flowchart TD
 
 | 呼叫 | 前端用途 |
 | --- | --- |
-| `GET /analytics/catalog` | 角色可見的 semantic view、dimension、邏輯 `metric_targets` 與 chart type allowlist。`combinations` 提供 query limit、grain 含義與 chart shape。只可傳送這個回應中的 target／method pair。 |
+| `GET /analytics/catalog` | 角色可見的 semantic view、dimension、邏輯 `metric_targets`。`combinations` 提供 query limit 與 grain 含義。只可傳送這個回應中的 target／method pair。 |
 | `POST /analytics/query-capabilities` | 驗證已選 target／method，回傳允許的 dimension、filter member／operator、time dimension 與 result type。用它建立其餘 selector。 |
 | `GET /analytics/query-combinations?semantic_view=...` | 已經 active-catalog 驗證、可直接執行的有限 query template 集合。引導式探索保留其 dimension、metric／aggregation、time dimension 及 grain，只修改 `allowed_overrides` 中列出的欄位。 |
 | `GET /analytics/catalog/availability?semantic_view=...` | 各 catalog field 在 view 中是否至少有一個非 null 值。只顯示 `available: true` 的 field；availability rate 小於 1 並不代表不可使用。 |
@@ -114,7 +114,7 @@ Catalog membership 與 data availability 不相同：field 可以在 catalog 發
 }
 ```
 
-伺服器會拒絕 stale／cross-view member、未發佈或 ambiguous pair、超過三個 dimension，以及無 time dimension 的 time control，通常回傳 `422`；不以 chart shape 拒絕 query。當 Cube 或 Analytics 資料庫無法服務時回傳 `503`；應顯示可重試狀態，而非變更使用者選擇。
+伺服器會拒絕 stale／cross-view member、未發佈或 ambiguous pair、超過三個 dimension、無 time dimension 的 time control，以及已移除的 renderer 欄位，通常回傳 `422`。當 Cube 或 Analytics 資料庫無法服務時回傳 `503`；應顯示可重試狀態，而非變更使用者選擇。
 
 ## 感情色彩與指標語意
 
@@ -161,7 +161,7 @@ Target 同樣需要以單位說明，避免使用者不小心變更問題：
 - `kpi`：讀取唯一 row 的 `value`。
 - `table`：依序顯示 `schema.dimensions`、可選 `schema.time_dimension`、`schema.metric`；metric cell 一律讀取 `value`。
 
-對 series axis 的圖表，要遵守 response `schema.layout` 所回報的 `series_limit` 與 `truncated_series`。Pie／donut 將其餘值合併為 `Other`；line、area、stacked bar、grouped bar 與 heatmap 會捨棄上限外的 series。Cross tab 需要完整格線時，在 query 加上 `fill_empty: true`，但它需要 column axis。
+Query response 不含 renderer layout 或 series cap。前端依 `schema.dimensions`、`schema.time_dimension`、`schema.metric` 與完整 long-format `rows` 自行決定 axis、series、top-N 與缺格處理；不要把 `chart_type`、`series_limit` 或 `fill_empty` 傳至 query endpoints。
 
 ## 兩個操作範例
 
@@ -198,14 +198,13 @@ measure: topic_sentiment = MIXED
 aggregation: count
 breakdown: keyword
 series: department
-chart_type: grouped_bar
 ```
 
 呼叫 `POST /analytics/builder/options` 後，應解析為 `survey_assignments` grain。完成選擇後，以 `POST /analytics/builder/query` 執行。該 grain 的 count 會按 response key 去重，因此同一 response 在每一個 keyword／department cell 至多計算一次。
 
 ### 自由圖表：每間門市的每週 CLS
 
-選取 `cls` + `average`、breakdown 為門市、series 時間為 `reported_at/week`。Builder 會解析為 `survey_responses`，並回傳 `line`／`area` 等相容 chart type。若再加入 keyword、department 或 topic 的第二個 assignment family，組合會失效：該交叉要求 `survey_assignments`，而 `cls/average` 在該 grain 不安全。
+選取 `cls` + `average`、breakdown 為門市、series 時間為 `reported_at/week`。Builder 會解析為 `survey_responses`。若再加入 keyword、department 或 topic 的第二個 assignment family，組合會失效：該交叉要求 `survey_assignments`，而 `cls/average` 在該 grain 不安全。
 
 ## 錯誤、快取與測試
 

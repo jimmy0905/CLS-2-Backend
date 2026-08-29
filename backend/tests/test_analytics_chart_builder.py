@@ -1,12 +1,10 @@
-"""Chart builder contract: measure first, then breakdowns, aggregation, chart.
+"""Analytics builder contract: measure first, then breakdowns and aggregation.
 
 The two worked examples in these tests are the requirements this contract was
 built for:
 
-1. every keyword's MIXED topic sentiment, grouped by department, as a two
-   dimensional table or bar chart with keywords on rows and departments on
-   columns;
-2. every store's CLS at a one week interval, as a line chart.
+1. every keyword's MIXED topic sentiment, grouped by department;
+2. every store's CLS at a one week interval.
 """
 
 from __future__ import annotations
@@ -29,9 +27,7 @@ import core.config as config
 from features.analytics.endpoints import analytics
 from features.analytics.model.semantic import (
     QuerySpec,
-    chart_layout,
     compile_cube_query,
-    shape_chart_rows,
     validate_query,
 )
 from infrastructure.database.session import get_db
@@ -96,14 +92,12 @@ EXAMPLE_KEYWORD_BY_DEPARTMENT = {
     "aggregation": "count",
     "breakdown": "keyword",
     "series": {"dimension": "department"},
-    "chart_type": "grouped_bar",
 }
 EXAMPLE_STORE_CLS_WEEKLY = {
     "measure": {"field": "cls"},
     "aggregation": "average",
     "breakdown": "store_name_english",
     "series": {"time": {"field": "reported_at", "interval": "week"}},
-    "chart_type": "line",
 }
 
 
@@ -247,16 +241,7 @@ def test_example_one_crosses_keyword_with_department_on_deduplicated_counts(
         "survey_assignments.topic_sentiment_mixed_survey_count"
     ]
 
-    layout = chart_layout(query)
-    assert layout is not None
-    assert layout.row_dimension == "keyword"
-    assert layout.column_dimension == "department"
-
-    charts = analytics._compatible_chart_types(query, catalog, "viewer")
-    assert charts == analytics._CHART_TYPES
-
-
-def test_example_two_puts_stores_on_weekly_lines(catalog) -> None:
+def test_example_two_queries_stores_by_week(catalog) -> None:
     semantic_view, query, warnings = _resolved(EXAMPLE_STORE_CLS_WEEKLY, catalog)
 
     assert semantic_view == "survey_responses"
@@ -272,150 +257,6 @@ def test_example_two_puts_stores_on_weekly_lines(catalog) -> None:
             "granularity": "week",
         }
     ]
-
-    layout = chart_layout(query)
-    assert layout is not None
-    # The time bucket is the axis and each store is one line.
-    assert layout.row_dimension == "reported_at"
-    assert layout.column_dimension == "store_name_english"
-
-    charts = analytics._compatible_chart_types(query, catalog, "viewer")
-    assert charts == analytics._CHART_TYPES
-
-
-def test_chart_type_is_not_a_backend_query_constraint(catalog) -> None:
-    pie_query = validate_query(
-        QuerySpec(
-            semantic_view="survey_assignments",
-            dimensions=("keyword", "department"),
-            metric="topic_sentiment_mixed",
-            aggregation="count",
-            chart_type="pie",
-        ),
-        catalog,
-        "viewer",
-    )
-    radar_query = validate_query(
-        QuerySpec(
-            semantic_view="survey_responses",
-            dimensions=("region",),
-            metric="cls",
-            aggregation="average",
-            chart_type="radar",
-        ),
-        catalog,
-        "viewer",
-    )
-
-    assert pie_query.chart_type == "pie"
-    assert radar_query.chart_type == "radar"
-
-
-def test_unbounded_series_are_capped_and_the_grid_is_completed(catalog) -> None:
-    query = validate_query(
-        QuerySpec(
-            semantic_view="survey_assignments",
-            dimensions=("keyword", "department"),
-            metric="topic_sentiment_mixed",
-            aggregation="count",
-            chart_type="grouped_bar",
-            series_limit=2,
-            fill_empty=True,
-        ),
-        catalog,
-        "viewer",
-    )
-    rows, layout = shape_chart_rows(
-        [
-            {"keyword": "staff", "department": "Sales Ops", "value": 9},
-            {"keyword": "staff", "department": "HR L&D", "value": 4},
-            {"keyword": "price", "department": "Sales Ops", "value": 3},
-            {"keyword": "price", "department": "Trading", "value": 1},
-        ],
-        query,
-    )
-
-    assert layout is not None
-    assert layout.truncated_series is True
-    # Trading has the smallest total and is dropped; no "Other" column is
-    # invented because an aggregate column would be meaningless here.
-    assert {row["department"] for row in rows} == {"Sales Ops", "HR L&D"}
-    assert layout.other_series_label is None
-    # Both keywords now appear against both departments.
-    assert layout.filled_cells == 1
-    assert len(rows) == 4
-    assert {"keyword": "price", "department": "HR L&D", "value": 0} in rows
-
-
-def test_a_slice_chart_keeps_a_remainder_so_its_parts_sum_to_the_whole(
-    catalog,
-) -> None:
-    query = validate_query(
-        QuerySpec(
-            semantic_view="survey_responses",
-            dimensions=("region",),
-            metric="survey",
-            aggregation="count",
-            chart_type="pie",
-            series_limit=2,
-        ),
-        catalog,
-        "viewer",
-    )
-    rows, layout = shape_chart_rows(
-        [
-            {"region": "North", "value": 10},
-            {"region": "South", "value": 6},
-            {"region": "East", "value": 3},
-            {"region": "West", "value": 1},
-        ],
-        query,
-    )
-
-    assert layout is not None and layout.truncated_series is True
-    assert layout.other_series_label == "Other"
-    assert rows[-1] == {"region": "Other", "value": 4}
-    assert sum(row["value"] for row in rows) == 20
-
-
-def test_closed_dimensions_are_never_truncated_at_the_default_limit(catalog) -> None:
-    # Topic and department come from a closed list in the extraction prompt, so
-    # the default cap must sit above their cardinality.
-    query = validate_query(
-        QuerySpec(
-            semantic_view="survey_assignments",
-            dimensions=("keyword", "department"),
-            metric="survey",
-            aggregation="count",
-            chart_type="heatmap",
-        ),
-        catalog,
-        "viewer",
-    )
-    rows = [
-        {"keyword": f"k{index}", "department": f"d{index % 9}", "value": index + 1}
-        for index in range(9)
-    ]
-    _, layout = shape_chart_rows(rows, query)
-
-    assert layout is not None
-    assert layout.truncated_series is False
-
-
-def test_filling_a_grid_requires_two_dimensions(catalog) -> None:
-    with pytest.raises(Exception, match="cross tabulation"):
-        validate_query(
-            QuerySpec(
-                semantic_view="survey_responses",
-                dimensions=("region",),
-                metric="survey",
-                aggregation="count",
-                fill_empty=True,
-            ),
-            catalog,
-            "viewer",
-        )
-
 
 def test_a_series_is_either_a_dimension_or_a_time_interval() -> None:
     with pytest.raises(ValueError, match="one dimension or one time interval"):
@@ -467,13 +308,14 @@ def test_builder_options_resolves_in_any_selection_order(client) -> None:
     ).json()
     assert complete["semantic_view"] == "survey_assignments"
     assert complete["selection_complete"] is True
-    assert "grouped_bar" in complete["compatible_chart_types"]
     assert complete["query"]["dimensions"] == ["keyword", "department"]
     assert "week" in complete["available_intervals"]
 
     # The chosen breakdown is not offered again as the series dimension.
     series_slugs = {item["slug"] for item in complete["available_series_dimensions"]}
     assert "keyword" not in series_slugs
+    breakdown_slugs = {item["slug"] for item in complete["available_breakdowns"]}
+    assert {"id", "comment", "latitude"} <= breakdown_slugs
 
 
 def test_builder_options_hides_a_dimension_that_would_distort_the_measure(
@@ -553,7 +395,7 @@ def test_builder_options_reports_enum_values_for_a_dimension(client) -> None:
     assert region["enum_values"] == []
 
 
-def test_builder_query_runs_example_one_and_reports_its_layout(
+def test_builder_query_runs_example_one_without_renderer_layout(
     monkeypatch, client
 ) -> None:
     cube = FakeCube(
@@ -588,10 +430,7 @@ def test_builder_query_runs_example_one_and_reports_its_layout(
         {"keyword": "staff", "department": "Sales Ops", "value": 526},
         {"keyword": "staff", "department": "HR L&D", "value": 498},
     ]
-    layout = body["schema"]["layout"]
-    assert layout["chart_type"] == "grouped_bar"
-    assert layout["row_dimension"] == "keyword"
-    assert layout["column_dimension"] == "department"
+    assert "layout" not in body["schema"]
     assert cube.calls[0][0]["measures"] == [
         "survey_assignments.topic_sentiment_mixed_survey_count"
     ]
@@ -609,7 +448,6 @@ def test_builder_query_refuses_a_selection_no_grain_can_answer(
             "aggregation": "average",
             "breakdown": "keyword",
             "series": {"dimension": "department"},
-            "chart_type": "grouped_bar",
         },
     )
 
@@ -622,3 +460,26 @@ def test_builder_query_requires_a_measure_and_an_aggregation(client) -> None:
         "/analytics/builder/query", json={"breakdown": "region"}
     )
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("chart_type", "bar"),
+        ("series_limit", 10),
+        ("fill_empty", True),
+    ],
+)
+def test_builder_rejects_renderer_metadata(client, field: str, value: object) -> None:
+    options = client.post("/analytics/builder/options", json={field: value})
+    assert options.status_code == 422
+
+    query = client.post(
+        "/analytics/builder/query",
+        json={
+            "measure": {"field": "survey"},
+            "aggregation": "count",
+            field: value,
+        },
+    )
+    assert query.status_code == 422

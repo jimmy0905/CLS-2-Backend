@@ -29,7 +29,6 @@
           "sourceKey": {"type": ["string", "null"], "maxLength": 128},
           "visibility": {"enum": ["viewer", "admin"]},
           "scope": {"enum": ["response", "assignment"]},
-          "usage": {"enum": ["chart", "table_only"]},
           "filterable": {"type": "boolean"},
           "timeDimension": {"type": "boolean"}
         }

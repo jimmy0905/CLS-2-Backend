@@ -79,7 +79,6 @@ def _catalog() -> SemanticCatalog:
                 label="Store",
                 semantic_view="survey_responses",
                 data_type=FieldType.STRING,
-                usage="chart",
             ),
         ],
         metrics=[
@@ -319,10 +318,14 @@ def test_openapi_describes_every_analytics_endpoint() -> None:
         "AnalyticsCatalogResponse",
         "CatalogCombinationsOutput",
         "SemanticViewCombinationOutput",
-        "ChartCombinationOutput",
         "QueryCapabilitiesResponse",
     ):
         assert name in models
+    assert "ChartCombinationOutput" not in models
+    assert "usage" not in models["CatalogFieldOutput"]["properties"]
+    assert "chart_types" not in models["AnalyticsCatalogResponse"]["properties"]
+    for field in ("chart_type", "series_limit", "fill_empty"):
+        assert field not in models["QuerySpec"]["properties"]
 
     for name in (
         "FilterSpec",
@@ -509,18 +512,9 @@ def test_catalog_exposes_machine_readable_member_and_chart_combinations(
     assert view_rules["survey_topics"]["assignment_sentiment_dimension"] == "sentiment"
     assert "topic" in view_rules["survey_topics"]["dimensions"]
 
-    chart_rules = {
-        item["chart_type"]: item for item in combinations["charts"]
-    }
-    assert set(chart_rules) == set(payload["chart_types"])
-    assert chart_rules["kpi"]["min_dimensions"] == 0
-    assert chart_rules["kpi"]["exact_metric_count"] == 1
-    assert chart_rules["line"]["time_dimension"] == "required"
-    assert chart_rules["pie"]["min_dimensions"] == 1
-    assert chart_rules["pie"]["max_dimensions"] == 1
-    assert chart_rules["pie"]["exact_metric_count"] == 1
-    assert "scatter" not in chart_rules
-    assert "store_map" not in chart_rules
+    assert "charts" not in combinations
+    assert "chart_types" not in payload
+    assert all("usage" not in field for field in payload["fields"])
 
 
 def test_query_combinations_return_finite_executable_templates(monkeypatch) -> None:
@@ -556,7 +550,7 @@ def test_query_combinations_return_finite_executable_templates(monkeypatch) -> N
         query = QuerySpec.model_validate(item["query"])
         assert validate_query(query, catalog) == query
         assert item["semantic_view"] == query.semantic_view
-        assert item["compatible_chart_types"]
+        assert "compatible_chart_types" not in item
         assert set(item["allowed_overrides"]).issubset(
             {"filters", "time_range", "timezone", "order", "limit"}
         )
@@ -717,14 +711,12 @@ def test_filter_options_return_non_null_governed_values(monkeypatch) -> None:
                 label="Store format",
                 semantic_view="survey_responses",
                 data_type=FieldType.STRING,
-                usage="chart",
             ),
             CatalogField(
                 slug="topic_sentiment",
                 label="Topic sentiment",
                 semantic_view="survey_responses",
                 data_type=FieldType.STRING,
-                usage="chart",
             ),
         ],
         metrics=[
@@ -922,7 +914,6 @@ def test_frontend_dashboard_analytics_discovery_and_chart_flow(monkeypatch) -> N
                 label="Store format",
                 semantic_view="survey_responses",
                 data_type=FieldType.STRING,
-                usage="chart",
             )
         ],
         metrics=[
@@ -1153,18 +1144,6 @@ def test_query_compiles_catalog_members_and_returns_chart_ready_rows(monkeypatch
             "label": "Responses",
             "type": "number",
             "key": "value",
-        },
-        # One dimension has a row axis but no column axis, and no chart type was
-        # requested, so nothing is capped.
-        "layout": {
-            "chart_type": None,
-            "row_dimension": "store_name",
-            "column_dimension": None,
-            "value_key": "value",
-            "series_limit": None,
-            "truncated_series": False,
-            "other_series_label": None,
-            "filled_cells": 0,
         },
     }
     assert body["freshness_time"] == "2026-08-25T12:00:00Z"
@@ -1665,7 +1644,7 @@ def test_field_archive_dependency_scan_covers_chart_filters_time_and_order() -> 
     }
 
 
-def test_pie_contract_forces_top_twelve_and_uses_governed_other_value() -> None:
+def test_published_chart_query_preserves_requested_limit_without_pie_shaping() -> None:
     chart = {
         "chart_type": "pie",
         "semantic_view": "survey_responses",
@@ -1678,36 +1657,13 @@ def test_pie_contract_forces_top_twelve_and_uses_governed_other_value() -> None:
     }
     query, cube_query = analytics._chart_query(chart, None, _catalog(), "viewer")
 
-    assert query.limit == 13
-    assert query.order[0].member == "value"
-    assert query.order[0].direction == "desc"
-    assert cube_query["limit"] == 13
-    response = {
-        "rows": [
-            {"store_name": f"Store {index}", "value": 20 - index}
-            for index in range(12)
-        ]
-    }
-    shaped = analytics._shape_chart_rows(
-        chart,
-        response,
-        other_value=7,
-        other_response={
-            "warnings": ["tail query warning"],
-        },
-    )
-    assert len(shaped["rows"]) == 13
-    assert shaped["rows"][-1] == {"store_name": "Other", "value": 7}
-    assert shaped["warnings"][-1] == "tail query warning"
-
-    zero_tail = analytics._shape_chart_rows(chart, response, other_value=0)
-    assert zero_tail["rows"][-1] == {
-        "store_name": "Other",
-        "value": 0,
-    }
+    assert query.limit == 1_000
+    assert query.order == ()
+    assert cube_query["limit"] == 1_000
+    assert "order" not in cube_query
 
 
-def test_chart_runtime_does_not_validate_the_renderer_type() -> None:
+def test_published_chart_type_is_not_copied_into_the_query() -> None:
     temporal_catalog = SemanticCatalog(
         fields=[
             CatalogField(
@@ -1715,7 +1671,6 @@ def test_chart_runtime_does_not_validate_the_renderer_type() -> None:
                 label="Reported at",
                 semantic_view="survey_responses",
                 data_type=FieldType.DATE,
-                usage="chart",
             )
         ],
         metrics=[
@@ -1743,7 +1698,7 @@ def test_chart_runtime_does_not_validate_the_renderer_type() -> None:
 
     query, _ = analytics._chart_query(chart, None, temporal_catalog, "viewer")
 
-    assert query.chart_type == "bar"
+    assert "chart_type" not in query.model_dump()
 
 
 def test_filtered_metric_parameters_are_typed_and_declarative() -> None:

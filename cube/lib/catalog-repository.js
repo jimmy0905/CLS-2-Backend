@@ -215,13 +215,6 @@ const CORE_MEASURES = {
   ]),
 };
 
-const CHART_DIMENSION_FIELDS = new Set([
-  'topic_sentiment', 'sentiment', 'store_name', 'store_name_english',
-  'store_name_local', 'store_format', 'store_type', 'store_brand', 'region',
-  'area', 'province', 'territory', 'district', 'city', 'channel_name',
-  'delivery_service_name', 'topic', 'department', 'keyword',
-  'keyword_sentiment', 'department_sentiment', 'topic_assignment_sentiment',
-]);
 const ASSIGNMENT_SCOPE_FIELDS = new Set([
   'assignment_id', 'sentiment', 'sentiment_score', 'topic_id', 'topic', 'department_id',
   'department', 'keyword_id', 'keyword', 'combination_id', 'keyword_sentiment',
@@ -241,7 +234,6 @@ function coreFieldDescriptor(semanticView, slug) {
     visibility: 'viewer',
     scope: semanticView !== 'survey_responses' && ASSIGNMENT_SCOPE_FIELDS.has(slug)
       ? 'assignment' : 'response',
-    usage: CHART_DIMENSION_FIELDS.has(slug) ? 'chart' : 'table_only',
     filterable: true,
     timeDimension: ['date', 'time'].includes(coreField[1]),
   };
@@ -346,9 +338,6 @@ function validateCatalog(catalog, expectedProfile) {
     }
     if (!['response', 'assignment'].includes(field.scope || 'response')) {
       throw new Error(`Invalid field scope for ${field.slug}`);
-    }
-    if (!['chart', 'table_only'].includes(field.usage || 'table_only')) {
-      throw new Error(`Invalid field usage for ${field.slug}`);
     }
     if (field.filterable !== undefined && typeof field.filterable !== 'boolean') {
       throw new Error(`Invalid filterable flag for ${field.slug}`);
@@ -734,7 +723,6 @@ function compileDimension(field) {
     `        type: ${cubeType}`,
     '        meta:',
     `          scope: ${field.scope || 'response'}`,
-    `          usage: ${field.usage || 'table_only'}`,
     `          filterable: ${field.filterable !== false}`,
     `          time_dimension: ${field.timeDimension === true}`,
   ].join('\n');

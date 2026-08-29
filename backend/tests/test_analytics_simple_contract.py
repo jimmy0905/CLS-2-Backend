@@ -20,7 +20,6 @@ from features.analytics.model.semantic import (
     SemanticCatalog,
     compile_cube_query,
     metric_targets,
-    validate_chart_definition,
     validate_query,
 )
 from features.analytics.service.results import format_query_result
@@ -59,21 +58,18 @@ def catalog() -> SemanticCatalog:
                 label="Store Format",
                 semantic_view="survey_responses",
                 data_type=FieldType.STRING,
-                usage="chart",
             ),
             CatalogField(
                 slug="region",
                 label="Region",
                 semantic_view="survey_responses",
                 data_type=FieldType.STRING,
-                usage="chart",
             ),
             CatalogField(
                 slug="channel",
                 label="Channel",
                 semantic_view="survey_responses",
                 data_type=FieldType.STRING,
-                usage="chart",
             ),
             CatalogField(
                 slug="reported_at",
@@ -309,92 +305,21 @@ def test_raw_identifiers_are_not_public_metric_targets(raw_metric: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "chart_type,dimensions,time_dimension,time_granularity",
+    "field,value",
     [
-        ("kpi", [], None, None),
-        ("table", [], None, None),
-        ("bar", ["store_format"], None, None),
-        ("column", ["store_format"], None, None),
-        ("pie", ["store_format"], None, None),
-        ("donut", ["store_format"], None, None),
-        ("stacked_bar", ["store_format", "region"], None, None),
-        ("heatmap", ["store_format", "region"], None, None),
-        ("table", ["store_format", "region", "channel"], None, None),
-        ("line", [], "reported_at", "day"),
-        ("area", ["store_format"], "reported_at", "month"),
-        ("table", ["store_format", "region"], "reported_at", "day"),
+        ("chart_type", "bar"),
+        ("series_limit", 10),
+        ("fill_empty", True),
     ],
 )
-def test_chart_compatibility_matrix_accepts_supported_shapes(
-    catalog: SemanticCatalog,
-    chart_type: str,
-    dimensions: list[str],
-    time_dimension: str | None,
-    time_granularity: str | None,
-) -> None:
-    validate_chart_definition(
-        chart_type,
-        dimensions,
-        "score",
-        "average",
-        catalog,
-        semantic_view="survey_responses",
-        time_dimension=time_dimension,
-        time_granularity=time_granularity,
-    )
-
-
-@pytest.mark.parametrize(
-    "chart_type,dimensions,time_dimension,time_granularity",
-    [
-        ("scatter", ["store_format"], None, None),
-        ("store_map", ["store_format"], None, None),
-        ("line", [], None, None),
-        ("line", [], "reported_at", None),
-        ("bar", ["store_format"], "reported_at", "day"),
-        ("stacked_bar", ["store_format", "region", "channel"], None, None),
-        ("line", ["store_format", "region"], "reported_at", "day"),
-    ],
-)
-def test_chart_compatibility_matrix_rejects_unsupported_shapes(
-    catalog: SemanticCatalog,
-    chart_type: str,
-    dimensions: list[str],
-    time_dimension: str | None,
-    time_granularity: str | None,
-) -> None:
-    with pytest.raises(AnalyticsValidationError):
-        validate_chart_definition(
-            chart_type,
-            dimensions,
-            "score",
-            "average",
-            catalog,
-            semantic_view="survey_responses",
-            time_dimension=time_dimension,
-            time_granularity=time_granularity,
-        )
-
-
-def test_non_numeric_metric_is_limited_to_kpi_and_table(
-    catalog: SemanticCatalog,
-) -> None:
-    validate_chart_definition(
-        "kpi",
-        [],
-        "reported_at",
-        "max",
-        catalog,
-        semantic_view="survey_responses",
-    )
-    with pytest.raises(AnalyticsValidationError, match="numeric"):
-        validate_chart_definition(
-            "bar",
-            ["store_format"],
-            "reported_at",
-            "max",
-            catalog,
-            semantic_view="survey_responses",
+def test_query_rejects_renderer_metadata(field: str, value: object) -> None:
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        QuerySpec.model_validate(
+            {
+                "metric": "survey",
+                "aggregation": "count",
+                field: value,
+            }
         )
 
 
@@ -455,13 +380,10 @@ def test_migration_default_charts_resolve_against_public_core_catalog() -> None:
         definition = chart["definition"]
         option = (definition["metric"], definition["aggregation"])
         assert option in public_options[chart["semantic_view"]], chart["slug"]
-        validate_chart_definition(
-            chart["chart_type"],
-            definition["dimensions"],
-            definition["metric"],
-            definition["aggregation"],
+        assert validate_query(
+            QuerySpec(
+                semantic_view=chart["semantic_view"],
+                **definition,
+            ),
             public_catalog,
-            semantic_view=chart["semantic_view"],
-            time_dimension=definition.get("time_dimension"),
-            time_granularity=definition.get("time_granularity"),
         )
