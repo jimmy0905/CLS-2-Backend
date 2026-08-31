@@ -1,23 +1,19 @@
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
-    CHAR,
     Column,
     DateTime,
-    ForeignKey,
     Index,
     Integer,
-    JSON,
     Sequence,
     String,
     UniqueConstraint,
     text,
 )
-from sqlalchemy.orm import relationship
 
-from infrastructure.database.base import Base
 from core.time import utc_isoformat, utc_now
-
+from infrastructure.database.base import Base
 
 analytics_catalog_version_sequence = Sequence("analytics_catalog_version_seq")
 
@@ -39,13 +35,13 @@ class AnalyticsModelVersion(Base):
     catalog_snapshot = Column(JSON, nullable=False, default=dict)
     validation_errors = Column(JSON, nullable=False, default=list)
     is_active = Column(Boolean, nullable=False, default=False)
-    created_by_id = Column(CHAR(36), ForeignKey("users.id"), nullable=False)
+    created_by_subject = Column(String(255), nullable=False)
+    created_by_label = Column(String(255), nullable=False)
+    created_by_role = Column(String(16), nullable=False)
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     published_at = Column(DateTime(timezone=True), nullable=True)
     activated_at = Column(DateTime(timezone=True), nullable=True)
     archived_at = Column(DateTime(timezone=True), nullable=True)
-
-    created_by = relationship("User")
 
     __table_args__ = (
         UniqueConstraint(
@@ -68,7 +64,9 @@ class AnalyticsModelVersion(Base):
             "definition_hash": self.definition_hash,
             "validation_errors": self.validation_errors or [],
             "is_active": self.is_active,
-            "created_by_id": self.created_by_id,
+            "created_by_subject": self.created_by_subject,
+            "created_by_label": self.created_by_label,
+            "created_by_role": self.created_by_role,
             "created_at": utc_isoformat(self.created_at),
             "published_at": utc_isoformat(self.published_at),
             "activated_at": utc_isoformat(self.activated_at),

@@ -1,0 +1,150 @@
+services:
+  loki:
+    image: grafana/loki:3.7.6
+    command: ["-config.file=/etc/loki/config.yml"]
+    restart: unless-stopped
+    read_only: true
+    user: "10001:10001"
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=64m"]
+    volumes:
+      - ./observability/loki/config.yml:/etc/loki/config.yml:ro
+      - loki_data:/loki
+    networks: [observability_internal]
+    healthcheck:
+      test: ["CMD", "/usr/bin/loki", "-config.file=/etc/loki/config.yml", "-verify-config=true"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+
+  alloy:
+    image: grafana/alloy:v1.18.1
+    command: ["run", "--server.http.listen-addr=0.0.0.0:12345", "--storage.path=/var/lib/alloy/data", "/etc/alloy/config.alloy"]
+    restart: unless-stopped
+    read_only: true
+    user: "473:473"
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=64m"]
+    depends_on:
+      loki:
+        condition: service_healthy
+    volumes:
+      - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy_data:/var/lib/alloy/data
+      - wtchk_cls_logs:/var/log/clsense/wtchk_cls:ro
+      - wtctw_cls_logs:/var/log/clsense/wtctw_cls:ro
+      - wtcmy_cls_logs:/var/log/clsense/wtcmy_cls:ro
+      - kvnl_cls_logs:/var/log/clsense/kvnl_cls:ro
+      - sd_cls_logs:/var/log/clsense/sd_cls:ro
+      - wtcsg_cls_logs:/var/log/clsense/wtcsg_cls:ro
+      - wwhk_cls_logs:/var/log/clsense/wwhk_cls:ro
+      - pnshk_cls_logs:/var/log/clsense/pnshk_cls:ro
+      - ftrhk_cls_logs:/var/log/clsense/ftrhk_cls:ro
+      - wtcth_cls_logs:/var/log/clsense/wtcth_cls:ro
+      - wtcid_cls_logs:/var/log/clsense/wtcid_cls:ro
+      - wtcvn_cls_logs:/var/log/clsense/wtcvn_cls:ro
+      - wtccn_cls_logs:/var/log/clsense/wtccn_cls:ro
+      - wtcph_cls_logs:/var/log/clsense/wtcph_cls:ro
+      - drlv_cls_logs:/var/log/clsense/drlv_cls:ro
+      - drlt_cls_logs:/var/log/clsense/drlt_cls:ro
+      - icibe_cls_logs:/var/log/clsense/icibe_cls:ro
+      - kvbe_cls_logs:/var/log/clsense/kvbe_cls:ro
+      - tps_cls_logs:/var/log/clsense/tps_cls:ro
+      - wtcua_cls_logs:/var/log/clsense/wtcua_cls:ro
+      - wtctr_cls_logs:/var/log/clsense/wtctr_cls:ro
+      - mat_cls_logs:/var/log/clsense/mat_cls:ro
+      - mch_cls_logs:/var/log/clsense/mch_cls:ro
+      - mcz_cls_logs:/var/log/clsense/mcz_cls:ro
+      - mfr_cls_logs:/var/log/clsense/mfr_cls:ro
+      - mhu_cls_logs:/var/log/clsense/mhu_cls:ro
+      - mit_cls_logs:/var/log/clsense/mit_cls:ro
+      - mro_cls_logs:/var/log/clsense/mro_cls:ro
+      - msk_cls_logs:/var/log/clsense/msk_cls:ro
+      - icinl_cls_logs:/var/log/clsense/icinl_cls:ro
+      - wtchk_ecls_logs:/var/log/clsense/wtchk_ecls:ro
+      - wtcph_ecls_logs:/var/log/clsense/wtcph_ecls:ro
+      - wtcmy_ecls_logs:/var/log/clsense/wtcmy_ecls:ro
+      - ftrhk_ecls_logs:/var/log/clsense/ftrhk_ecls:ro
+      - pnshk_ecls_logs:/var/log/clsense/pnshk_ecls:ro
+      - wwhk_ecls_logs:/var/log/clsense/wwhk_ecls:ro
+      - wtcth_ecls_logs:/var/log/clsense/wtcth_ecls:ro
+      - wtcsg_ecls_logs:/var/log/clsense/wtcsg_ecls:ro
+      - wtctw_ecls_logs:/var/log/clsense/wtctw_ecls:ro
+      - wtcvn_ecls_logs:/var/log/clsense/wtcvn_ecls:ro
+      - wtccn_ecls_logs:/var/log/clsense/wtccn_ecls:ro
+      - wtcid_ecls_logs:/var/log/clsense/wtcid_ecls:ro
+      - sd_ecls_logs:/var/log/clsense/sd_ecls:ro
+      - drlv_ecls_logs:/var/log/clsense/drlv_ecls:ro
+      - drlt_ecls_logs:/var/log/clsense/drlt_ecls:ro
+      - icibe_ecls_logs:/var/log/clsense/icibe_ecls:ro
+      - icinl_ecls_logs:/var/log/clsense/icinl_ecls:ro
+      - kvnl_ecls_logs:/var/log/clsense/kvnl_ecls:ro
+      - kvbe_ecls_logs:/var/log/clsense/kvbe_ecls:ro
+      - mat_ecls_logs:/var/log/clsense/mat_ecls:ro
+      - mch_ecls_logs:/var/log/clsense/mch_ecls:ro
+      - mcz_ecls_logs:/var/log/clsense/mcz_ecls:ro
+      - mfr_ecls_logs:/var/log/clsense/mfr_ecls:ro
+      - mhu_ecls_logs:/var/log/clsense/mhu_ecls:ro
+      - mit_ecls_logs:/var/log/clsense/mit_ecls:ro
+      - mro_ecls_logs:/var/log/clsense/mro_ecls:ro
+      - msk_ecls_logs:/var/log/clsense/msk_ecls:ro
+      - tps_ecls_logs:/var/log/clsense/tps_ecls:ro
+      - wtctr_ecls_logs:/var/log/clsense/wtctr_ecls:ro
+      - wtcua_ecls_logs:/var/log/clsense/wtcua_ecls:ro
+      - svruk_ecls_logs:/var/log/clsense/svruk_ecls:ro
+    networks: [observability_internal]
+    healthcheck:
+      test: ["CMD", "/bin/alloy", "validate", "/etc/alloy/config.alloy"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+
+  grafana:
+    image: grafana/grafana:13.2.0
+    restart: unless-stopped
+    read_only: true
+    user: "472:472"
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=64m"]
+    depends_on:
+      loki:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:-admin}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_ALLOW_ORG_CREATE: "false"
+      GF_SECURITY_COOKIE_SECURE: "${GRAFANA_COOKIE_SECURE:-true}"
+      GF_SECURITY_COOKIE_SAMESITE: "strict"
+      GF_SERVER_HTTP_ADDR: "0.0.0.0"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    ports:
+      - "${GRAFANA_OPS_BIND_ADDRESS:-127.0.0.1}:${GRAFANA_OPS_PORT:-3300}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks: [observability_internal, grafana_access]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  loki_data:
+  alloy_data:
+  grafana_data:
+
+networks:
+  observability_internal:
+    internal: true
+  grafana_access:

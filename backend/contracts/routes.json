@@ -111,26 +111,6 @@
   },
   {
     "method": "GET",
-    "operation_id": "azure_callback_auth_azure_callback_get",
-    "path": "/auth/azure/callback"
-  },
-  {
-    "method": "GET",
-    "operation_id": "azure_login_auth_azure_login_get",
-    "path": "/auth/azure/login"
-  },
-  {
-    "method": "POST",
-    "operation_id": "renew_token_auth_renew_token_post",
-    "path": "/auth/renew-token"
-  },
-  {
-    "method": "POST",
-    "operation_id": "token_auth_token_post",
-    "path": "/auth/token"
-  },
-  {
-    "method": "GET",
     "operation_id": "get_channels_channels__get",
     "path": "/channels/"
   },
@@ -423,25 +403,5 @@
     "method": "POST",
     "operation_id": "translate_translator_translate_post",
     "path": "/translator/translate"
-  },
-  {
-    "method": "GET",
-    "operation_id": "get_users_users__get",
-    "path": "/users/"
-  },
-  {
-    "method": "DELETE",
-    "operation_id": "delete_user_users__user_id__delete",
-    "path": "/users/{user_id}"
-  },
-  {
-    "method": "PUT",
-    "operation_id": "update_user_users__user_id__put",
-    "path": "/users/{user_id}"
-  },
-  {
-    "method": "PUT",
-    "operation_id": "update_user_password_users__user_id__password_put",
-    "path": "/users/{user_id}/password"
   }
 ]

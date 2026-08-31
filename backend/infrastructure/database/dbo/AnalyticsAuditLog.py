@@ -1,8 +1,7 @@
-from sqlalchemy import CHAR, Column, DateTime, ForeignKey, Index, Integer, JSON, String
-from sqlalchemy.orm import relationship
+from sqlalchemy import JSON, Column, DateTime, Index, Integer, String
 
-from infrastructure.database.base import Base
 from core.time import utc_isoformat, utc_now
+from infrastructure.database.base import Base
 
 
 class AnalyticsAuditLog(Base):
@@ -10,19 +9,21 @@ class AnalyticsAuditLog(Base):
     __table_args__ = (Index("idx_analytics_audit_logs_created_at", "created_at"),)
 
     id = Column(Integer, primary_key=True)
-    actor_id = Column(CHAR(36), ForeignKey("users.id"), nullable=True)
+    actor_subject = Column(String(255), nullable=True)
+    actor_label = Column(String(255), nullable=True)
+    actor_role = Column(String(16), nullable=True)
     action = Column(String(64), nullable=False, index=True)
     resource_type = Column(String(32), nullable=False)
     resource_id = Column(String(64), nullable=False)
     payload = Column(JSON, nullable=False, default=dict)
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
 
-    actor = relationship("User")
-
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "actor_id": self.actor_id,
+            "actor_subject": self.actor_subject,
+            "actor_label": self.actor_label,
+            "actor_role": self.actor_role,
             "action": self.action,
             "resource_type": self.resource_type,
             "resource_id": self.resource_id,

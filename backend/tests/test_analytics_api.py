@@ -16,7 +16,6 @@ os.environ.setdefault("DATABASE_PASSWORD", "test")
 os.environ.setdefault("DATABASE_HOST", "localhost")
 os.environ.setdefault("DATABASE_PORT", "5432")
 os.environ.setdefault("DATABASE_NAME", "test")
-os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -37,7 +36,7 @@ from features.analytics.model.semantic import (
 from infrastructure.integrations.cube import CubeQueryError, CubeUnavailableError
 from infrastructure.integrations.analytics_metadata_auth import sign_metadata_request
 from infrastructure.database.session import get_db
-from features.identity.service.security import get_current_user, require_admin
+from features.identity.service.security import get_current_actor, require_admin
 
 
 class FakeDb:
@@ -287,7 +286,7 @@ def _client(db: FakeDb, role: str = "user") -> TestClient:
     app.include_router(analytics.router)
     user = SimpleNamespace(id="user-1", role=role)
     app.dependency_overrides[get_db] = lambda: db
-    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_current_actor] = lambda: user
     app.dependency_overrides[require_admin] = lambda: user
     return TestClient(app)
 
@@ -1371,7 +1370,7 @@ def test_admin_routes_require_an_administrator(monkeypatch) -> None:
     app.include_router(analytics.router)
     viewer = SimpleNamespace(id="viewer-1", role="user")
     app.dependency_overrides[get_db] = lambda: db
-    app.dependency_overrides[get_current_user] = lambda: viewer
+    app.dependency_overrides[get_current_actor] = lambda: viewer
 
     client = TestClient(app)
 

@@ -12,7 +12,6 @@ os.environ.setdefault("DATABASE_PASSWORD", "test")
 os.environ.setdefault("DATABASE_HOST", "localhost")
 os.environ.setdefault("DATABASE_PORT", "5432")
 os.environ.setdefault("DATABASE_NAME", "test")
-os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 

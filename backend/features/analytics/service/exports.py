@@ -1,35 +1,28 @@
 """Bounded, spreadsheet-safe writers used by asynchronous analytics exports."""
+
 from __future__ import annotations
 
-import csv
 import asyncio
-import core.config as config
+import csv
 import json
 import uuid
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from openpyxl import Workbook
 
+import core.config as config
 from features.analytics.model.semantic import escape_spreadsheet_formula
 
-
 EXPORT_FORMATS = frozenset({"csv", "xlsx"})
-_EXPORT_WORKER_SEMAPHORE = asyncio.Semaphore(
-    config.ANALYTICS_EXPORT_WORKER_CONCURRENCY
-)
+_EXPORT_WORKER_SEMAPHORE = asyncio.Semaphore(config.ANALYTICS_EXPORT_WORKER_CONCURRENCY)
 
 
-def authorize_export_role(requested_role: str, user: Any) -> str:
-    """Return the least privilege captured by a job after checking revocation."""
+def authorize_export_role(requested_role: str) -> str:
+    """Validate and return the immutable role captured when the job was admitted."""
     if requested_role not in {"viewer", "admin"}:
         raise ValueError("Export job contains an invalid analytics role")
-    if user is None or bool(getattr(user, "is_deleted", False)):
-        raise PermissionError("Analytics export requester is no longer active")
-    current_role = "admin" if getattr(user, "role", None) == "admin" else "viewer"
-    if requested_role == "admin" and current_role != "admin":
-        raise PermissionError("Analytics export administrator access was revoked")
-    # A later promotion must not broaden a job that was queued as a viewer.
     return requested_role
 
 
@@ -170,7 +163,10 @@ def _collect_record_rows(
     """Collect a live record query in bounded pages for an export worker."""
     from core.config import is_survey_export_column_enabled
     from features.analytics.endpoints.analytics import RecordQueryInput
-    from features.analytics.repository.records import build_record_query, serialize_record
+    from features.analytics.repository.records import (
+        build_record_query,
+        serialize_record,
+    )
     from infrastructure.database.session import SessionLocal
 
     spec = RecordQueryInput.model_validate(payload)
@@ -197,13 +193,12 @@ def _collect_record_rows(
             if not rows:
                 return rows
             configured = [
-                key
-                for key in rows[0]
-                if is_survey_export_column_enabled(key)
+                key for key in rows[0] if is_survey_export_column_enabled(key)
             ]
             if not configured:
                 raise ValueError(
-                    "No survey export columns are configured for analytics record exports"
+                    "No survey export columns are configured for "
+                    "analytics record exports"
                 )
             return [{key: row.get(key) for key in configured} for row in rows]
         return rows
@@ -221,27 +216,25 @@ async def _execute_export_job(job_id: str) -> None:
         ANALYTICS_QUERY_TIMEOUT_SECONDS,
         DEPLOYMENT_PROFILE,
     )
-    from infrastructure.database.dbo.AnalyticsExportJob import AnalyticsExportJob
-    from infrastructure.database.dbo.AnalyticsQueryLog import AnalyticsQueryLog
-    from infrastructure.database.dbo.User import User
-    from infrastructure.integrations.cube import CubeClient
     from core.logging import logger
     from core.time import utc_now
+    from infrastructure.database.dbo.AnalyticsExportJob import AnalyticsExportJob
+    from infrastructure.database.dbo.AnalyticsQueryLog import AnalyticsQueryLog
     from infrastructure.database.session import SessionLocal
+    from infrastructure.integrations.cube import CubeClient
 
     db = SessionLocal()
     output_path: Path | None = None
     try:
-        job = db.query(AnalyticsExportJob).filter(AnalyticsExportJob.id == job_id).first()
+        job = (
+            db.query(AnalyticsExportJob).filter(AnalyticsExportJob.id == job_id).first()
+        )
         if job is None or job.status != "queued":
             return
         request = job.request or {}
         mode = request.get("mode", "query")
         cube_query = request.get("cube_query")
-        role = authorize_export_role(
-            request.get("role"),
-            db.query(User).filter(User.id == job.requested_by_id).first(),
-        )
+        role = authorize_export_role(request.get("role"))
         from features.analytics.endpoints.analytics import (
             _active_model_version,
             _catalog_from_version,
@@ -318,9 +311,7 @@ async def _execute_export_job(job_id: str) -> None:
             job.model_version_id,
             latest_version.id if latest_version is not None else None,
         )
-        output_path = build_export_path(
-            ANALYTICS_EXPORT_DIR, job.id, job.export_format
-        )
+        output_path = build_export_path(ANALYTICS_EXPORT_DIR, job.id, job.export_format)
         row_count = await asyncio.to_thread(
             write_export,
             rows,
@@ -359,7 +350,9 @@ async def _execute_export_job(job_id: str) -> None:
         db.rollback()
         if output_path is not None:
             remove_export_file(ANALYTICS_EXPORT_DIR, str(output_path))
-        job = db.query(AnalyticsExportJob).filter(AnalyticsExportJob.id == job_id).first()
+        job = (
+            db.query(AnalyticsExportJob).filter(AnalyticsExportJob.id == job_id).first()
+        )
         if job:
             job.status = "failed"
             job.error_message = "Analytics export failed"

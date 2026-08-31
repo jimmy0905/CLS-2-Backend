@@ -1,10 +1,20 @@
 import uuid
 
-from sqlalchemy import CHAR, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text
+from sqlalchemy import (
+    CHAR,
+    JSON,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import relationship
 
-from infrastructure.database.base import Base
 from core.time import utc_isoformat, utc_now
+from infrastructure.database.base import Base
 
 
 class AnalyticsQueryLog(Base):
@@ -13,7 +23,9 @@ class AnalyticsQueryLog(Base):
     __tablename__ = "analytics_query_logs"
 
     id = Column(CHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    requested_by_id = Column(CHAR(36), ForeignKey("users.id"), nullable=True)
+    requested_by_subject = Column(String(255), nullable=True)
+    requested_by_label = Column(String(255), nullable=True)
+    requested_by_role = Column(String(16), nullable=True)
     model_version_id = Column(
         Integer, ForeignKey("analytics_model_versions.id"), nullable=True
     )
@@ -28,18 +40,24 @@ class AnalyticsQueryLog(Base):
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
-    requested_by = relationship("User")
     model_version = relationship("AnalyticsModelVersion")
 
     __table_args__ = (
         Index("idx_analytics_query_logs_created_at", created_at),
+        Index(
+            "idx_analytics_query_logs_requester_created",
+            requested_by_subject,
+            created_at,
+        ),
         Index("idx_analytics_query_logs_status_created", status, created_at),
     )
 
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "requested_by_id": self.requested_by_id,
+            "requested_by_subject": self.requested_by_subject,
+            "requested_by_label": self.requested_by_label,
+            "requested_by_role": self.requested_by_role,
             "model_version_id": self.model_version_id,
             "semantic_view": self.semantic_view,
             "request": self.request or {},

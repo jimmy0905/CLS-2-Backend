@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from core.config import PATH_TO_UPLOAD_FOLDER
 from core.logging import logger
 from core.time import utc_isoformat, utc_now
-from features.identity.service.security import get_current_user
+from features.identity.service.security import get_current_actor
 from features.ingestion.service import process_upload_task
 from infrastructure.database.dbo.UploadTask import UploadTask
 from infrastructure.database.session import SessionLocal, get_db
@@ -20,7 +20,7 @@ from infrastructure.database.session import SessionLocal, get_db
 router = APIRouter(
     prefix="/tasks",
     tags=["tasks"],
-    dependencies=[Depends(get_db), Depends(get_current_user)],
+    dependencies=[Depends(get_db), Depends(get_current_actor)],
 )
 
 

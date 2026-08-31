@@ -29,7 +29,7 @@ svruk_ecls
 
 將 [`.env.example`](.env.example) 複製為 `.env`，填入共用憑證與整合設定。每部署一個設定檔，請建立 `deploy/profile/<profile>.env`，並只從 [`deploy/profile.env.example`](deploy/profile.env.example) 複製相符的區塊。外部 `connex_network` 必須已包含 `postgres` 服務。舊有拼字錯誤的 `env.exmaple` 仍保留作為相容範本；新的部署請使用 `.env.example`。
 
-Compose 僅使用指定的 `--env-file` 值來插入明確允許的環境變數；它不會將任一檔案完整注入容器。因此，一個設定檔的 Azure OAuth 憑證或分析回饋端點，絕不會存在於另一個設定檔的容器中。
+Compose 僅使用指定的 `--env-file` 值來插入明確允許的環境變數；它不會將任一檔案完整注入容器。因此，一個設定檔的前端 JWT 公鑰或分析回饋端點，絕不會存在於另一個設定檔的容器中。
 
 下列非機密值是 [`docker-compose.yml`](docker-compose.yml) 中各服務專屬的設定，而非從 `.env` 載入。它們會依設定檔隔離：
 
@@ -39,12 +39,11 @@ Compose 僅使用指定的 `--env-file` 值來插入明確允許的環境變數�
 | `FASTAPI_ROOT_PATH` | 對應 Nginx API 路由，例如 `/wtchk/api` 或 `/ecls/wtchk/api`。 |
 | `IS_ECLS_ENABLED` | 選擇 CLS 或 ECLS 處理行為。 |
 | `DEPLOYMENT_PROFILE`、`LOG_SERVICE_NAME` | 讓日誌與診斷資訊可歸屬至單一部署。 |
-| `FRONTEND_URL`、`AZURE_REDIRECT_URI` | Compose 會依設定檔，從共用的 `PUBLIC_BASE_URL` 推導這些路徑。 |
-| Azure AD OAuth 憑證 | 每個服務會從具命名空間且被忽略的設定檔環境檔取得自己的租用戶、用戶端 ID 與用戶端密鑰。 |
+| `API_JWT_PUBLIC_KEY` | 每個服務只取得相符前端的 RS256 公鑰；私鑰只存在前端。 |
 | `ANALYZE_FEEDBACK_API_URL` | 每個服務會從具命名空間且被忽略的設定檔環境檔取得自己的分析回饋端點。 |
 | `ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL`、`SURVEY_EXPORT_COLUMN_*` | 每個設定檔各有 Compose 值，初始為 `false`；如需啟用功能，請編輯該設定檔的服務區塊。 |
 
-Azure AD OAuth 憑證與分析回饋端點皆為設定檔專屬設定，只會儲存在被 Git 忽略的 `deploy/profile/<profile>.env`。請將 [`deploy/profile.env.example`](deploy/profile.env.example) 中所需的設定檔區塊複製到該檔案。例如，`wtchk_cls` 只會使用 `WTCHK_CLS_AZURE_TENANT_ID`、`WTCHK_CLS_AZURE_CLIENT_ID`、`WTCHK_CLS_AZURE_CLIENT_SECRET` 與 `WTCHK_CLS_ANALYZE_FEEDBACK_API_URL`。通用 Azure OAuth 與 `ANALYZE_FEEDBACK_API_URL` 值會在每個服務中刻意覆寫，以避免跨設定檔繼承。
+前端 JWT 公鑰與分析回饋端點皆為設定檔專屬設定，只會儲存在被 Git 忽略的 `deploy/profile/<profile>.env`。例如，`wtchk_cls` 只會使用 `WTCHK_CLS_API_JWT_PUBLIC_KEY` 與 `WTCHK_CLS_ANALYZE_FEEDBACK_API_URL`。Microsoft Entra 的租用戶、用戶端 ID、用戶端密鑰與回呼只設定在相符的 Next.js 前端。
 
 分析回饋是否包含渠道，以及所有問卷匯出欄位旗標，都是由版本控制的設定檔專屬設定，位於 `docker-compose.yml`。它們不再從 `.env` 讀取；請只修改目標設定檔的服務區塊。
 
@@ -74,7 +73,7 @@ docker compose \\
   up -d --build
 ```
 
-共用的 `PUBLIC_BASE_URL` 預設為本機使用的 `http://localhost:3000`。啟用 Azure OAuth 前，請在 `.env` 將它設為公開的 Nginx 來源，以確保產生的各設定檔重新導向 URI 已向 Azure 註冊。
+FastAPI 只接受相符前端簽發、有效期 60 秒的 RS256 Bearer token。簽發者為 `clsense-frontend:<profile>`，受眾為 `clsense-api:<profile>`；後端不再提供登入、續期、Entra 回呼或使用者管理端點。
 
 ## 可觀測性與資料保留
 
@@ -82,12 +81,20 @@ docker compose \\
 
 `SERVER_LOG_RETENTION_DAYS=30` 為預設值，定義於 `.env.example`，並控制每日輪替應用程式日誌的保存期。無法建立或寫入持久化檔案時，服務會繼續只輸出 stdout，並在 `docker logs` 寫出一筆 `CRITICAL` 診斷事件。Docker 仍將每個服務的本機 JSON log 限制為十個、每個 10 MiB，因此精確的 30 天歷史應從持久化 volume 讀取。
 
+私有營運儀表板由 Grafana、Loki 與 Alloy overlay 提供：
+
+```bash
+GRAFANA_ADMIN_PASSWORD='replace-me' docker compose \
+  -f docker-compose.yml -f docker-compose.observability.yml up -d loki alloy grafana
+```
+
+Grafana 預設只在 `127.0.0.1:3300` 監聽。Loki 與 Alloy 沒有主機連接埠，且只加入 internal network。Alloy 唯讀掛載全部 61 個設定檔的日誌 volume，只追蹤目前的 `server.log`；輪替檔案仍作為非 Loki 備援，不會自動回填。Loki 使用單機 TSDB/filesystem 並由 compactor 保存 30 天。
+
 `DATA_RETENTION_DAYS=30` 只控制營運資料。資料保留會在啟動後及每個 `RETENTION_CHECK_INTERVAL_SECONDS`（預設為 86400）週期執行，並只會清除早於截止日的資料：
 
-- 登入紀錄；
 - 已完成或失敗的上傳工作及其錯誤列；
 
-它絕不刪除問卷、使用者、門市、部門、主題、外送服務或其他業務資料。
+它絕不刪除問卷、門市、部門、主題、外送服務或其他業務資料。
 
 ## 資料庫遷移
 
@@ -101,4 +108,4 @@ alembic revision --autogenerate -m "描述結構變更"
 alembic upgrade head
 ```
 
-`DATABASE_BOOTSTRAP_SCHEMA=true` 可為空白的本機資料庫啟用舊版 SQLAlchemy `create_all()` 初始化流程。除非同時設定 `BOOTSTRAP_DEFAULT_ADMIN=true` 與非空的 `BOOTSTRAP_DEFAULT_ADMIN_PASSWORD`，否則新資料庫不會建立管理員。
+`DATABASE_BOOTSTRAP_SCHEMA=true` 可為空白的本機資料庫啟用 SQLAlchemy `create_all()` 初始化流程。管理員只存在每個設定檔的 Next.js frontend auth 資料庫。

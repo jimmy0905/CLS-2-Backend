@@ -8,12 +8,12 @@ from features.master_data.dto import (
 )
 from features.master_data.service import delivery_service_service
 from infrastructure.database.session import get_db
-from features.identity.service.security import get_current_user, require_admin
+from features.identity.service.security import get_current_actor, require_admin
 
 router = APIRouter(
     prefix="/delivery_services",
     tags=["delivery_services"],
-    dependencies=[Depends(get_db), Depends(get_current_user)],
+    dependencies=[Depends(get_db), Depends(get_current_actor)],
 )
 
 

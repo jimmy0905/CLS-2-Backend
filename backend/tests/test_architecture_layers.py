@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import ast
 import sys
 from pathlib import Path
 
@@ -15,7 +14,7 @@ from infrastructure.database.registry import Base
 
 
 def test_database_registry_loads_every_preserved_mapping() -> None:
-    assert len(Base.metadata.tables) == 22
+    assert len(Base.metadata.tables) == 20
     assert set(Base.metadata.tables) == {
         "analytics_audit_logs",
         "analytics_charts",
@@ -29,7 +28,6 @@ def test_database_registry_loads_every_preserved_mapping() -> None:
         "delivery_services",
         "departments",
         "keywords",
-        "login_records",
         "stores",
         "surveys",
         "survey_departments",
@@ -38,7 +36,6 @@ def test_database_registry_loads_every_preserved_mapping() -> None:
         "topics",
         "upload_tasks",
         "upload_task_errors",
-        "users",
     }
 
 
@@ -65,19 +62,13 @@ def test_migrated_master_data_endpoints_do_not_issue_sql_or_transactions() -> No
         assert "db.delete(" not in source, name
 
 
-def test_migrated_identity_endpoints_do_not_issue_sql_or_transactions() -> None:
-    endpoints = BACKEND / "features" / "identity" / "endpoints"
-    for name in ("auth.py", "users.py"):
-        tree = ast.parse((endpoints / name).read_text())
-        calls = {
-            node.func.attr
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id == "db"
-        }
-        assert not calls & {"add", "commit", "delete", "query", "rollback"}, name
+def test_backend_identity_surface_is_bearer_only() -> None:
+    identity = BACKEND / "features" / "identity"
+    assert not (identity / "endpoints" / "auth.py").exists()
+    assert not (identity / "endpoints" / "users.py").exists()
+    security_source = (BACKEND / "core" / "security.py").read_text()
+    assert "get_db" not in security_source
+    assert "User" not in security_source
 
 
 def test_operations_health_endpoint_delegates_database_access() -> None:

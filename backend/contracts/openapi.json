@@ -46,65 +46,6 @@
         "title": "AnalyticsCatalogResponse",
         "type": "object"
       },
-      "Body_token_auth_token_post": {
-        "properties": {
-          "client_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Client Id"
-          },
-          "client_secret": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "format": "password",
-            "title": "Client Secret"
-          },
-          "grant_type": {
-            "anyOf": [
-              {
-                "pattern": "^password$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Grant Type"
-          },
-          "password": {
-            "format": "password",
-            "title": "Password",
-            "type": "string"
-          },
-          "scope": {
-            "default": "",
-            "title": "Scope",
-            "type": "string"
-          },
-          "username": {
-            "title": "Username",
-            "type": "string"
-          }
-        },
-        "required": [
-          "username",
-          "password"
-        ],
-        "title": "Body_token_auth_token_post",
-        "type": "object"
-      },
       "Body_upload_tasks_tasks_upload_tasks_post": {
         "properties": {
           "file": {
@@ -4015,62 +3956,6 @@
         "title": "UpdateTopicRequest",
         "type": "object"
       },
-      "UpdateUserPasswordRequest": {
-        "properties": {
-          "password": {
-            "title": "Password",
-            "type": "string"
-          }
-        },
-        "required": [
-          "password"
-        ],
-        "title": "UpdateUserPasswordRequest",
-        "type": "object"
-      },
-      "UpdateUserRequest": {
-        "properties": {
-          "is_deleted": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Is Deleted"
-          },
-          "role": {
-            "anyOf": [
-              {
-                "enum": [
-                  "user",
-                  "admin"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Role"
-          },
-          "username": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Username"
-          }
-        },
-        "title": "UpdateUserRequest",
-        "type": "object"
-      },
       "UploadTaskResponse": {
         "properties": {
           "created_at": {
@@ -4122,44 +4007,6 @@
           "error_count"
         ],
         "title": "UploadTaskResponse",
-        "type": "object"
-      },
-      "UserResponse": {
-        "properties": {
-          "created_at": {
-            "title": "Created At",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "is_deleted": {
-            "title": "Is Deleted",
-            "type": "boolean"
-          },
-          "role": {
-            "title": "Role",
-            "type": "string"
-          },
-          "updated_at": {
-            "title": "Updated At",
-            "type": "string"
-          },
-          "username": {
-            "title": "Username",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "username",
-          "role",
-          "created_at",
-          "updated_at",
-          "is_deleted"
-        ],
-        "title": "UserResponse",
         "type": "object"
       },
       "ValidationError": {
@@ -5463,14 +5310,9 @@
       }
     },
     "securitySchemes": {
-      "OAuth2PasswordBearer": {
-        "flows": {
-          "password": {
-            "scopes": {},
-            "tokenUrl": "//auth/token"
-          }
-        },
-        "type": "oauth2"
+      "FrontendBearer": {
+        "scheme": "bearer",
+        "type": "http"
       }
     }
   },
@@ -5503,7 +5345,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "List chart definitions",
@@ -5550,7 +5392,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Create chart definition",
@@ -5600,7 +5442,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Delete chart definition",
@@ -5648,7 +5490,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get chart definition",
@@ -5706,7 +5548,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Update chart definition",
@@ -5756,7 +5598,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Publish chart definition",
@@ -5783,7 +5625,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "List measurable chart targets",
@@ -5837,7 +5679,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Resolve remaining chart builder options",
@@ -5886,7 +5728,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Run a chart builder selection",
@@ -5913,7 +5755,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get the active analytics catalog",
@@ -5971,7 +5813,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get field data availability",
@@ -6003,7 +5845,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "List published charts",
@@ -6070,7 +5912,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Run published chart data",
@@ -6119,7 +5961,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Drill down to survey responses",
@@ -6168,7 +6010,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Queue analytics export",
@@ -6218,7 +6060,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get analytics export status",
@@ -6264,7 +6106,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Download analytics export",
@@ -6313,7 +6155,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "List available filter values",
@@ -6362,7 +6204,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Run a governed aggregate query",
@@ -6409,7 +6251,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Resolve analytics query capabilities",
@@ -6471,7 +6313,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "List finite analytics query combinations",
@@ -6520,113 +6362,12 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Query governed analytics records",
         "tags": [
           "analytics"
-        ]
-      }
-    },
-    "/auth/azure/callback": {
-      "get": {
-        "operationId": "azure_callback_auth_azure_callback_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Azure Callback",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
-    "/auth/azure/login": {
-      "get": {
-        "operationId": "azure_login_auth_azure_login_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Azure Login",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
-    "/auth/renew-token": {
-      "post": {
-        "operationId": "renew_token_auth_renew_token_post",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "OAuth2PasswordBearer": []
-          }
-        ],
-        "summary": "Renew Token",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
-    "/auth/token": {
-      "post": {
-        "operationId": "token_auth_token_post",
-        "requestBody": {
-          "content": {
-            "application/x-www-form-urlencoded": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_token_auth_token_post"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Token",
-        "tags": [
-          "auth"
         ]
       }
     },
@@ -6645,7 +6386,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Channels",
@@ -6687,7 +6428,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Create Channel",
@@ -6732,7 +6473,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Delete Channel",
@@ -6775,7 +6516,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Channel",
@@ -6828,7 +6569,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Update Channel",
@@ -7679,7 +7420,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Channel And Delivery Service Distribution",
@@ -7735,7 +7476,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Data Coverage",
@@ -8586,7 +8327,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Department Distribution",
@@ -9449,7 +9190,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Keyword Analysis",
@@ -9506,7 +9247,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Last Updated Date",
@@ -10357,7 +10098,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Sentiment Distribution",
@@ -11219,7 +10960,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Store Column Sentiment Distribution",
@@ -12070,7 +11811,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Store Distribution",
@@ -12921,7 +12662,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Topic Distribution",
@@ -13768,7 +13509,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Topic Sentiment Score",
@@ -13792,7 +13533,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Delivery Services",
@@ -13834,7 +13575,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Create Delivery Service",
@@ -13879,7 +13620,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Delete Delivery Service",
@@ -13922,7 +13663,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Delivery Service",
@@ -13975,7 +13716,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Update Delivery Service",
@@ -13999,7 +13740,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Departments",
@@ -14041,7 +13782,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Create Department",
@@ -14086,7 +13827,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Delete Department",
@@ -14129,7 +13870,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Department",
@@ -14182,7 +13923,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Update Department",
@@ -15112,7 +14853,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Stores",
@@ -15156,7 +14897,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Create Store",
@@ -16001,7 +15742,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Export Stores Csv",
@@ -16045,7 +15786,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Upsert Stores From Csv",
@@ -16090,7 +15831,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Delete Store",
@@ -16135,7 +15876,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Store",
@@ -16182,7 +15923,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Top K Performance Channels By Ids",
@@ -16229,7 +15970,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Strategy For Column By Value",
@@ -16276,7 +16017,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Top K Performance Delivery Services By Ids",
@@ -16323,7 +16064,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Strategy For Store By Ids",
@@ -17172,7 +16913,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Strategy V2",
@@ -18035,7 +17776,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Top K Performance Channels",
@@ -18909,7 +18650,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Top K Performance Columns",
@@ -19772,7 +19513,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Top K Performance Delivery Services",
@@ -20635,7 +20376,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Top K Performance Stores",
@@ -21505,7 +21246,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Surveys",
@@ -21549,7 +21290,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Create Survey",
@@ -22394,7 +22135,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Download Surveys",
@@ -22441,7 +22182,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Delete Survey",
@@ -22504,7 +22245,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Survey",
@@ -22559,7 +22300,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Update Survey",
@@ -22589,7 +22330,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Upload Tasks",
@@ -22613,7 +22354,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Download Example Task",
@@ -22658,7 +22399,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Download Uploaded Task",
@@ -22702,7 +22443,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Upload Tasks",
@@ -22749,7 +22490,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Upload Task",
@@ -22773,7 +22514,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Topics",
@@ -22815,7 +22556,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Create Topic",
@@ -22860,7 +22601,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Delete Topic",
@@ -22903,7 +22644,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Get Topic",
@@ -22956,7 +22697,7 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Update Topic",
@@ -23002,195 +22743,12 @@
         },
         "security": [
           {
-            "OAuth2PasswordBearer": []
+            "FrontendBearer": []
           }
         ],
         "summary": "Translate",
         "tags": [
           "translator"
-        ]
-      }
-    },
-    "/users/": {
-      "get": {
-        "operationId": "get_users_users__get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/UserResponse"
-                  },
-                  "title": "Response Get Users Users  Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "OAuth2PasswordBearer": []
-          }
-        ],
-        "summary": "Get Users",
-        "tags": [
-          "users"
-        ]
-      }
-    },
-    "/users/{user_id}": {
-      "delete": {
-        "operationId": "delete_user_users__user_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "user_id",
-            "required": true,
-            "schema": {
-              "title": "User Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "OAuth2PasswordBearer": []
-          }
-        ],
-        "summary": "Delete User",
-        "tags": [
-          "users"
-        ]
-      },
-      "put": {
-        "operationId": "update_user_users__user_id__put",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "user_id",
-            "required": true,
-            "schema": {
-              "title": "User Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateUserRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "OAuth2PasswordBearer": []
-          }
-        ],
-        "summary": "Update User",
-        "tags": [
-          "users"
-        ]
-      }
-    },
-    "/users/{user_id}/password": {
-      "put": {
-        "operationId": "update_user_password_users__user_id__password_put",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "user_id",
-            "required": true,
-            "schema": {
-              "title": "User Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateUserPasswordRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "OAuth2PasswordBearer": []
-          }
-        ],
-        "summary": "Update User Password",
-        "tags": [
-          "users"
         ]
       }
     }

@@ -1,20 +1,18 @@
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
-    CHAR,
     Column,
     DateTime,
-    ForeignKey,
     Index,
     Integer,
-    JSON,
     String,
     Text,
 )
 from sqlalchemy.orm import relationship
 
-from infrastructure.database.base import Base
 from core.time import utc_isoformat, utc_now
+from infrastructure.database.base import Base
 
 
 class AnalyticsField(Base):
@@ -40,7 +38,9 @@ class AnalyticsField(Base):
     is_promoted = Column(Boolean, nullable=False, default=False)
     # Discovery runs as a system process; promoted/admin-created fields retain
     # their actor while automatically discovered candidates may be actor-less.
-    created_by_id = Column(CHAR(36), ForeignKey("users.id"), nullable=True)
+    created_by_subject = Column(String(255), nullable=True)
+    created_by_label = Column(String(255), nullable=True)
+    created_by_role = Column(String(16), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = Column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
@@ -56,7 +56,6 @@ class AnalyticsField(Base):
     published_at = Column(DateTime(timezone=True), nullable=True)
     archived_at = Column(DateTime(timezone=True), nullable=True)
 
-    created_by = relationship("User")
     values = relationship("AnalyticsFieldValue", back_populates="field")
 
     __table_args__ = (
@@ -87,6 +86,9 @@ class AnalyticsField(Base):
             "visibility": self.visibility,
             "status": self.status,
             "is_promoted": self.is_promoted,
+            "created_by_subject": self.created_by_subject,
+            "created_by_label": self.created_by_label,
+            "created_by_role": self.created_by_role,
             "occurrence_count": self.occurrence_count,
             "last_seen_at": utc_isoformat(self.last_seen_at),
             "promoted_at": utc_isoformat(self.promoted_at),

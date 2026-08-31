@@ -1,10 +1,21 @@
 import uuid
 
-from sqlalchemy import BigInteger, CHAR, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text
+from sqlalchemy import (
+    CHAR,
+    JSON,
+    BigInteger,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.orm import relationship
 
-from infrastructure.database.base import Base
 from core.time import utc_isoformat, utc_now
+from infrastructure.database.base import Base
 
 
 class AnalyticsExportJob(Base):
@@ -13,7 +24,9 @@ class AnalyticsExportJob(Base):
     __tablename__ = "analytics_export_jobs"
 
     id = Column(CHAR(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    requested_by_id = Column(CHAR(36), ForeignKey("users.id"), nullable=False)
+    requested_by_subject = Column(String(255), nullable=False)
+    requested_by_label = Column(String(255), nullable=False)
+    requested_by_role = Column(String(16), nullable=False)
     query_log_id = Column(
         CHAR(36), ForeignKey("analytics_query_logs.id"), nullable=True
     )
@@ -33,19 +46,25 @@ class AnalyticsExportJob(Base):
     expires_at = Column(DateTime(timezone=True), nullable=False)
     downloaded_at = Column(DateTime(timezone=True), nullable=True)
 
-    requested_by = relationship("User")
     query_log = relationship("AnalyticsQueryLog")
     model_version = relationship("AnalyticsModelVersion")
 
     __table_args__ = (
         Index("idx_analytics_export_jobs_status_created", status, created_at),
+        Index(
+            "idx_analytics_export_jobs_requester_status",
+            requested_by_subject,
+            status,
+        ),
         Index("idx_analytics_export_jobs_expires_at", expires_at),
     )
 
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "requested_by_id": self.requested_by_id,
+            "requested_by_subject": self.requested_by_subject,
+            "requested_by_label": self.requested_by_label,
+            "requested_by_role": self.requested_by_role,
             "query_log_id": self.query_log_id,
             "model_version_id": self.model_version_id,
             "export_format": self.export_format,

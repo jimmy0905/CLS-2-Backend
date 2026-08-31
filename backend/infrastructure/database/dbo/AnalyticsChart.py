@@ -1,18 +1,17 @@
 from sqlalchemy import (
-    CHAR,
+    JSON,
     Column,
     DateTime,
     ForeignKey,
     Index,
     Integer,
-    JSON,
     String,
     Text,
 )
 from sqlalchemy.orm import relationship
 
-from infrastructure.database.base import Base
 from core.time import utc_isoformat, utc_now
+from infrastructure.database.base import Base
 
 
 class AnalyticsChart(Base):
@@ -28,7 +27,9 @@ class AnalyticsChart(Base):
     visibility = Column(String(16), nullable=False, default="viewer")
     status = Column(String(16), nullable=False, default="draft", index=True)
     validation_errors = Column(JSON, nullable=False, default=list)
-    created_by_id = Column(CHAR(36), ForeignKey("users.id"), nullable=False)
+    created_by_subject = Column(String(255), nullable=False)
+    created_by_label = Column(String(255), nullable=False)
+    created_by_role = Column(String(16), nullable=False)
     published_model_version_id = Column(
         Integer, ForeignKey("analytics_model_versions.id"), nullable=True
     )
@@ -40,15 +41,12 @@ class AnalyticsChart(Base):
     published_at = Column(DateTime(timezone=True), nullable=True)
     archived_at = Column(DateTime(timezone=True), nullable=True)
 
-    created_by = relationship("User")
     published_model_version = relationship("AnalyticsModelVersion")
 
     __table_args__ = (
         Index("idx_analytics_charts_status_updated", status, updated_at),
         Index("uq_analytics_charts_slug", slug, unique=True),
-        Index(
-            "idx_analytics_charts_visibility_status", visibility, status
-        ),
+        Index("idx_analytics_charts_visibility_status", visibility, status),
     )
 
     def to_dict(self) -> dict:
@@ -63,6 +61,9 @@ class AnalyticsChart(Base):
             "visibility": self.visibility,
             "status": self.status,
             "validation_errors": self.validation_errors or [],
+            "created_by_subject": self.created_by_subject,
+            "created_by_label": self.created_by_label,
+            "created_by_role": self.created_by_role,
             "published_model_version_id": self.published_model_version_id,
             "validated_at": utc_isoformat(self.validated_at),
             "published_at": utc_isoformat(self.published_at),

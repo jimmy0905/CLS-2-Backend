@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
-from infrastructure.database.session import get_db
-from features.identity.service.security import get_current_user
-from infrastructure.database.dbo.User import User
+
+from core.security import ActorContext
+from features.identity.service.security import get_current_actor
 from features.translation.dto import (
     DetectedLanguage,
     Translation,
@@ -9,18 +9,19 @@ from features.translation.dto import (
     TranslationResponse,
 )
 from features.translation.service import translation_service
+from infrastructure.database.session import get_db
 
 router = APIRouter(
     prefix="/translator",
     tags=["translator"],
-    dependencies=[Depends(get_db), Depends(get_current_user)],
+    dependencies=[Depends(get_db), Depends(get_current_actor)],
 )
 
 
 @router.post("/translate")
 async def translate(
     translation_request: TranslationRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: ActorContext = Depends(get_current_actor),
 ) -> TranslationResponse:
     first_result = await translation_service.translate(
         translation_request.text, translation_request.target_language

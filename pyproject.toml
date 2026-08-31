@@ -27,10 +27,7 @@ files = [
     "backend/features/master_data/mapper.py",
     "backend/features/master_data/repository.py",
     "backend/features/master_data/service.py",
-    "backend/features/identity/dto.py",
-    "backend/features/identity/mapper.py",
-    "backend/features/identity/repository.py",
-    "backend/features/identity/service/users.py",
+    "backend/core/security.py",
     "backend/features/translation/dto.py",
     "backend/features/translation/service.py",
     "backend/features/operations/lifecycle.py",
@@ -49,7 +46,7 @@ warn_redundant_casts = true
 strict_equality = true
 
 [[tool.mypy.overrides]]
-module = ["alembic.*", "pandas.*"]
+module = ["alembic.*", "jose.*", "pandas.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -58,6 +55,7 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = [
+    "features.analytics.*",
     "features.identity.service.security",
     "infrastructure.database.base",
     "infrastructure.database.dbo.*",

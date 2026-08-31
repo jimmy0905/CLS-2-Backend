@@ -79,7 +79,7 @@ class AnalyticsCatalogModelTests(unittest.TestCase):
         self.assertIn("request", AnalyticsQueryLog.__table__.columns)
         self.assertIn("expires_at", AnalyticsExportJob.__table__.columns)
         self.assertTrue(AnalyticsFieldValue.__deprecated__)
-        self.assertTrue(AnalyticsField.created_by_id.nullable)
+        self.assertTrue(AnalyticsField.created_by_subject.nullable)
         self.assertTrue(
             {"analytics_affected_months", "analytics_refresh_status"}.issubset(
                 UploadTask.__table__.columns.keys()

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from features.feedback.filtering import build_optimized_query, build_survey_query
 from features.feedback.filtering import FilterRequest, get_filter_params
-from features.identity.service.security import get_current_user
+from features.identity.service.security import get_current_actor
 from infrastructure.integrations.llm.generate_strategy import (
     generate_channel_strategy,
     generate_delivery_service_strategy,
@@ -32,7 +32,7 @@ from core.time import utc_isoformat
 router = APIRouter(
     prefix="/strategy",
     tags=["strategy"],
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(get_current_actor)],
 )
 
 class StoreResponse(BaseModel):

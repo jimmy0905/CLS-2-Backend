@@ -4,8 +4,7 @@ Run the live suite explicitly so the normal unit-test run stays hermetic::
 
     ANALYTICS_E2E=1 \
     ANALYTICS_E2E_BASE_URL=http://localhost:8000 \
-    ANALYTICS_E2E_USERNAME=viewer \
-    ANALYTICS_E2E_PASSWORD='...' \
+    ANALYTICS_E2E_TOKEN='<frontend-issued-rs256-token>' \
     .venv/bin/python -m pytest -m analytics_e2e -v --log-cli-level=INFO \
         backend/tests/test_analytics_dashboard_e2e.py
 
@@ -95,8 +94,6 @@ class E2EConfig:
     base_url: str
     api_prefix: str
     token: str | None = field(repr=False)
-    username: str | None = field(repr=False)
-    password: str | None = field(repr=False)
     expected_role: str
     timezone: str
     from_date: str
@@ -105,23 +102,11 @@ class E2EConfig:
 
     @classmethod
     def from_environment(cls) -> "E2EConfig":
-        explicit_username = os.getenv("ANALYTICS_E2E_USERNAME") or None
-        explicit_password = os.getenv("ANALYTICS_E2E_PASSWORD") or None
-        bootstrap_username = os.getenv("BOOTSTRAP_DEFAULT_ADMIN_USERNAME") or None
-        bootstrap_password = os.getenv("BOOTSTRAP_DEFAULT_ADMIN_PASSWORD") or None
-        using_bootstrap_credentials = not (explicit_username and explicit_password) and bool(
-            bootstrap_username and bootstrap_password
-        )
         return cls(
             base_url=os.getenv("ANALYTICS_E2E_BASE_URL", "http://localhost:8000").rstrip("/"),
             api_prefix=os.getenv("ANALYTICS_E2E_API_PREFIX", "").strip("/"),
             token=os.getenv("ANALYTICS_E2E_TOKEN") or None,
-            username=explicit_username or bootstrap_username,
-            password=explicit_password or bootstrap_password,
-            expected_role=os.getenv(
-                "ANALYTICS_E2E_EXPECTED_ROLE",
-                "admin" if using_bootstrap_credentials else "viewer",
-            ),
+            expected_role=os.getenv("ANALYTICS_E2E_EXPECTED_ROLE", "viewer"),
             timezone=os.getenv("ANALYTICS_E2E_TIMEZONE", "Asia/Hong_Kong"),
             from_date=os.getenv("ANALYTICS_E2E_FROM_DATE", "2020-01-01T00:00:00Z"),
             to_date=os.getenv("ANALYTICS_E2E_TO_DATE", "2030-01-01T00:00:00Z"),
@@ -139,12 +124,8 @@ def _require_e2e_enabled() -> None:
 
 
 def _require_auth(config: E2EConfig) -> None:
-    if not config.token and not (config.username and config.password):
-        pytest.skip(
-            "Set ANALYTICS_E2E_TOKEN or ANALYTICS_E2E_USERNAME and "
-            "ANALYTICS_E2E_PASSWORD (or the BOOTSTRAP_DEFAULT_ADMIN_USERNAME and "
-            "BOOTSTRAP_DEFAULT_ADMIN_PASSWORD pair) to run authenticated dashboard tests"
-        )
+    if not config.token:
+        pytest.skip("Set ANALYTICS_E2E_TOKEN to a matching frontend-issued bearer token")
 
 
 def _redact(value: Any, key: str | None = None) -> Any:
@@ -265,17 +246,7 @@ def e2e_config() -> E2EConfig:
 def e2e_client(e2e_config: E2EConfig) -> httpx.Client:
     _require_auth(e2e_config)
     client = httpx.Client(timeout=e2e_config.timeout, follow_redirects=True)
-    if e2e_config.token:
-        token = e2e_config.token
-    else:
-        response = client.post(
-            e2e_config.url("auth/token"),
-            data={"username": e2e_config.username, "password": e2e_config.password},
-        )
-        payload = _assert_status(response, label="auth/token")
-        token = payload.get("access_token") if isinstance(payload, dict) else None
-        assert isinstance(token, str) and token, "The token endpoint returned no access_token"
-    client.headers.update({"Authorization": f"Bearer {token}"})
+    client.headers.update({"Authorization": f"Bearer {e2e_config.token}"})
     yield client
     client.close()
 

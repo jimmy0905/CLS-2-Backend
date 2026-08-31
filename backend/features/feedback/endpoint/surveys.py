@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 from core.config import is_survey_export_column_enabled
 from core.time import as_utc, resolve_timezone, utc_isoformat, utc_now
 from features.feedback.filtering import FilterRequest, build_survey_query, get_filter_params
-from features.identity.service.security import get_current_user, require_admin
+from features.identity.service.security import get_current_actor, require_admin
 from infrastructure.database.dbo.Channel import Channel
 from infrastructure.database.dbo.DeliveryService import DeliveryService
 from infrastructure.database.dbo.Department import Department
@@ -29,7 +29,7 @@ from infrastructure.database.session import get_db
 router = APIRouter(
     prefix="/surveys",
     tags=["surveys"],
-    dependencies=[Depends(get_db), Depends(get_current_user)],
+    dependencies=[Depends(get_db), Depends(get_current_actor)],
 )
 
 

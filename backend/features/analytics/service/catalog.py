@@ -178,7 +178,9 @@ def register_upload_candidates(db: Any, dataframe: Any) -> int:
                 is_promoted=False,
                 occurrence_count=occurrence_count,
                 last_seen_at=utc_now(),
-                created_by_id=None,
+                created_by_subject=None,
+                created_by_label=None,
+                created_by_role=None,
             )
             db.add(field)
         else:

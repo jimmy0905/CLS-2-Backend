@@ -1,6 +1,6 @@
 {
-  "metadata_sha256": "556f15a3d6512dc2cbb31640f6fff2af573009b414a4006d366a8f677fb280bb",
-  "openapi_sha256": "cb413a6ae46da3c7a5590b2c9aba0bbf891d9cac3061f7aa3e93fb80310cf7c0",
-  "route_manifest_sha256": "3a9831f9d653ad399e6245c31b147bc37ae1758df09f31b0f203dcad965dcd94",
-  "table_count": 22
+  "metadata_sha256": "6f539b8f1b8a822341b934484719d02f26ee2b38b866db579b823ad326ab049a",
+  "openapi_sha256": "0e74260649969f6660ae68478c69bbe1c936d0befe6db6a4e05a44f0fe006801",
+  "route_manifest_sha256": "fa8cb96e68c7117a58bce36cbd592a0de0d201efea7444c25c724f39c5025f6d",
+  "table_count": 20
 }

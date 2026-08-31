@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from core.time import local_isoformat, resolve_timezone
 from features.feedback.model.sentiment import Sentiment, TopicSentiment
-from features.identity.service.security import get_current_user
+from features.identity.service.security import get_current_actor
 from infrastructure.database.dbo.Channel import Channel
 from infrastructure.database.dbo.DeliveryService import DeliveryService
 from infrastructure.database.dbo.Department import Department
@@ -29,7 +29,7 @@ from infrastructure.database.session import get_db
 router = APIRouter(
     prefix="/dashboard",
     tags=["dashboard"],
-    dependencies=[Depends(get_db), Depends(get_current_user)],
+    dependencies=[Depends(get_db), Depends(get_current_actor)],
 )
 
 

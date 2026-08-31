@@ -17,7 +17,6 @@ from features.analytics.service.exports import remove_export_file
 from infrastructure.database.dbo.AnalyticsAuditLog import AnalyticsAuditLog
 from infrastructure.database.dbo.AnalyticsExportJob import AnalyticsExportJob
 from infrastructure.database.dbo.AnalyticsQueryLog import AnalyticsQueryLog
-from infrastructure.database.dbo.LoginRecord import LoginRecord
 from infrastructure.database.dbo.UploadTask import UploadTask
 from infrastructure.database.dbo.UploadTaskError import UploadTaskError
 from infrastructure.database.session import SessionLocal
@@ -38,9 +37,6 @@ def purge_operational_records(cutoff: datetime) -> dict[str, int]:
             UploadTask.status != "processing",
         )
         deleted = {
-            "login_records": db.query(LoginRecord)
-            .filter(LoginRecord.login_time < cutoff)
-            .delete(synchronize_session=False),
             "upload_task_errors": db.query(UploadTaskError)
             .filter(UploadTaskError.upload_task_id.in_(expired_upload_task_ids))
             .delete(synchronize_session=False),

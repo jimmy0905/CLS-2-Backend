@@ -72,13 +72,22 @@ DEPLOYMENT_PROFILE = os.getenv("DEPLOYMENT_PROFILE", "local")
 LOG_SERVICE_NAME = os.getenv("LOG_SERVICE_NAME", "clsense-backend")
 IS_ECLS_ENABLED = parse_strict_bool_env("IS_ECLS_ENABLED", default=False)
 
-# HTTP and session settings.
+# HTTP settings.
 FASTAPI_DOCS_URL = os.getenv("FASTAPI_DOCS_URL") or None
 FASTAPI_OPENAPI_URL = os.getenv("FASTAPI_OPENAPI_URL") or None
 FASTAPI_REDOC_URL = os.getenv("FASTAPI_REDOC_URL") or None
 FASTAPI_ROOT_PATH = os.getenv("FASTAPI_ROOT_PATH", "")
 CORS_ORIGINS = parse_csv_env("CORS_ORIGINS", "*")
-COOKIE_SECURE = parse_strict_bool_env("COOKIE_SECURE", default=True)
+
+# The frontend is the sole identity provider for the API. It signs short-lived
+# actor tokens with RS256; each backend profile receives only the matching
+# public key.
+API_JWT_PUBLIC_KEY = os.getenv("API_JWT_PUBLIC_KEY", "").replace("\\n", "\n").strip()
+API_JWT_ISSUER = os.getenv("API_JWT_ISSUER", f"clsense-frontend:{DEPLOYMENT_PROFILE}")
+API_JWT_AUDIENCE = os.getenv("API_JWT_AUDIENCE", f"clsense-api:{DEPLOYMENT_PROFILE}")
+API_JWT_CLOCK_SKEW_SECONDS = parse_positive_int_env(
+    "API_JWT_CLOCK_SKEW_SECONDS", default=30
+)
 
 # Server logging is always written to stdout for container collection. Docker
 # profiles additionally provide a writable, persistent SERVER_LOG_FILE.
@@ -148,13 +157,6 @@ DATABASE_AUTO_GENERATE_MIGRATIONS = parse_strict_bool_env(
 DATABASE_BOOTSTRAP_SCHEMA = parse_strict_bool_env(
     "DATABASE_BOOTSTRAP_SCHEMA", default=False
 )
-BOOTSTRAP_DEFAULT_ADMIN = parse_strict_bool_env(
-    "BOOTSTRAP_DEFAULT_ADMIN", default=False
-)
-BOOTSTRAP_DEFAULT_ADMIN_USERNAME = os.getenv(
-    "BOOTSTRAP_DEFAULT_ADMIN_USERNAME", "admin"
-)
-BOOTSTRAP_DEFAULT_ADMIN_PASSWORD = os.getenv("BOOTSTRAP_DEFAULT_ADMIN_PASSWORD")
 
 
 def is_survey_export_column_enabled(column_name: str) -> bool:

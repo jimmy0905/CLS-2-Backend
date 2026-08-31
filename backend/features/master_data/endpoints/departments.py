@@ -7,12 +7,12 @@ from features.master_data.dto import (
 )
 from features.master_data.service import department_service
 from infrastructure.database.session import get_db
-from features.identity.service.security import get_current_user
+from features.identity.service.security import get_current_actor
 
 router = APIRouter(
     prefix="/departments",
     tags=["departments"],
-    dependencies=[Depends(get_db), Depends(get_current_user)],
+    dependencies=[Depends(get_db), Depends(get_current_actor)],
 )
 
 

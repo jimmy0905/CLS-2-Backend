@@ -1,5 +1,6 @@
 """Import every SQLAlchemy mapping before metadata or migrations are inspected."""
 
+from infrastructure.database.base import Base
 from infrastructure.database.dbo.AnalyticsAuditLog import AnalyticsAuditLog
 from infrastructure.database.dbo.AnalyticsChart import AnalyticsChart
 from infrastructure.database.dbo.AnalyticsExportJob import AnalyticsExportJob
@@ -12,7 +13,6 @@ from infrastructure.database.dbo.Channel import Channel
 from infrastructure.database.dbo.DeliveryService import DeliveryService
 from infrastructure.database.dbo.Department import Department
 from infrastructure.database.dbo.Keyword import Keyword
-from infrastructure.database.dbo.LoginRecord import LoginRecord
 from infrastructure.database.dbo.Store import Store
 from infrastructure.database.dbo.Survey import Survey
 from infrastructure.database.dbo.SurveyDepartments import SurveyDepartments
@@ -21,11 +21,8 @@ from infrastructure.database.dbo.SurveyTopics import SurveyTopics
 from infrastructure.database.dbo.Topic import Topic
 from infrastructure.database.dbo.UploadTask import UploadTask
 from infrastructure.database.dbo.UploadTaskError import UploadTaskError
-from infrastructure.database.dbo.User import User
-from infrastructure.database.base import Base
 
 __all__ = [
-    "Base",
     "AnalyticsAuditLog",
     "AnalyticsChart",
     "AnalyticsExportJob",
@@ -34,11 +31,11 @@ __all__ = [
     "AnalyticsMetric",
     "AnalyticsModelVersion",
     "AnalyticsQueryLog",
+    "Base",
     "Channel",
     "DeliveryService",
     "Department",
     "Keyword",
-    "LoginRecord",
     "Store",
     "Survey",
     "SurveyDepartments",
@@ -47,5 +44,4 @@ __all__ = [
     "Topic",
     "UploadTask",
     "UploadTaskError",
-    "User",
 ]

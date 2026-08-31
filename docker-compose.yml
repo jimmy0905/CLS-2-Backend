@@ -5,11 +5,7 @@ x-backend-environment: &backend-environment
   DATABASE_USER: "${DATABASE_USER:-postgres}"
   DATABASE_PASSWORD: "${DATABASE_PASSWORD:-}"
   DATABASE_PORT: "${DATABASE_PORT:-5432}"
-  SESSION_SECRET_KEY: "${SESSION_SECRET_KEY:-}"
-  JWT_SECRET_KEY: "${JWT_SECRET_KEY:-}"
-  JWT_ALGORITHM: "${JWT_ALGORITHM:-HS256}"
-  JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30}"
-  COOKIE_SECURE: "${COOKIE_SECURE:-true}"
+  API_JWT_CLOCK_SKEW_SECONDS: "${API_JWT_CLOCK_SKEW_SECONDS:-30}"
   CORS_ORIGINS: "${CORS_ORIGINS:-*}"
   FASTAPI_DOCS_URL: "${FASTAPI_DOCS_URL:-/docs}"
   FASTAPI_REDOC_URL: "${FASTAPI_REDOC_URL:-/redoc}"
@@ -30,9 +26,6 @@ x-backend-environment: &backend-environment
   DATABASE_AUTO_MIGRATE: "${DATABASE_AUTO_MIGRATE:-true}"
   DATABASE_AUTO_GENERATE_MIGRATIONS: "${DATABASE_AUTO_GENERATE_MIGRATIONS:-false}"
   DATABASE_BOOTSTRAP_SCHEMA: "${DATABASE_BOOTSTRAP_SCHEMA:-false}"
-  BOOTSTRAP_DEFAULT_ADMIN: "${BOOTSTRAP_DEFAULT_ADMIN:-false}"
-  BOOTSTRAP_DEFAULT_ADMIN_USERNAME: "${BOOTSTRAP_DEFAULT_ADMIN_USERNAME:-admin}"
-  BOOTSTRAP_DEFAULT_ADMIN_PASSWORD: "${BOOTSTRAP_DEFAULT_ADMIN_PASSWORD:-}"
   SERVER_LOG_LEVEL: "${SERVER_LOG_LEVEL:-INFO}"
   SERVER_LOG_FORMAT: "${SERVER_LOG_FORMAT:-json}"
   SERVER_LOG_FILE: "${SERVER_LOG_FILE:-/var/log/clsense/server.log}"
@@ -82,11 +75,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wtchk_cls
       LOG_SERVICE_NAME: clsense-wtchk_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/wtchk/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/wtchk/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WTCHK_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WTCHK_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WTCHK_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WTCHK_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCHK_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -158,11 +147,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wtctw_cls
       LOG_SERVICE_NAME: clsense-wtctw_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/wtctw/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/wtctw/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WTCTW_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WTCTW_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WTCTW_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WTCTW_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCTW_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -234,11 +219,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wtcmy_cls
       LOG_SERVICE_NAME: clsense-wtcmy_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/wtcmy/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/wtcmy/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WTCMY_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WTCMY_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WTCMY_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WTCMY_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCMY_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -310,11 +291,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: kvnl_cls
       LOG_SERVICE_NAME: clsense-kvnl_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/kvnl/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/kvnl/api/auth/azure/callback
-      AZURE_TENANT_ID: ${KVNL_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${KVNL_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${KVNL_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${KVNL_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${KVNL_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -386,11 +363,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: sd_cls
       LOG_SERVICE_NAME: clsense-sd_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/sd/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/sd/api/auth/azure/callback
-      AZURE_TENANT_ID: ${SD_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${SD_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${SD_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${SD_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${SD_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -462,11 +435,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wtcsg_cls
       LOG_SERVICE_NAME: clsense-wtcsg_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/wtcsg/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/wtcsg/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WTCSG_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WTCSG_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WTCSG_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WTCSG_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCSG_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -538,11 +507,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wwhk_cls
       LOG_SERVICE_NAME: clsense-wwhk_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/wwhk/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/wwhk/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WWHK_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WWHK_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WWHK_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WWHK_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WWHK_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -614,11 +579,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: pnshk_cls
       LOG_SERVICE_NAME: clsense-pnshk_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/pnshk/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/pnshk/api/auth/azure/callback
-      AZURE_TENANT_ID: ${PNSHK_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${PNSHK_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${PNSHK_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${PNSHK_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${PNSHK_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -690,11 +651,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: ftrhk_cls
       LOG_SERVICE_NAME: clsense-ftrhk_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ftrhk/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ftrhk/api/auth/azure/callback
-      AZURE_TENANT_ID: ${FTRHK_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${FTRHK_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${FTRHK_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${FTRHK_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${FTRHK_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -766,11 +723,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wtcth_cls
       LOG_SERVICE_NAME: clsense-wtcth_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/wtcth/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/wtcth/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WTCTH_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WTCTH_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WTCTH_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WTCTH_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCTH_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -842,11 +795,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wtcid_cls
       LOG_SERVICE_NAME: clsense-wtcid_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/wtcid/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/wtcid/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WTCID_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WTCID_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WTCID_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WTCID_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCID_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -918,11 +867,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wtcvn_cls
       LOG_SERVICE_NAME: clsense-wtcvn_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/wtcvn/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/wtcvn/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WTCVN_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WTCVN_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WTCVN_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WTCVN_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCVN_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -994,11 +939,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wtccn_cls
       LOG_SERVICE_NAME: clsense-wtccn_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/wtccn/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/wtccn/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WTCCN_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WTCCN_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WTCCN_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WTCCN_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCCN_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1070,11 +1011,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wtcph_cls
       LOG_SERVICE_NAME: clsense-wtcph_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/wtcph/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/wtcph/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WTCPH_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WTCPH_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WTCPH_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WTCPH_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCPH_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1146,11 +1083,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: drlv_cls
       LOG_SERVICE_NAME: clsense-drlv_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/drlv/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/drlv/api/auth/azure/callback
-      AZURE_TENANT_ID: ${DRLV_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${DRLV_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${DRLV_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${DRLV_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${DRLV_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1222,11 +1155,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: drlt_cls
       LOG_SERVICE_NAME: clsense-drlt_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/drlt/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/drlt/api/auth/azure/callback
-      AZURE_TENANT_ID: ${DRLT_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${DRLT_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${DRLT_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${DRLT_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${DRLT_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1298,11 +1227,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: icibe_cls
       LOG_SERVICE_NAME: clsense-icibe_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/icibe/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/icibe/api/auth/azure/callback
-      AZURE_TENANT_ID: ${ICIBE_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${ICIBE_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${ICIBE_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${ICIBE_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${ICIBE_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1374,11 +1299,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: kvbe_cls
       LOG_SERVICE_NAME: clsense-kvbe_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/kvbe/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/kvbe/api/auth/azure/callback
-      AZURE_TENANT_ID: ${KVBE_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${KVBE_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${KVBE_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${KVBE_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${KVBE_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1450,11 +1371,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: tps_cls
       LOG_SERVICE_NAME: clsense-tps_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/tps/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/tps/api/auth/azure/callback
-      AZURE_TENANT_ID: ${TPS_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${TPS_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${TPS_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${TPS_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${TPS_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1526,11 +1443,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wtcua_cls
       LOG_SERVICE_NAME: clsense-wtcua_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/wtcua/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/wtcua/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WTCUA_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WTCUA_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WTCUA_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WTCUA_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCUA_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1602,11 +1515,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wtctr_cls
       LOG_SERVICE_NAME: clsense-wtctr_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/wtctr/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/wtctr/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WTCTR_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WTCTR_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WTCTR_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WTCTR_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCTR_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1678,11 +1587,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: mat_cls
       LOG_SERVICE_NAME: clsense-mat_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/mat/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/mat/api/auth/azure/callback
-      AZURE_TENANT_ID: ${MAT_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${MAT_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${MAT_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${MAT_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${MAT_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1754,11 +1659,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: mch_cls
       LOG_SERVICE_NAME: clsense-mch_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/mch/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/mch/api/auth/azure/callback
-      AZURE_TENANT_ID: ${MCH_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${MCH_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${MCH_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${MCH_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${MCH_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1830,11 +1731,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: mcz_cls
       LOG_SERVICE_NAME: clsense-mcz_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/mcz/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/mcz/api/auth/azure/callback
-      AZURE_TENANT_ID: ${MCZ_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${MCZ_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${MCZ_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${MCZ_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${MCZ_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1906,11 +1803,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: mfr_cls
       LOG_SERVICE_NAME: clsense-mfr_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/mfr/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/mfr/api/auth/azure/callback
-      AZURE_TENANT_ID: ${MFR_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${MFR_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${MFR_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${MFR_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${MFR_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1982,11 +1875,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: mhu_cls
       LOG_SERVICE_NAME: clsense-mhu_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/mhu/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/mhu/api/auth/azure/callback
-      AZURE_TENANT_ID: ${MHU_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${MHU_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${MHU_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${MHU_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${MHU_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2058,11 +1947,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: mit_cls
       LOG_SERVICE_NAME: clsense-mit_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/mit/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/mit/api/auth/azure/callback
-      AZURE_TENANT_ID: ${MIT_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${MIT_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${MIT_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${MIT_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${MIT_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2134,11 +2019,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: mro_cls
       LOG_SERVICE_NAME: clsense-mro_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/mro/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/mro/api/auth/azure/callback
-      AZURE_TENANT_ID: ${MRO_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${MRO_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${MRO_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${MRO_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${MRO_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2210,11 +2091,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: msk_cls
       LOG_SERVICE_NAME: clsense-msk_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/msk/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/msk/api/auth/azure/callback
-      AZURE_TENANT_ID: ${MSK_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${MSK_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${MSK_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${MSK_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${MSK_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2286,11 +2163,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: icinl_cls
       LOG_SERVICE_NAME: clsense-icinl_cls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/icinl/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/icinl/api/auth/azure/callback
-      AZURE_TENANT_ID: ${ICINL_CLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${ICINL_CLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${ICINL_CLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${ICINL_CLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${ICINL_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2362,11 +2235,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wtchk_ecls
       LOG_SERVICE_NAME: clsense-wtchk_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wtchk/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wtchk/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WTCHK_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WTCHK_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WTCHK_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WTCHK_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCHK_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2438,11 +2307,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wtcph_ecls
       LOG_SERVICE_NAME: clsense-wtcph_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wtcph/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wtcph/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WTCPH_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WTCPH_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WTCPH_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WTCPH_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCPH_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2514,11 +2379,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wtcmy_ecls
       LOG_SERVICE_NAME: clsense-wtcmy_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wtcmy/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wtcmy/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WTCMY_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WTCMY_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WTCMY_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WTCMY_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCMY_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2590,11 +2451,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: ftrhk_ecls
       LOG_SERVICE_NAME: clsense-ftrhk_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/ftrhk/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/ftrhk/api/auth/azure/callback
-      AZURE_TENANT_ID: ${FTRHK_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${FTRHK_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${FTRHK_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${FTRHK_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${FTRHK_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2666,11 +2523,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: pnshk_ecls
       LOG_SERVICE_NAME: clsense-pnshk_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/pnshk/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/pnshk/api/auth/azure/callback
-      AZURE_TENANT_ID: ${PNSHK_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${PNSHK_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${PNSHK_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${PNSHK_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${PNSHK_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2742,11 +2595,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wwhk_ecls
       LOG_SERVICE_NAME: clsense-wwhk_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wwhk/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wwhk/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WWHK_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WWHK_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WWHK_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WWHK_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WWHK_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2818,11 +2667,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wtcth_ecls
       LOG_SERVICE_NAME: clsense-wtcth_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wtcth/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wtcth/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WTCTH_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WTCTH_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WTCTH_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WTCTH_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCTH_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2894,11 +2739,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wtcsg_ecls
       LOG_SERVICE_NAME: clsense-wtcsg_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wtcsg/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wtcsg/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WTCSG_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WTCSG_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WTCSG_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WTCSG_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCSG_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2970,11 +2811,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wtctw_ecls
       LOG_SERVICE_NAME: clsense-wtctw_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wtctw/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wtctw/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WTCTW_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WTCTW_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WTCTW_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WTCTW_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCTW_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3046,11 +2883,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wtcvn_ecls
       LOG_SERVICE_NAME: clsense-wtcvn_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wtcvn/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wtcvn/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WTCVN_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WTCVN_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WTCVN_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WTCVN_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCVN_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3122,11 +2955,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wtccn_ecls
       LOG_SERVICE_NAME: clsense-wtccn_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wtccn/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wtccn/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WTCCN_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WTCCN_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WTCCN_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WTCCN_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCCN_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3198,11 +3027,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wtcid_ecls
       LOG_SERVICE_NAME: clsense-wtcid_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wtcid/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wtcid/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WTCID_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WTCID_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WTCID_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WTCID_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCID_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3274,11 +3099,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: sd_ecls
       LOG_SERVICE_NAME: clsense-sd_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/sd/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/sd/api/auth/azure/callback
-      AZURE_TENANT_ID: ${SD_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${SD_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${SD_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${SD_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${SD_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3350,11 +3171,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: drlv_ecls
       LOG_SERVICE_NAME: clsense-drlv_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/drlv/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/drlv/api/auth/azure/callback
-      AZURE_TENANT_ID: ${DRLV_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${DRLV_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${DRLV_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${DRLV_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${DRLV_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3426,11 +3243,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: drlt_ecls
       LOG_SERVICE_NAME: clsense-drlt_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/drlt/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/drlt/api/auth/azure/callback
-      AZURE_TENANT_ID: ${DRLT_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${DRLT_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${DRLT_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${DRLT_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${DRLT_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3502,11 +3315,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: icibe_ecls
       LOG_SERVICE_NAME: clsense-icibe_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/icibe/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/icibe/api/auth/azure/callback
-      AZURE_TENANT_ID: ${ICIBE_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${ICIBE_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${ICIBE_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${ICIBE_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${ICIBE_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3578,11 +3387,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: icinl_ecls
       LOG_SERVICE_NAME: clsense-icinl_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/icinl/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/icinl/api/auth/azure/callback
-      AZURE_TENANT_ID: ${ICINL_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${ICINL_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${ICINL_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${ICINL_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${ICINL_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3654,11 +3459,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: kvnl_ecls
       LOG_SERVICE_NAME: clsense-kvnl_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/kvnl/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/kvnl/api/auth/azure/callback
-      AZURE_TENANT_ID: ${KVNL_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${KVNL_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${KVNL_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${KVNL_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${KVNL_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3730,11 +3531,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: kvbe_ecls
       LOG_SERVICE_NAME: clsense-kvbe_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/kvbe/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/kvbe/api/auth/azure/callback
-      AZURE_TENANT_ID: ${KVBE_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${KVBE_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${KVBE_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${KVBE_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${KVBE_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3806,11 +3603,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: mat_ecls
       LOG_SERVICE_NAME: clsense-mat_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/mat/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/mat/api/auth/azure/callback
-      AZURE_TENANT_ID: ${MAT_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${MAT_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${MAT_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${MAT_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${MAT_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3882,11 +3675,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: mch_ecls
       LOG_SERVICE_NAME: clsense-mch_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/mch/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/mch/api/auth/azure/callback
-      AZURE_TENANT_ID: ${MCH_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${MCH_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${MCH_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${MCH_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${MCH_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3958,11 +3747,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: mcz_ecls
       LOG_SERVICE_NAME: clsense-mcz_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/mcz/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/mcz/api/auth/azure/callback
-      AZURE_TENANT_ID: ${MCZ_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${MCZ_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${MCZ_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${MCZ_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${MCZ_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -4034,11 +3819,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: mfr_ecls
       LOG_SERVICE_NAME: clsense-mfr_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/mfr/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/mfr/api/auth/azure/callback
-      AZURE_TENANT_ID: ${MFR_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${MFR_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${MFR_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${MFR_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${MFR_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -4110,11 +3891,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: mhu_ecls
       LOG_SERVICE_NAME: clsense-mhu_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/mhu/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/mhu/api/auth/azure/callback
-      AZURE_TENANT_ID: ${MHU_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${MHU_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${MHU_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${MHU_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${MHU_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -4186,11 +3963,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: mit_ecls
       LOG_SERVICE_NAME: clsense-mit_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/mit/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/mit/api/auth/azure/callback
-      AZURE_TENANT_ID: ${MIT_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${MIT_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${MIT_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${MIT_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${MIT_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -4262,11 +4035,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: mro_ecls
       LOG_SERVICE_NAME: clsense-mro_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/mro/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/mro/api/auth/azure/callback
-      AZURE_TENANT_ID: ${MRO_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${MRO_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${MRO_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${MRO_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${MRO_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -4338,11 +4107,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: msk_ecls
       LOG_SERVICE_NAME: clsense-msk_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/msk/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/msk/api/auth/azure/callback
-      AZURE_TENANT_ID: ${MSK_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${MSK_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${MSK_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${MSK_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${MSK_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -4414,11 +4179,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: tps_ecls
       LOG_SERVICE_NAME: clsense-tps_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/tps/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/tps/api/auth/azure/callback
-      AZURE_TENANT_ID: ${TPS_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${TPS_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${TPS_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${TPS_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${TPS_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -4490,11 +4251,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wtctr_ecls
       LOG_SERVICE_NAME: clsense-wtctr_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wtctr/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wtctr/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WTCTR_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WTCTR_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WTCTR_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WTCTR_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCTR_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -4566,11 +4323,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wtcua_ecls
       LOG_SERVICE_NAME: clsense-wtcua_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wtcua/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/wtcua/api/auth/azure/callback
-      AZURE_TENANT_ID: ${WTCUA_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${WTCUA_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${WTCUA_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${WTCUA_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCUA_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -4642,11 +4395,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: svruk_ecls
       LOG_SERVICE_NAME: clsense-svruk_ecls
-      FRONTEND_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/svruk/web
-      AZURE_REDIRECT_URI: ${PUBLIC_BASE_URL:-http://localhost:3000}/ecls/svruk/api/auth/azure/callback
-      AZURE_TENANT_ID: ${SVRUK_ECLS_AZURE_TENANT_ID:-}
-      AZURE_CLIENT_ID: ${SVRUK_ECLS_AZURE_CLIENT_ID:-}
-      AZURE_CLIENT_SECRET: ${SVRUK_ECLS_AZURE_CLIENT_SECRET:-}
+      API_JWT_PUBLIC_KEY: "${SVRUK_ECLS_API_JWT_PUBLIC_KEY:-}"
       ANALYZE_FEEDBACK_API_URL: ${SVRUK_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"

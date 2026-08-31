@@ -1,0 +1,55 @@
+logging {
+  level  = "info"
+  format = "json"
+}
+
+loki.source.file "backend_profiles" {
+  targets = [{
+    __path__ = "/var/log/clsense/*/server.log",
+  }]
+  forward_to            = [loki.process.backend_json.receiver]
+  on_positions_file_error = "restart_from_end"
+  file_match {
+    enabled           = true
+    sync_period       = "5s"
+    ignore_older_than = "720h"
+  }
+  file_watch {
+    min_poll_frequency = "250ms"
+    max_poll_frequency = "5s"
+  }
+}
+
+loki.process "backend_json" {
+  stage.json {
+    expressions = {
+      timestamp          = "timestamp",
+      deployment_profile = "deployment_profile",
+      service            = "service",
+      level              = "level",
+      event              = "event",
+    }
+  }
+  stage.timestamp {
+    source = "timestamp"
+    format = "RFC3339Nano"
+  }
+  stage.labels {
+    values = {
+      deployment_profile = "",
+      service            = "",
+      level              = "",
+      event              = "",
+    }
+  }
+  stage.label_drop {
+    values = ["filename"]
+  }
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

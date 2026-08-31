@@ -15,7 +15,6 @@ from features.analytics.service.exports import (
     remove_export_file,
     write_export,
 )
-from types import SimpleNamespace
 
 
 def test_export_path_is_confined_to_the_export_root(tmp_path: Path) -> None:
@@ -80,21 +79,11 @@ def test_cube_export_rows_require_a_list_of_objects() -> None:
         cube_response_rows({"data": ["bad"]})
 
 
-def test_queued_admin_export_rechecks_role_before_execution() -> None:
-    assert authorize_export_role(
-        "viewer", SimpleNamespace(role="admin", is_deleted=False)
-    ) == "viewer"
-    assert authorize_export_role(
-        "admin", SimpleNamespace(role="admin", is_deleted=False)
-    ) == "admin"
-    with pytest.raises(PermissionError, match="revoked"):
-        authorize_export_role(
-            "admin", SimpleNamespace(role="user", is_deleted=False)
-        )
-    with pytest.raises(PermissionError, match="no longer active"):
-        authorize_export_role(
-            "viewer", SimpleNamespace(role="user", is_deleted=True)
-        )
+def test_queued_export_uses_only_the_role_captured_at_admission() -> None:
+    assert authorize_export_role("viewer") == "viewer"
+    assert authorize_export_role("admin") == "admin"
+    with pytest.raises(ValueError, match="invalid analytics role"):
+        authorize_export_role("superuser")
 
 
 def test_queued_export_rejects_catalog_version_drift() -> None:

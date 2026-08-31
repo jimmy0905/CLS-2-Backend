@@ -1,0 +1,131 @@
+{
+  "annotations": { "list": [] },
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "loki", "uid": "clsense-loki" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "sum by (deployment_profile) (rate({deployment_profile=~\"$profile\", service=~\"$service\", event=\"http.request.completed\"}[$__rate_interval]))", "legendFormat": "{{deployment_profile}}", "queryType": "range", "refId": "A" }
+      ],
+      "title": "Request throughput",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "clsense-loki" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+      "id": 2,
+      "options": { "displayLabels": ["name", "value"], "legend": { "displayMode": "table", "placement": "bottom" }, "reduceOptions": { "calcs": ["lastNotNull"], "values": false } },
+      "targets": [
+        { "expr": "sum by (status_code) (count_over_time({deployment_profile=~\"$profile\", service=~\"$service\", event=\"http.request.completed\"} | json | status_code != \"\" [$__range]))", "legendFormat": "HTTP {{status_code}}", "queryType": "instant", "refId": "A" }
+      ],
+      "title": "Status distribution",
+      "type": "piechart"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "clsense-loki" },
+      "fieldConfig": { "defaults": { "decimals": 2, "unit": "percent" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+      "id": 3,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "values": false }, "textMode": "auto" },
+      "targets": [
+        { "expr": "100 * sum(count_over_time({deployment_profile=~\"$profile\", service=~\"$service\", event=\"http.request.completed\"} | json | status_code >= 500 [$__range])) / clamp_min(sum(count_over_time({deployment_profile=~\"$profile\", service=~\"$service\", event=\"http.request.completed\"}[$__range])), 1)", "queryType": "instant", "refId": "A" }
+      ],
+      "title": "HTTP 5xx error rate",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "clsense-loki" },
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 4,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "expr": "avg(quantile_over_time(0.50, {deployment_profile=~\"$profile\", service=~\"$service\", event=\"http.request.completed\"} | json | unwrap duration_ms [$__interval]))", "legendFormat": "p50", "queryType": "range", "refId": "A" },
+        { "expr": "avg(quantile_over_time(0.95, {deployment_profile=~\"$profile\", service=~\"$service\", event=\"http.request.completed\"} | json | unwrap duration_ms [$__interval]))", "legendFormat": "p95", "queryType": "range", "refId": "B" }
+      ],
+      "title": "Request latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "clsense-loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 5,
+      "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
+      "targets": [
+        { "expr": "{deployment_profile=~\"$profile\", service=~\"$service\", level=~\"ERROR|CRITICAL\"}", "queryType": "range", "refId": "A" }
+      ],
+      "title": "Recent errors",
+      "type": "logs"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "clsense-loki" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 16 },
+      "id": 6,
+      "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
+      "targets": [
+        { "expr": "{deployment_profile=~\"$profile\", service=~\"$service\"} | json | exception_type != \"\"", "queryType": "range", "refId": "A" }
+      ],
+      "title": "Recent exceptions",
+      "type": "logs"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "clsense-loki" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 16 },
+      "id": 7,
+      "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
+      "targets": [
+        { "expr": "{deployment_profile=~\"$profile\", service=~\"$service\", event=~\"logging\\..*_failed\"}", "queryType": "range", "refId": "A" }
+      ],
+      "title": "Logging sink failures",
+      "type": "logs"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 41,
+  "tags": ["clsense", "operations", "loki"],
+  "templating": {
+    "list": [
+      {
+        "allValue": ".+",
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": { "type": "loki", "uid": "clsense-loki" },
+        "definition": "label_values(deployment_profile)",
+        "includeAll": true,
+        "label": "Deployment profile",
+        "multi": true,
+        "name": "profile",
+        "query": "label_values(deployment_profile)",
+        "refresh": 2,
+        "type": "query"
+      },
+      {
+        "allValue": ".+",
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": { "type": "loki", "uid": "clsense-loki" },
+        "definition": "label_values({deployment_profile=~\"$profile\"}, service)",
+        "includeAll": true,
+        "label": "Service",
+        "multi": true,
+        "name": "service",
+        "query": "label_values({deployment_profile=~\"$profile\"}, service)",
+        "refresh": 2,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "CLS/ECLS Backend Operations",
+  "uid": "clsense-backend-ops",
+  "version": 1
+}

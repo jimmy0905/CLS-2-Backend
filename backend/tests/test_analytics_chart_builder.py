@@ -20,8 +20,6 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ.setdefault("DATABASE_URL", "sqlite://")
-os.environ.setdefault("JWT_SECRET_KEY", "test-secret")
-os.environ.setdefault("SESSION_SECRET_KEY", "test-session-secret")
 
 import core.config as config
 from features.analytics.endpoints import analytics
@@ -31,7 +29,7 @@ from features.analytics.model.semantic import (
     validate_query,
 )
 from infrastructure.database.session import get_db
-from features.identity.service.security import get_current_user, require_admin
+from features.identity.service.security import get_current_actor, require_admin
 
 
 class FakeDb:
@@ -69,7 +67,7 @@ def client_fixture(monkeypatch):
     app.include_router(analytics.router)
     user = SimpleNamespace(id="user-1", role="user")
     app.dependency_overrides[get_db] = lambda: FakeDb()
-    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[get_current_actor] = lambda: user
     app.dependency_overrides[require_admin] = lambda: user
     return TestClient(app)
 

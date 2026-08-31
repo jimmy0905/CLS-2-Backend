@@ -4,12 +4,12 @@ from sqlalchemy.orm import Session
 from features.master_data.dto import CreateTopicRequest, UpdateTopicRequest
 from features.master_data.service import topic_service
 from infrastructure.database.session import get_db
-from features.identity.service.security import get_current_user, require_admin
+from features.identity.service.security import get_current_actor, require_admin
 
 router = APIRouter(
     prefix="/topics",
     tags=["topics"],
-    dependencies=[Depends(get_db), Depends(get_current_user)],
+    dependencies=[Depends(get_db), Depends(get_current_actor)],
 )
 
 

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from features.identity.service.security import get_current_user
+from features.identity.service.security import get_current_actor
 from features.master_data.dto import CreateStoreRequest, StoreResponse
 from features.master_data.mapper import store_to_dict
 from features.master_data.service import store_service
@@ -20,7 +20,7 @@ from features.feedback.filtering import (
 router = APIRouter(
     prefix="/stores",
     tags=["stores"],
-    dependencies=[Depends(get_db), Depends(get_current_user)],
+    dependencies=[Depends(get_db), Depends(get_current_actor)],
 )
 
 

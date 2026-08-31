@@ -1,5 +1,4 @@
 import asyncio
-import os
 import time
 import uuid
 from contextlib import asynccontextmanager, suppress
@@ -8,10 +7,8 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from fastapi_pagination import add_pagination
-from starlette.middleware.sessions import SessionMiddleware
 
 from core.config import (
-    COOKIE_SECURE,
     CORS_ORIGINS,
     DEPLOYMENT_PROFILE,
     FASTAPI_DOCS_URL,
@@ -26,7 +23,6 @@ from core.openapi import install_openapi_component_compatibility
 from features.analytics.endpoints import analytics
 from features.dashboard.endpoints import dashboard
 from features.feedback.endpoint import surveys
-from features.identity.endpoints import auth, users
 from features.ingestion.endpoints import tasks
 from features.master_data.endpoints import (
     channels,
@@ -47,12 +43,7 @@ from infrastructure.database.migrations import (
     bootstrap_single_metric_analytics_defaults,
     run_database_migrations,
 )
-from infrastructure.database.session import (
-    check_tables_exist,
-    ensure_default_user,
-    usable_user_exists,
-    users_table_exists,
-)
+from infrastructure.database.session import check_tables_exist
 
 
 def _client_ip(request: Request) -> str | None:
@@ -77,14 +68,9 @@ async def lifespan(_: FastAPI):
             "deployment_profile": DEPLOYMENT_PROFILE,
         },
     )
-    users_table_existed = users_table_exists()
     migrations_ran = run_database_migrations()
     if migrations_ran:
-        if users_table_exists():
-            if not users_table_existed or not usable_user_exists():
-                ensure_default_user()
-        else:
-            check_tables_exist()
+        check_tables_exist()
     else:
         check_tables_exist()
     bootstrap_single_metric_analytics_defaults()
@@ -185,19 +171,11 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    application.add_middleware(
-        SessionMiddleware,
-        secret_key=os.environ["SESSION_SECRET_KEY"],
-        session_cookie="clsense_session",
-        same_site="lax",
-        https_only=COOKIE_SECURE,
-    )
     application.middleware("http")(log_request)
     application.add_exception_handler(Exception, unhandled_exception_handler)
     application.add_exception_handler(ApplicationError, application_exception_handler)
     add_pagination(application)
     application.include_router(operations_router)
-    application.include_router(auth.router)
     application.include_router(analytics.router)
     application.include_router(surveys.router)
     application.include_router(dashboard.router)
@@ -205,7 +183,6 @@ def create_app() -> FastAPI:
     application.include_router(stores.router)
     application.include_router(departments.router)
     application.include_router(tasks.router)
-    application.include_router(users.router)
     application.include_router(channels.router)
     application.include_router(delivery_services.router)
     application.include_router(topics.router)

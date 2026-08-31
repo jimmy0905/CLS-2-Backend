@@ -12,11 +12,29 @@
       },
       {
         "default": null,
-        "name": "actor_id",
+        "name": "actor_subject",
         "nullable": true,
         "primary_key": false,
         "server_default": null,
-        "type": "CHAR(36)",
+        "type": "VARCHAR(255)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "actor_label",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(255)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "actor_role",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(16)",
         "unique": null
       },
       {
@@ -68,25 +86,13 @@
     "constraints": [
       {
         "columns": [
-          "actor_id"
-        ],
-        "foreign_keys": [
-          "actor_id->users.id"
-        ],
-        "name": null,
-        "type": "ForeignKeyConstraint"
-      },
-      {
-        "columns": [
           "id"
         ],
         "name": null,
         "type": "PrimaryKeyConstraint"
       }
     ],
-    "foreign_keys": [
-      "actor_id->users.id"
-    ],
+    "foreign_keys": [],
     "indexes": [
       [
         "idx_analytics_audit_logs_created_at",
@@ -199,11 +205,29 @@
       },
       {
         "default": null,
-        "name": "created_by_id",
+        "name": "created_by_subject",
         "nullable": false,
         "primary_key": false,
         "server_default": null,
-        "type": "CHAR(36)",
+        "type": "VARCHAR(255)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "created_by_label",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(255)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "created_by_role",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(16)",
         "unique": null
       },
       {
@@ -264,16 +288,6 @@
     "constraints": [
       {
         "columns": [
-          "created_by_id"
-        ],
-        "foreign_keys": [
-          "created_by_id->users.id"
-        ],
-        "name": null,
-        "type": "ForeignKeyConstraint"
-      },
-      {
-        "columns": [
           "published_model_version_id"
         ],
         "foreign_keys": [
@@ -291,7 +305,6 @@
       }
     ],
     "foreign_keys": [
-      "created_by_id->users.id",
       "published_model_version_id->analytics_model_versions.id"
     ],
     "indexes": [
@@ -341,11 +354,29 @@
       },
       {
         "default": null,
-        "name": "requested_by_id",
+        "name": "requested_by_subject",
         "nullable": false,
         "primary_key": false,
         "server_default": null,
-        "type": "CHAR(36)",
+        "type": "VARCHAR(255)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "requested_by_label",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(255)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "requested_by_role",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(16)",
         "unique": null
       },
       {
@@ -498,16 +529,6 @@
       },
       {
         "columns": [
-          "requested_by_id"
-        ],
-        "foreign_keys": [
-          "requested_by_id->users.id"
-        ],
-        "name": null,
-        "type": "ForeignKeyConstraint"
-      },
-      {
-        "columns": [
           "id"
         ],
         "name": null,
@@ -516,14 +537,21 @@
     ],
     "foreign_keys": [
       "model_version_id->analytics_model_versions.id",
-      "query_log_id->analytics_query_logs.id",
-      "requested_by_id->users.id"
+      "query_log_id->analytics_query_logs.id"
     ],
     "indexes": [
       [
         "idx_analytics_export_jobs_expires_at",
         [
           "expires_at"
+        ],
+        false
+      ],
+      [
+        "idx_analytics_export_jobs_requester_status",
+        [
+          "requested_by_subject",
+          "status"
         ],
         false
       ],
@@ -776,11 +804,29 @@
       },
       {
         "default": null,
-        "name": "created_by_id",
+        "name": "created_by_subject",
         "nullable": true,
         "primary_key": false,
         "server_default": null,
-        "type": "CHAR(36)",
+        "type": "VARCHAR(255)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "created_by_label",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(255)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "created_by_role",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(16)",
         "unique": null
       },
       {
@@ -886,25 +932,13 @@
     "constraints": [
       {
         "columns": [
-          "created_by_id"
-        ],
-        "foreign_keys": [
-          "created_by_id->users.id"
-        ],
-        "name": null,
-        "type": "ForeignKeyConstraint"
-      },
-      {
-        "columns": [
           "id"
         ],
         "name": null,
         "type": "PrimaryKeyConstraint"
       }
     ],
-    "foreign_keys": [
-      "created_by_id->users.id"
-    ],
+    "foreign_keys": [],
     "indexes": [
       [
         "idx_analytics_fields_source",
@@ -1078,11 +1112,29 @@
       },
       {
         "default": null,
-        "name": "created_by_id",
+        "name": "created_by_subject",
         "nullable": false,
         "primary_key": false,
         "server_default": null,
-        "type": "CHAR(36)",
+        "type": "VARCHAR(255)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "created_by_label",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(255)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "created_by_role",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(16)",
         "unique": null
       },
       {
@@ -1134,16 +1186,6 @@
     "constraints": [
       {
         "columns": [
-          "created_by_id"
-        ],
-        "foreign_keys": [
-          "created_by_id->users.id"
-        ],
-        "name": null,
-        "type": "ForeignKeyConstraint"
-      },
-      {
-        "columns": [
           "field_id"
         ],
         "foreign_keys": [
@@ -1188,7 +1230,6 @@
       }
     ],
     "foreign_keys": [
-      "created_by_id->users.id",
       "field_id->analytics_fields.id",
       "published_model_version_id->analytics_model_versions.id",
       "weight_field_id->analytics_fields.id"
@@ -1280,11 +1321,29 @@
       },
       {
         "default": null,
-        "name": "created_by_id",
+        "name": "created_by_subject",
         "nullable": false,
         "primary_key": false,
         "server_default": null,
-        "type": "CHAR(36)",
+        "type": "VARCHAR(255)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "created_by_label",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(255)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "created_by_role",
+        "nullable": false,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(16)",
         "unique": null
       },
       {
@@ -1327,16 +1386,6 @@
     "constraints": [
       {
         "columns": [
-          "created_by_id"
-        ],
-        "foreign_keys": [
-          "created_by_id->users.id"
-        ],
-        "name": null,
-        "type": "ForeignKeyConstraint"
-      },
-      {
-        "columns": [
           "id"
         ],
         "name": null,
@@ -1350,9 +1399,7 @@
         "type": "UniqueConstraint"
       }
     ],
-    "foreign_keys": [
-      "created_by_id->users.id"
-    ],
+    "foreign_keys": [],
     "indexes": [
       [
         "ix_analytics_model_versions_status",
@@ -1384,11 +1431,29 @@
       },
       {
         "default": null,
-        "name": "requested_by_id",
+        "name": "requested_by_subject",
         "nullable": true,
         "primary_key": false,
         "server_default": null,
-        "type": "CHAR(36)",
+        "type": "VARCHAR(255)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "requested_by_label",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(255)",
+        "unique": null
+      },
+      {
+        "default": null,
+        "name": "requested_by_role",
+        "nullable": true,
+        "primary_key": false,
+        "server_default": null,
+        "type": "VARCHAR(16)",
         "unique": null
       },
       {
@@ -1504,16 +1569,6 @@
       },
       {
         "columns": [
-          "requested_by_id"
-        ],
-        "foreign_keys": [
-          "requested_by_id->users.id"
-        ],
-        "name": null,
-        "type": "ForeignKeyConstraint"
-      },
-      {
-        "columns": [
           "id"
         ],
         "name": null,
@@ -1521,13 +1576,20 @@
       }
     ],
     "foreign_keys": [
-      "model_version_id->analytics_model_versions.id",
-      "requested_by_id->users.id"
+      "model_version_id->analytics_model_versions.id"
     ],
     "indexes": [
       [
         "idx_analytics_query_logs_created_at",
         [
+          "created_at"
+        ],
+        false
+      ],
+      [
+        "idx_analytics_query_logs_requester_created",
+        [
+          "requested_by_subject",
           "created_at"
         ],
         false
@@ -1714,61 +1776,6 @@
     "foreign_keys": [],
     "indexes": [],
     "name": "keywords"
-  },
-  {
-    "columns": [
-      {
-        "default": null,
-        "name": "id",
-        "nullable": false,
-        "primary_key": true,
-        "server_default": null,
-        "type": "INTEGER",
-        "unique": null
-      },
-      {
-        "default": null,
-        "name": "user_id",
-        "nullable": true,
-        "primary_key": false,
-        "server_default": null,
-        "type": "CHAR(36)",
-        "unique": null
-      },
-      {
-        "default": "callable:core.time.utc_now",
-        "name": "login_time",
-        "nullable": false,
-        "primary_key": false,
-        "server_default": null,
-        "type": "DATETIME",
-        "unique": null
-      }
-    ],
-    "constraints": [
-      {
-        "columns": [
-          "user_id"
-        ],
-        "foreign_keys": [
-          "user_id->users.id"
-        ],
-        "name": null,
-        "type": "ForeignKeyConstraint"
-      },
-      {
-        "columns": [
-          "id"
-        ],
-        "name": null,
-        "type": "PrimaryKeyConstraint"
-      }
-    ],
-    "foreign_keys": [
-      "user_id->users.id"
-    ],
-    "indexes": [],
-    "name": "login_records"
   },
   {
     "columns": [
@@ -2822,118 +2829,5 @@
     "foreign_keys": [],
     "indexes": [],
     "name": "upload_tasks"
-  },
-  {
-    "columns": [
-      {
-        "default": "callable:infrastructure.database.dbo.User.User.<lambda>",
-        "name": "id",
-        "nullable": false,
-        "primary_key": true,
-        "server_default": null,
-        "type": "CHAR(36)",
-        "unique": null
-      },
-      {
-        "default": null,
-        "name": "username",
-        "nullable": false,
-        "primary_key": false,
-        "server_default": null,
-        "type": "VARCHAR(50)",
-        "unique": true
-      },
-      {
-        "default": null,
-        "name": "password",
-        "nullable": true,
-        "primary_key": false,
-        "server_default": null,
-        "type": "VARCHAR(255)",
-        "unique": null
-      },
-      {
-        "default": "value:user",
-        "name": "role",
-        "nullable": false,
-        "primary_key": false,
-        "server_default": null,
-        "type": "VARCHAR(50)",
-        "unique": null
-      },
-      {
-        "default": null,
-        "name": "oauth_provider",
-        "nullable": true,
-        "primary_key": false,
-        "server_default": null,
-        "type": "VARCHAR(50)",
-        "unique": null
-      },
-      {
-        "default": null,
-        "name": "oauth_id",
-        "nullable": true,
-        "primary_key": false,
-        "server_default": null,
-        "type": "VARCHAR(255)",
-        "unique": null
-      },
-      {
-        "default": "callable:core.time.utc_now",
-        "name": "created_at",
-        "nullable": false,
-        "primary_key": false,
-        "server_default": null,
-        "type": "DATETIME",
-        "unique": null
-      },
-      {
-        "default": "callable:core.time.utc_now",
-        "name": "updated_at",
-        "nullable": false,
-        "primary_key": false,
-        "server_default": null,
-        "type": "DATETIME",
-        "unique": null
-      },
-      {
-        "default": "value:False",
-        "name": "is_deleted",
-        "nullable": true,
-        "primary_key": false,
-        "server_default": null,
-        "type": "BOOLEAN",
-        "unique": null
-      }
-    ],
-    "constraints": [
-      {
-        "columns": [
-          "id"
-        ],
-        "name": null,
-        "type": "PrimaryKeyConstraint"
-      },
-      {
-        "columns": [
-          "oauth_provider",
-          "oauth_id"
-        ],
-        "name": "uq_oauth_provider_id",
-        "type": "UniqueConstraint"
-      }
-    ],
-    "foreign_keys": [],
-    "indexes": [
-      [
-        "ix_users_username",
-        [
-          "username"
-        ],
-        true
-      ]
-    ],
-    "name": "users"
   }
 ]

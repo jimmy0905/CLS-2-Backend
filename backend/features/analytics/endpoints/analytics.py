@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 
 import core.config as config
 from core.time import resolve_timezone, utc_now
+from core.security import ActorContext
 from features.analytics.model.semantic import (
     ASSIGNMENT_DIMENSION_FAMILIES,
     Aggregation,
@@ -77,15 +78,14 @@ from infrastructure.database.dbo.AnalyticsField import AnalyticsField
 from infrastructure.database.dbo.AnalyticsMetric import AnalyticsMetric
 from infrastructure.database.dbo.AnalyticsModelVersion import AnalyticsModelVersion
 from infrastructure.database.dbo.AnalyticsQueryLog import AnalyticsQueryLog
-from infrastructure.database.dbo.User import User
 # Register every mapped database object before AnalyticsQueryLog construction
-# triggers SQLAlchemy's relationship resolution.  In particular, AnalyticsField
+# triggers SQLAlchemy's relationship resolution. In particular, AnalyticsField
 # refers to AnalyticsFieldValue by name and the latter is not otherwise needed
 # by this endpoint module.
 from infrastructure.database import registry as _database_registry
 from infrastructure.database.session import get_db
 from features.feedback.model.sentiment import Sentiment, TopicSentiment
-from features.identity.service.security import get_current_user, require_admin
+from features.identity.service.security import get_current_actor, require_admin
 
 
 _SEMANTIC_VIEWS = {
@@ -1821,8 +1821,18 @@ def _analytics_no_store(response: Response) -> None:
     response.headers["Cache-Control"] = "no-store, private"
 
 
-def _role(user: User) -> str:
+def _role(user: ActorContext) -> str:
     return "admin" if user.role == "admin" else "viewer"
+
+
+def _actor_snapshot(actor: Any, prefix: str) -> dict[str, str | None]:
+    subject = getattr(actor, "subject", getattr(actor, "id", None))
+    label = getattr(actor, "label", getattr(actor, "username", subject))
+    return {
+        f"{prefix}_subject": subject,
+        f"{prefix}_label": label,
+        f"{prefix}_role": _role(actor) if actor is not None else None,
+    }
 
 
 def _active_model_version(db: Session) -> AnalyticsModelVersion | None:
@@ -2069,7 +2079,7 @@ def _field_availability(
 
 def _audit(
     db: Session,
-    actor: User | None,
+    actor: ActorContext | None,
     action: str,
     resource_type: str,
     resource_id: str | int,
@@ -2077,7 +2087,7 @@ def _audit(
 ) -> None:
     db.add(
         AnalyticsAuditLog(
-            actor_id=getattr(actor, "id", None),
+            **_actor_snapshot(actor, "actor"),
             action=action,
             resource_type=resource_type,
             resource_id=str(resource_id),
@@ -2211,7 +2221,7 @@ def _version_id(version: AnalyticsModelVersion | None) -> int | None:
 async def _execute_query(
     query: QuerySpec,
     db: Session,
-    current_user: User,
+    current_user: ActorContext,
     *,
     cube_query_override: dict[str, Any] | None = None,
     pinned_version: AnalyticsModelVersion | None = None,
@@ -2256,7 +2266,7 @@ async def _execute_query(
     query_id = str(uuid.uuid4())
     query_log = AnalyticsQueryLog(
         id=query_id,
-        requested_by_id=current_user.id,
+        **_actor_snapshot(current_user, "requested_by"),
         model_version_id=model_version_id,
         semantic_view=query.semantic_view,
         request=query.model_dump(mode="json"),
@@ -3536,7 +3546,7 @@ internal_router = APIRouter(
     response_model=AnalyticsCatalogResponse,
 )
 async def get_catalog(
-    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db), current_user: ActorContext = Depends(get_current_actor)
 ) -> AnalyticsCatalogResponse:
     role = _role(current_user)
     try:
@@ -3561,7 +3571,7 @@ async def get_query_combinations(
     semantic_view: SemanticView
     | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: ActorContext = Depends(get_current_actor),
 ) -> QueryCombinationsResponse:
     role = _role(current_user)
     try:
@@ -3589,7 +3599,7 @@ async def get_query_combinations(
 async def get_query_capabilities(
     payload: QueryCapabilitiesInput,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: ActorContext = Depends(get_current_actor),
 ) -> QueryCapabilitiesResponse:
     role = _role(current_user)
     try:
@@ -3613,7 +3623,7 @@ async def get_query_capabilities(
 )
 async def get_builder_measures(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: ActorContext = Depends(get_current_actor),
 ) -> BuilderMeasuresResponse:
     role = _role(current_user)
     try:
@@ -3638,7 +3648,7 @@ async def get_builder_measures(
 async def post_builder_options(
     payload: BuilderSelectionInput | None = Body(default=None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: ActorContext = Depends(get_current_actor),
 ) -> BuilderOptionsResponse:
     role = _role(current_user)
     selection = payload or BuilderSelectionInput()
@@ -3663,7 +3673,7 @@ async def post_builder_options(
 async def post_builder_query(
     payload: BuilderQueryInput,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: ActorContext = Depends(get_current_actor),
 ) -> dict[str, Any]:
     role = _role(current_user)
     try:
@@ -3695,7 +3705,7 @@ async def post_builder_query(
 async def get_catalog_availability(
     semantic_view: SemanticView = "survey_responses",
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: ActorContext = Depends(get_current_actor),
 ) -> dict[str, Any]:
     role = _role(current_user)
     try:
@@ -3729,7 +3739,7 @@ async def get_catalog_availability(
 async def get_filter_options(
     payload: FilterOptionsInput,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: ActorContext = Depends(get_current_actor),
 ) -> dict[str, Any]:
     """Build a role-scoped filter dropdown from the governed semantic catalog."""
 
@@ -3843,7 +3853,7 @@ async def get_filter_options(
 async def query_analytics(
     payload: QuerySpec,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: ActorContext = Depends(get_current_actor),
 ) -> dict[str, Any]:
     return await _execute_query(payload, db, current_user)
 
@@ -3856,7 +3866,7 @@ async def query_analytics(
 async def query_analytics_records(
     payload: RecordQueryInput,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: ActorContext = Depends(get_current_actor),
 ) -> dict[str, Any]:
     max_size = 100 if payload.resource == "surveys" else 1_000
     if payload.size > max_size:
@@ -3891,7 +3901,7 @@ async def query_analytics_records(
     "/charts/published", summary="List published charts", description=_ENDPOINT_DESCRIPTIONS["viewer_charts"]
 )
 async def get_published_charts(
-    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db), current_user: ActorContext = Depends(get_current_actor)
 ) -> list[dict[str, Any]]:
     return _snapshot_charts(_active_model_version(db), _role(current_user))
 
@@ -3903,7 +3913,7 @@ async def get_published_chart_data(
     chart_id: int,
     payload: ChartDataInput | None = Body(default=None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: ActorContext = Depends(get_current_actor),
 ) -> dict[str, Any]:
     role = _role(current_user)
     version = _active_model_version(db)
@@ -4067,7 +4077,7 @@ async def get_field(field_id: int, db: Session = Depends(get_db)) -> dict[str, A
 async def create_field(
     payload: FieldInput,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: ActorContext = Depends(require_admin),
 ) -> dict[str, Any]:
     _ensure_unique_slug(db, AnalyticsField, payload.slug)
     field = AnalyticsField(
@@ -4075,7 +4085,7 @@ async def create_field(
         status="draft",
         is_promoted=True,
         promoted_at=utc_now(),
-        created_by_id=current_user.id,
+        **_actor_snapshot(current_user, "created_by"),
     )
     try:
         _validate_field_record(field)
@@ -4096,7 +4106,7 @@ async def update_field(
     field_id: int,
     payload: FieldInput,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: ActorContext = Depends(require_admin),
 ) -> dict[str, Any]:
     field = _record_or_404(db, AnalyticsField, field_id, "Field")
     if field.status == "archived":
@@ -4120,7 +4130,7 @@ async def promote_candidate(
     field_id: int,
     payload: CandidatePromotionInput,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: ActorContext = Depends(require_admin),
 ) -> dict[str, Any]:
     field = _record_or_404(db, AnalyticsField, field_id, "Field")
     if field.status == "archived":
@@ -4134,8 +4144,9 @@ async def promote_candidate(
     field.is_promoted = True
     field.promoted_at = utc_now()
     field.status = "draft"
-    if field.created_by_id is None:
-        field.created_by_id = current_user.id
+    if field.created_by_subject is None:
+        for key, value in _actor_snapshot(current_user, "created_by").items():
+            setattr(field, key, value)
     _validate_field_record(field)
     _audit(db, current_user, "field.promoted", "field", field.id)
     db.commit()
@@ -4163,7 +4174,7 @@ async def validate_field(
 async def publish_field(
     field_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: ActorContext = Depends(require_admin),
 ) -> dict[str, Any]:
     field = _record_or_404(db, AnalyticsField, field_id, "Field")
     if not field.is_promoted:
@@ -4186,7 +4197,7 @@ async def publish_field(
 async def archive_field(
     field_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: ActorContext = Depends(require_admin),
 ) -> dict[str, Any]:
     field = _record_or_404(db, AnalyticsField, field_id, "Field")
     dependency = (
@@ -4252,10 +4263,12 @@ def _assign_metric(metric: AnalyticsMetric, payload: MetricInput) -> None:
 async def create_metric(
     payload: MetricInput,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: ActorContext = Depends(require_admin),
 ) -> dict[str, Any]:
     _ensure_unique_slug(db, AnalyticsMetric, payload.slug)
-    metric = AnalyticsMetric(created_by_id=current_user.id, status="draft")
+    metric = AnalyticsMetric(
+        **_actor_snapshot(current_user, "created_by"), status="draft"
+    )
     _assign_metric(metric, payload)
     db.add(metric)
     db.flush()
@@ -4272,7 +4285,7 @@ async def update_metric(
     metric_id: int,
     payload: MetricInput,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: ActorContext = Depends(require_admin),
 ) -> dict[str, Any]:
     metric = _record_or_404(db, AnalyticsMetric, metric_id, "Metric")
     if metric.status == "archived":
@@ -4322,7 +4335,7 @@ async def validate_metric_endpoint(
 async def publish_metric(
     metric_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: ActorContext = Depends(require_admin),
 ) -> dict[str, Any]:
     metric = _record_or_404(db, AnalyticsMetric, metric_id, "Metric")
     try:
@@ -4343,7 +4356,7 @@ async def publish_metric(
 async def archive_metric(
     metric_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: ActorContext = Depends(require_admin),
 ) -> dict[str, Any]:
     metric = _record_or_404(db, AnalyticsMetric, metric_id, "Metric")
     charts = (
@@ -4406,10 +4419,12 @@ def _assign_chart(chart: AnalyticsChart, payload: ChartInput) -> None:
 async def create_chart(
     payload: ChartInput,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: ActorContext = Depends(require_admin),
 ) -> dict[str, Any]:
     _ensure_unique_slug(db, AnalyticsChart, payload.slug)
-    chart = AnalyticsChart(created_by_id=current_user.id, status="draft")
+    chart = AnalyticsChart(
+        **_actor_snapshot(current_user, "created_by"), status="draft"
+    )
     _assign_chart(chart, payload)
     db.add(chart)
     db.flush()
@@ -4426,7 +4441,7 @@ async def update_chart(
     chart_id: int,
     payload: ChartInput,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: ActorContext = Depends(require_admin),
 ) -> dict[str, Any]:
     chart = _record_or_404(db, AnalyticsChart, chart_id, "Chart")
     if chart.status == "archived":
@@ -4476,7 +4491,7 @@ async def validate_chart_endpoint(
 async def publish_chart(
     chart_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: ActorContext = Depends(require_admin),
 ) -> dict[str, Any]:
     chart = _record_or_404(db, AnalyticsChart, chart_id, "Chart")
     if chart.status == "archived":
@@ -4533,7 +4548,7 @@ async def publish_chart(
 async def delete_chart(
     chart_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: ActorContext = Depends(require_admin),
 ) -> dict[str, Any]:
     chart = _record_or_404(db, AnalyticsChart, chart_id, "Chart")
     chart.status = "archived"
@@ -4579,7 +4594,7 @@ async def get_catalog_version(
 async def publish_catalog_version(
     payload: CatalogPublicationInput,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
+    current_user: ActorContext = Depends(require_admin),
 ) -> dict[str, Any]:
     if _PROFILE.fullmatch(config.DEPLOYMENT_PROFILE) is None:
         raise HTTPException(status_code=422, detail="Invalid analytics deployment profile")
@@ -4658,7 +4673,7 @@ async def publish_catalog_version(
         catalog_snapshot=snapshot,
         validation_errors=[],
         is_active=True,
-        created_by_id=current_user.id,
+        **_actor_snapshot(current_user, "created_by"),
         published_at=now,
         activated_at=now,
     )
@@ -4697,7 +4712,7 @@ async def publish_catalog_version(
 def drilldown_analytics(
     payload: DrilldownSpec,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: ActorContext = Depends(get_current_actor),
 ) -> dict[str, Any]:
     if not _DRILLDOWN_SEMAPHORE.acquire(blocking=False):
         raise HTTPException(
@@ -4748,7 +4763,7 @@ def drilldown_analytics(
     db.add(
         AnalyticsQueryLog(
             id=query_id,
-            requested_by_id=current_user.id,
+            **_actor_snapshot(current_user, "requested_by"),
             model_version_id=version.id if version else None,
             semantic_view=payload.semantic_view,
             request={"kind": "drilldown", **payload.model_dump(mode="json")},
@@ -4783,7 +4798,7 @@ async def create_analytics_export(
     payload: ExportInput,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: ActorContext = Depends(get_current_actor),
 ) -> dict[str, Any]:
     role = _role(current_user)
     _lock_export_admission(db)
@@ -4791,7 +4806,8 @@ async def create_analytics_export(
     user_outstanding = (
         db.query(func.count(AnalyticsExportJob.id))
         .filter(
-            AnalyticsExportJob.requested_by_id == current_user.id,
+            AnalyticsExportJob.requested_by_subject
+            == _actor_snapshot(current_user, "requested_by")["requested_by_subject"],
             AnalyticsExportJob.status.in_(outstanding_statuses),
         )
         .scalar()
@@ -4876,7 +4892,7 @@ async def create_analytics_export(
     job_id = str(uuid.uuid4())
     query_log = AnalyticsQueryLog(
         id=query_id,
-        requested_by_id=current_user.id,
+        **_actor_snapshot(current_user, "requested_by"),
         model_version_id=version.id if version else None,
         semantic_view=semantic_view,
         request={"kind": "export", **request_payload},
@@ -4885,7 +4901,7 @@ async def create_analytics_export(
     )
     job = AnalyticsExportJob(
         id=job_id,
-        requested_by_id=current_user.id,
+        **_actor_snapshot(current_user, "requested_by"),
         query_log_id=query_id,
         model_version_id=version.id if version else None,
         request=request_payload,
@@ -4909,7 +4925,7 @@ async def create_analytics_export(
 
 
 def _export_job_for_user(
-    db: Session, job_id: str, current_user: User
+    db: Session, job_id: str, current_user: ActorContext
 ) -> AnalyticsExportJob:
     job = (
         db.query(AnalyticsExportJob)
@@ -4917,7 +4933,9 @@ def _export_job_for_user(
         .first()
     )
     if job is None or (
-        current_user.role != "admin" and job.requested_by_id != current_user.id
+        current_user.role != "admin"
+        and job.requested_by_subject
+        != _actor_snapshot(current_user, "requested_by")["requested_by_subject"]
     ):
         raise HTTPException(status_code=404, detail="Analytics export not found")
     requested_role = (job.request or {}).get("role")
@@ -4934,7 +4952,7 @@ def _export_job_for_user(
 async def get_analytics_export(
     job_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: ActorContext = Depends(get_current_actor),
 ) -> dict[str, Any]:
     return _export_job_for_user(db, job_id, current_user).to_dict()
 
@@ -4945,7 +4963,7 @@ async def get_analytics_export(
 async def download_analytics_export(
     job_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: ActorContext = Depends(get_current_actor),
 ) -> FileResponse:
     job = _export_job_for_user(db, job_id, current_user)
     if job.expires_at <= utc_now():
