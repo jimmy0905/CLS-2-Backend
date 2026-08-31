@@ -29,8 +29,12 @@ There is no dual-authentication mode.
    Put the private PEM only in the matching frontend's
    `BACKEND_JWT_PRIVATE_KEY`. Put the public PEM in the matching backend
    `<PROFILE>_API_JWT_PUBLIC_KEY` variable.
-5. Configure frontend-only Auth.js Entra variables and register exactly
-   `<frontend-origin>/api/auth/callback/microsoft-entra-id` in the Entra app.
+5. Configure the matching frontend Compose profile and its frontend-only
+   Auth.js/Entra variables. Set `AUTH_ORIGIN` to the external scheme and host,
+   keep `AUTH_URL` unset, and register exactly
+   `<AUTH_ORIGIN><profile-base-path>/api/auth/callback/microsoft-entra-id`
+   (for example `<frontend-origin>/wtchk/web/api/auth/callback/microsoft-entra-id`)
+   in the Entra app.
 6. Pause traffic. Deploy the frontend and backend together. Alembic revision
    `0018_frontend_identity` verifies the import receipt before it snapshots
    historical actors and drops backend users/login records.
