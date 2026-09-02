@@ -1,4 +1,38 @@
 services:
+  n8n-execution-collector:
+    build:
+      context: ./backend
+      dockerfile: ../observability/n8n-execution-collector/Dockerfile
+    restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=32m"]
+    depends_on:
+      loki:
+        condition: service_healthy
+    environment:
+      N8N_API_BASE_URL: "${N8N_API_BASE_URL:-http://n8n:5678/api/v1}"
+      # The collector validates this as required at startup. Keeping Compose
+      # interpolation non-fatal preserves existing Loki/Grafana-only commands.
+      N8N_API_KEY: "${N8N_API_KEY:-}"
+      N8N_POLL_INTERVAL_SECONDS: "${N8N_POLL_INTERVAL_SECONDS:-30}"
+      N8N_INITIAL_BACKFILL_HOURS: "${N8N_INITIAL_BACKFILL_HOURS:-720}"
+      N8N_HTTP_TIMEOUT_SECONDS: "${N8N_HTTP_TIMEOUT_SECONDS:-10}"
+      N8N_WORKFLOW_REFRESH_SECONDS: "${N8N_WORKFLOW_REFRESH_SECONDS:-3600}"
+      LOKI_PUSH_URL: "${LOKI_PUSH_URL:-http://loki:3100/loki/api/v1/push}"
+      N8N_COLLECTOR_STATE_PATH: /var/lib/n8n-execution-collector/collector.sqlite3
+    volumes:
+      - n8n_execution_collector_data:/var/lib/n8n-execution-collector
+    networks: [connex_network, observability_internal]
+    healthcheck:
+      test: ["CMD", "python", "-m", "infrastructure.integrations.n8n_execution_collector", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+
   loki:
     image: grafana/loki:3.7.6
     command: ["-config.file=/etc/loki/config.yml"]
@@ -143,6 +177,7 @@ volumes:
   loki_data:
   alloy_data:
   grafana_data:
+  n8n_execution_collector_data:
 
 networks:
   observability_internal:

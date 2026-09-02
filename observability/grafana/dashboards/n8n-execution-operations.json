@@ -1,0 +1,186 @@
+{
+  "annotations": { "list": [] },
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "loki", "uid": "clsense-loki" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate({service=\"n8n\", event=\"n8n.execution.completed\", workflow_id=~\"$workflow_id\", status=~\"$status\"}[$__rate_interval]))",
+          "legendFormat": "{{status}}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Completed execution throughput",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "clsense-loki" },
+      "fieldConfig": { "defaults": { "decimals": 2, "unit": "percent" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+      "id": 2,
+      "options": { "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "values": false }, "textMode": "auto" },
+      "targets": [
+        {
+          "expr": "100 * sum(count_over_time({service=\"n8n\", event=\"n8n.execution.completed\", workflow_id=~\"$workflow_id\", status=\"success\"}[$__range])) / clamp_min(sum(count_over_time({service=\"n8n\", event=\"n8n.execution.completed\", workflow_id=~\"$workflow_id\", status=~\"$status\"}[$__range])), 1)",
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ],
+      "title": "Success rate",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "clsense-loki" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+      "id": 3,
+      "options": { "displayLabels": ["name", "value"], "legend": { "displayMode": "table", "placement": "bottom" }, "reduceOptions": { "calcs": ["lastNotNull"], "values": false } },
+      "targets": [
+        {
+          "expr": "sum by (status) (count_over_time({service=\"n8n\", event=\"n8n.execution.completed\", workflow_id=~\"$workflow_id\", status=~\"$status\"}[$__range]))",
+          "legendFormat": "{{status}}",
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ],
+      "title": "Status distribution",
+      "type": "piechart"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "clsense-loki" },
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 4,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "expr": "avg(quantile_over_time(0.50, {service=\"n8n\", event=\"n8n.execution.completed\", workflow_id=~\"$workflow_id\", status=~\"$status\"} | json | unwrap duration_ms [$__interval]))",
+          "legendFormat": "p50",
+          "queryType": "range",
+          "refId": "A"
+        },
+        {
+          "expr": "avg(quantile_over_time(0.95, {service=\"n8n\", event=\"n8n.execution.completed\", workflow_id=~\"$workflow_id\", status=~\"$status\"} | json | unwrap duration_ms [$__interval]))",
+          "legendFormat": "p95",
+          "queryType": "range",
+          "refId": "B"
+        }
+      ],
+      "title": "Execution duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "clsense-loki" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 8 },
+      "id": 5,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "values": false }, "textMode": "auto" },
+      "targets": [
+        {
+          "expr": "time() - max(last_over_time({service=\"n8n\", event=\"n8n.collector.poll\"} | json | unwrap poll_timestamp_seconds [$__range]))",
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ],
+      "title": "Collector freshness",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "clsense-loki" },
+      "fieldConfig": { "defaults": { "decimals": 0, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 8 },
+      "id": 6,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "values": false }, "textMode": "auto" },
+      "targets": [
+        {
+          "expr": "max(last_over_time({service=\"n8n\", event=\"n8n.collector.poll\"} | json | unwrap pending_count [$__range]))",
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ],
+      "title": "Pending executions",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "clsense-loki" },
+      "fieldConfig": { "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false }, "mappings": [] }, "overrides": [] },
+      "gridPos": { "h": 10, "w": 14, "x": 0, "y": 16 },
+      "id": 7,
+      "options": { "cellHeight": "sm", "showHeader": true, "sortBy": [{ "desc": true, "displayName": "Time" }] },
+      "targets": [
+        {
+          "expr": "{service=\"n8n\", event=\"n8n.execution.completed\", workflow_id=~\"$workflow_id\", status=~\"$status\"} | json",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Recent executions",
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "clsense-loki" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 10, "w": 10, "x": 14, "y": 16 },
+      "id": 8,
+      "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": true, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
+      "targets": [
+        {
+          "expr": "{service=\"n8n\", event=\"n8n.execution.completed\", workflow_id=~\"$workflow_id\", status=~\"error|crashed\"} | json",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Recent failures",
+      "type": "table"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 41,
+  "tags": ["n8n", "operations", "loki"],
+  "templating": {
+    "list": [
+      {
+        "allValue": ".+",
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": { "type": "loki", "uid": "clsense-loki" },
+        "definition": "label_values({service=\"n8n\", event=\"n8n.execution.completed\"}, workflow_id)",
+        "includeAll": true,
+        "label": "Workflow ID",
+        "multi": true,
+        "name": "workflow_id",
+        "query": "label_values({service=\"n8n\", event=\"n8n.execution.completed\"}, workflow_id)",
+        "refresh": 2,
+        "type": "query"
+      },
+      {
+        "allValue": ".+",
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": { "type": "loki", "uid": "clsense-loki" },
+        "definition": "label_values({service=\"n8n\", event=\"n8n.execution.completed\"}, status)",
+        "includeAll": true,
+        "label": "Status",
+        "multi": true,
+        "name": "status",
+        "query": "label_values({service=\"n8n\", event=\"n8n.execution.completed\"}, status)",
+        "refresh": 2,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "n8n Execution Operations",
+  "uid": "n8n-execution-operations",
+  "version": 1
+}

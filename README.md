@@ -90,6 +90,34 @@ GRAFANA_ADMIN_PASSWORD='replace-me' docker compose \
 
 Grafana 預設只在 `127.0.0.1:3300` 監聽。Loki 與 Alloy 沒有主機連接埠，且只加入 internal network。Alloy 唯讀掛載全部 61 個設定檔的日誌 volume，只追蹤目前的 `server.log`；輪替檔案仍作為非 Loki 備援，不會自動回填。Loki 使用單機 TSDB/filesystem 並由 compactor 保存 30 天。
 
+### n8n execution dashboard
+
+`n8n Execution Operations` dashboard is supplied with the observability overlay.
+It uses a dedicated collector, rather than a Grafana REST plugin, to poll n8n's
+public API every 30 seconds and write safe, completed-execution summaries to
+Loki. The collector retains its SQLite outbox in a Docker volume, backfills up
+to 30 days where n8n history is available, and never stores node input/output,
+error messages, stacks, URLs, or credentials.
+
+Create an n8n API key in **Settings > n8n API**. On n8n Enterprise, give it
+only `execution:list`, `execution:read`, and `workflow:list`. Put the key in
+the ignored deployment `.env` as `N8N_API_KEY`; never commit it. The Kafka/n8n
+Compose stack must also be running after the checked-in shared
+`connex_network` attachment has been applied.
+
+```bash
+GRAFANA_ADMIN_PASSWORD='replace-me' N8N_API_KEY='replace-me' docker compose \
+  -f docker-compose.yml -f docker-compose.observability.yml up -d \
+  loki alloy grafana n8n-execution-collector
+```
+
+The collector has no host port. Its Docker health check becomes healthy only
+after a successful n8n poll and Loki heartbeat; failed delivery remains in the
+outbox and is replayed on the next successful poll.
+
+If Loki was already running before this change, restart it once so it reloads
+the 720-hour ingestion-age setting from its mounted configuration.
+
 `DATA_RETENTION_DAYS=30` 只控制營運資料。資料保留會在啟動後及每個 `RETENTION_CHECK_INTERVAL_SECONDS`（預設為 86400）週期執行，並只會清除早於截止日的資料：
 
 - 已完成或失敗的上傳工作及其錯誤列；
