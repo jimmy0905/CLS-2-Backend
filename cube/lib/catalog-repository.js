@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { profileConfig, profileFromContext } = require('../multitenant/registry');
 
 const IDENTIFIER = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 const REFRESH_INTERVAL = /^[1-9][0-9]* (?:seconds?|minutes?|hours?|days?|weeks?)$/;
@@ -259,9 +260,10 @@ const CORE_MODEL_DIR = path.join(__dirname, '..', 'model', 'core');
 const CACHE_MILLISECONDS = 5_000;
 const MAX_CATALOG_BYTES = 2 * 1024 * 1024;
 
-let cachedCatalog;
-let cachedCatalogHash;
-let cachedAt = 0;
+// Each regional Cube process serves several profiles.  A single cache would
+// leak schema metadata across tenants, so cache identity is the allow-listed
+// profile, never a process-global environment variable.
+const catalogCache = new Map();
 
 function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
@@ -523,19 +525,13 @@ function validateCatalog(catalog, expectedProfile) {
   return catalog;
 }
 
-async function fetchCatalog({ force = false } = {}) {
+async function fetchCatalog(profile, { force = false } = {}) {
+  const config = profileConfig(profile);
+  const cacheKey = `${config.region}/${profile}`;
+  const cached = catalogCache.get(cacheKey);
   const now = Date.now();
-  if (!force && cachedCatalog && now - cachedAt < CACHE_MILLISECONDS) {
-    return cachedCatalog;
-  }
-
-  const endpoint = process.env.ANALYTICS_METADATA_URL;
-  const secret = process.env.ANALYTICS_METADATA_SECRET;
-  const profile = process.env.ANALYTICS_PROFILE;
-  if (!endpoint || !secret || !profile) {
-    throw new Error(
-      'ANALYTICS_METADATA_URL, ANALYTICS_METADATA_SECRET, and ANALYTICS_PROFILE are required',
-    );
+  if (!force && cached && now - cached.at < CACHE_MILLISECONDS) {
+    return cached.catalog;
   }
 
   const timestamp = Math.floor(Date.now() / 1000).toString();
@@ -543,12 +539,12 @@ async function fetchCatalog({ force = false } = {}) {
   const timeout = setTimeout(() => controller.abort(), 5_000);
   let response;
   try {
-    response = await fetch(endpoint, {
+    response = await fetch(config.metadataUrl, {
       headers: {
         'Accept': 'application/json',
         'X-Analytics-Profile': profile,
         'X-Analytics-Timestamp': timestamp,
-        'X-Analytics-Signature': signature(secret, timestamp, profile),
+        'X-Analytics-Signature': signature(config.metadataSecret, timestamp, profile),
       },
       signal: controller.signal,
     });
@@ -564,16 +560,14 @@ async function fetchCatalog({ force = false } = {}) {
   }
   const catalog = validateCatalog(JSON.parse(body), profile);
   const nextHash = catalogHash(catalog);
-  if (cachedCatalog && catalog.catalogVersion < cachedCatalog.catalogVersion) {
+  if (cached && catalog.catalogVersion < cached.catalog.catalogVersion) {
     throw new Error('Metadata catalogVersion moved backwards');
   }
-  if (cachedCatalog && catalog.catalogVersion === cachedCatalog.catalogVersion
-    && nextHash !== cachedCatalogHash) {
+  if (cached && catalog.catalogVersion === cached.catalog.catalogVersion
+    && nextHash !== cached.hash) {
     throw new Error('Metadata changed without advancing catalogVersion');
   }
-  cachedCatalog = catalog;
-  cachedCatalogHash = nextHash;
-  cachedAt = now;
+  catalogCache.set(cacheKey, { catalog, hash: nextHash, at: now });
   return catalog;
 }
 
@@ -1023,10 +1017,11 @@ function coreFiles() {
     }));
 }
 
-function catalogRepository() {
+function catalogRepository({ securityContext } = {}) {
+  const profile = profileFromContext(securityContext);
   return {
     dataSchemaFiles: async () => {
-      const catalog = await fetchCatalog();
+      const catalog = await fetchCatalog(profile);
       return coreFiles().map((file) => {
         const semanticView = path.basename(file.fileName, '.yml');
         return { ...file, content: injectCatalog(file.content, catalog, semanticView) };
@@ -1035,8 +1030,9 @@ function catalogRepository() {
   };
 }
 
-async function catalogVersion() {
-  const catalog = await fetchCatalog({ force: true });
+async function catalogVersion({ securityContext } = {}) {
+  const profile = profileFromContext(securityContext);
+  const catalog = await fetchCatalog(profile, { force: true });
   return `${catalog.profile}:${catalog.catalogVersion}`;
 }
 
@@ -1088,13 +1084,18 @@ function contextToApiScopes(securityContext, defaultApiScopes) {
 }
 
 async function enforceSecurityContext(query, { securityContext } = {}) {
-  const profile = process.env.ANALYTICS_PROFILE;
   const tokenProfile = securityContext && (
     securityContext.profile
     || securityContext.profile_id
     || (securityContext.securityContext && securityContext.securityContext.profile)
   );
-  if (tokenProfile !== profile) {
+  if (typeof tokenProfile !== 'string') {
+    throw new Error('Cube token is not scoped to this analytics profile');
+  }
+  let profile;
+  try {
+    profile = profileFromContext(securityContext);
+  } catch (_) {
     throw new Error('Cube token is not scoped to this analytics profile');
   }
   const tokenRole = securityContext && (
@@ -1102,7 +1103,7 @@ async function enforceSecurityContext(query, { securityContext } = {}) {
     || (securityContext.securityContext && securityContext.securityContext.role)
   );
   const role = ['admin', 'refresh_worker'].includes(tokenRole) ? 'admin' : 'viewer';
-  const catalog = await fetchCatalog();
+  const catalog = await fetchCatalog(profile);
   const restricted = new Set([
     ...catalog.fields.filter((item) => item.visibility === 'admin').map((item) => item.slug),
     ...catalog.metrics.filter((item) => item.visibility === 'admin').map((item) => item.slug),

@@ -5,36 +5,32 @@ const {
   enforceSecurityContext,
 } = require('./lib/catalog-repository');
 const { scheduledRefreshTimer } = require('./lib/refresh-config');
+const {
+  checkAuth,
+  driverFactory,
+  namespace,
+  profileFromContext,
+  refreshContexts,
+  selectedProfiles,
+} = require('./multitenant/registry');
 
-const appId = process.env.CUBEJS_APP_ID;
-const orchestratorId = process.env.CUBEJS_ORCHESTRATOR_ID;
-const preAggregationsSchema = process.env.CUBEJS_PRE_AGGREGATIONS_SCHEMA;
-
-if (!appId || !orchestratorId || !preAggregationsSchema || !process.env.CUBEJS_API_SECRET) {
+if (!process.env.CUBEJS_API_SECRET) {
   throw new Error(
-    'CUBEJS_APP_ID, CUBEJS_ORCHESTRATOR_ID, CUBEJS_PRE_AGGREGATIONS_SCHEMA, and CUBEJS_API_SECRET are required',
+    'CUBEJS_API_SECRET is required',
   );
 }
-if (!process.env.CUBEJS_DB_USER || !process.env.CUBEJS_DB_PASS) {
-  throw new Error('A per-profile read-only CUBEJS_DB_USER and CUBEJS_DB_PASS are required');
-}
+selectedProfiles();
 
 module.exports = {
-  contextToAppId: () => appId,
-  contextToOrchestratorId: () => orchestratorId,
-  preAggregationsSchema: () => preAggregationsSchema,
+  checkAuth,
+  driverFactory,
+  contextToAppId: ({ securityContext } = {}) => namespace(profileFromContext(securityContext)),
+  contextToOrchestratorId: ({ securityContext } = {}) => namespace(profileFromContext(securityContext)),
+  preAggregationsSchema: ({ securityContext } = {}) => namespace(profileFromContext(securityContext)),
   repositoryFactory: catalogRepository,
   schemaVersion: catalogVersion,
   queryRewrite: enforceSecurityContext,
   contextToApiScopes,
   scheduledRefreshTimer: scheduledRefreshTimer(),
-  scheduledRefreshContexts: async () => [
-    {
-      securityContext: {
-        profile: process.env.ANALYTICS_PROFILE,
-        role: 'admin',
-        internalRefresh: true,
-      },
-    },
-  ],
+  scheduledRefreshContexts: async () => refreshContexts(),
 };
