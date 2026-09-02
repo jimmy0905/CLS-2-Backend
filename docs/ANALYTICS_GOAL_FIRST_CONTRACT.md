@@ -1,5 +1,11 @@
 # 目標優先的 Analytics 查詢契約
 
+> 文件狀態：現行契約（canonical query semantics）
+>
+> 導覽：[Backend 文件索引](README.md)
+>
+> 最後核對：2026-09-03
+
 這是自 catalog version `0013_goal_first_analytics` 起，具權威性的公開彙總查詢契約。它取代了原始欄位的 metric selector。
 
 ## 心智模型

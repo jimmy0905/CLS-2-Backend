@@ -1,5 +1,11 @@
 # Semantic View、Dimension 與 Metric 使用手冊
 
+> 文件狀態：現行使用手冊
+>
+> 導覽：[Backend 文件索引](../README.md)
+>
+> 最後核對：2026-09-03
+
 > 本手冊已按 goal-first contract 更新。`metric` 現在是業務目標，不是
 > `id`、`assignment_id` 或 `survey_id` 等資料欄位。完整 API contract 與
 > keyword `A` 範例請參閱

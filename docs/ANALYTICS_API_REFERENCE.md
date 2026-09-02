@@ -1,5 +1,11 @@
 # Analytics API 參考
 
+> 文件狀態：現行契約（canonical endpoint reference）
+>
+> 導覽：[Backend 文件索引](README.md)
+>
+> 最後核對：2026-09-03
+
 > 公開 aggregate API 採用目標優先模式。實作 query builder 前，請先閱讀[目標優先的 Analytics 查詢契約](ANALYTICS_GOAL_FIRST_CONTRACT.md)，其中定義邏輯 metric target、`/analytics/query-capabilities` 與現行 response schema。
 
 本文件說明受治理的 Cube Analytics API。它只涵蓋 Analytics route；既有 `/dashboard/*`、survey、upload 與 authentication route 不受影響。
@@ -137,6 +143,52 @@ GET /analytics/query-combinations?semantic_view=survey_responses
 
 `responding_stores_by_region` 類 template 使用 `survey_responses` 的 `store/count`，計算至少有一筆相符 response 的相異門市。response date range 表示「期間內有回應的門市」；零筆相符 response 的門市無法出現在 response-grain view。需要完整門市主檔時，使用受治理 `stores` record resource。
 
+### `GET /analytics/builder/measures`
+
+回傳目前 catalog 對 caller 可見的所有可衡量欄位，並跨 semantic grains 合併。Enum
+dimension 會展開成可單獨衡量的 value，例如 `topic_sentiment:NEGATIVE`；每項包含
+`field`、`enum_value`、可用 `aggregations`、可能的 `semantic_views`、`result_type` 及
+`supports_cross_assignment`。
+
+Chart builder 可從此 endpoint 開始，讓使用者先回答「量測什麼」，而不必先理解內部
+semantic view。Response 同時包含 `model_version` 與 `count`；後續 options／query 的版本
+若不同，client 應重新 bootstrap。
+
+### `POST /analytics/builder/options`
+
+接受部分或完整 builder selection，回傳在目前選擇下仍合法的 measure、aggregation、主要
+breakdown、第二 series dimension、time field 及 interval。所有欄位皆可省略，因此第一次
+request 可送 `{}`：
+
+```json
+{
+  "measure": {"field": "survey", "enum_value": null},
+  "aggregation": "count",
+  "breakdown": "store_name_english",
+  "series": {
+    "time": {"field": "reported_at", "interval": "month"}
+  },
+  "filters": [],
+  "time_range": ["2026-01-01", "2026-09-01"],
+  "timezone": "Asia/Hong_Kong"
+}
+```
+
+`series` 必須恰好選擇 `dimension` 或 `time`；兩者不可同時存在。Response 的
+`semantic_view`／`grain` 是伺服器推導結果，`selection_complete=true` 時會一併回傳可執行
+的 goal-first `query`。跨 assignment family 會扭曲 measure 時，server 不提供該選項，或
+在 `warnings` 說明拒絕原因。
+
+### `POST /analytics/builder/query`
+
+接受與 `builder/options` 相同的 selection，但 `measure` 與 `aggregation` 必填，另可提供
+最多八個 `order` 及 bounded `limit`。Server 選擇能誠實回答該組合的最窄 semantic view，
+編譯成受治理 query，並回傳與 `/analytics/query` 相同的 `schema`、flat `rows`、warnings、
+freshness，加上 `semantic_view_reason`。
+
+Builder 是 goal-first contract 的 column-first facade；它不會繞過 catalog visibility、typed
+filters、grain safety 或 Cube security。無法解析的組合回傳 `422`。
+
 ### `GET /analytics/catalog/availability`
 
 回傳某一 semantic view 中、呼叫端可見的 field 實際是否含資料，供前端隱藏完全為 null 的 field，而非從 catalog definition 猜測。
@@ -259,7 +311,10 @@ Chart 本文含 `slug`、`title`、可選 `description`、`chart_type`、`semant
 | `POST /admin/analytics/charts/{chart_id}/publish` | validate、publish 並立即啟用新 catalog version。response 含 `model_version`；持有相符 static bearer 的呼叫端隨後可從 `GET /analytics/charts/published` 取得 chart。 |
 | `DELETE /admin/analytics/charts/{chart_id}` | 軟刪除 chart、記錄 audit event，並立即啟用不含該 chart 的 catalog version；持有相符 static bearer 的呼叫端將不再取得該 chart。 |
 
-### Catalog version（Catalog 版本）
+### Catalog version（非公開的歷史 lifecycle）
+
+下列 handler 仍保留在 implementation 供遷移脈絡，但目前掛載的 public router 不包含它們；
+外部 caller 會得到 `404`。不得因本表描述其舊行為而把它加入 Frontend BFF allow-list。
 
 | Endpoint | 行為 |
 | --- | --- |

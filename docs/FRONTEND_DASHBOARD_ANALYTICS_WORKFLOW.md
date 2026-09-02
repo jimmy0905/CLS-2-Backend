@@ -1,5 +1,11 @@
 # 前端儀表板 Analytics 工作流程
 
+> 文件狀態：現行 Frontend 整合指南
+>
+> 導覽：[Backend 文件索引](README.md)
+>
+> 最後核對：2026-09-03
+
 > Query builder 請使用[目標優先的 Analytics 查詢契約](ANALYTICS_GOAL_FIRST_CONTRACT.md)定義的邏輯 target 探索順序。
 
 此工作流程說明前端如何以受治理的 `/analytics` API 取代舊有 `GET /dashboard/*` 請求。流程先探索已發佈、且在目前 BU 確實有資料的 dimension，再載入 filter value 與已發佈 dashboard chart data。

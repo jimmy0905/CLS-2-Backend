@@ -1,5 +1,12 @@
 # Frontend authentication and observability cutover
 
+> 文件狀態：歷史／一次性 cutover 稽核紀錄
+>
+> **不要執行下列舊 deployment/profile 指令。** 現行 migration、secret、n8n 及 Grafana
+> 操作只依照 [regional deployment runbook](../../deployment/README.md)。
+>
+> 導覽：[Backend 文件索引](README.md)
+
 Perform this procedure once per deployment profile during a maintenance window.
 There is no dual-authentication mode.
 

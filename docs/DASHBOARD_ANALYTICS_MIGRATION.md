@@ -1,5 +1,11 @@
 # 以受治理的 Analytics 查詢取代儀表板路由
 
+> 文件狀態：遷移中的 query book；不是 endpoint canonical reference
+>
+> 導覽：[Backend 文件索引](README.md)
+>
+> 最後核對：2026-09-03
+
 > 此 query book 使用 [目標優先的 Analytics 查詢契約](ANALYTICS_GOAL_FIRST_CONTRACT.md) 所述的目前 logical-target contract。
 
 這是既有 `/dashboard/*` API 的遷移 query book。它使用 `POST /analytics/query` 及受治理的 semantic catalog，而非直接 SQL。文件以 `wtchk_cls` 資料模型為準，其標準 response sentiment 是 `surveys.topic_sentiment`；不使用舊有的 `surveys.sentiment` 欄位。

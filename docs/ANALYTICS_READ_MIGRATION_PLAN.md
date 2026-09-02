@@ -1,5 +1,15 @@
 # Analytics 讀取遷移與舊功能移除
 
+> 文件狀態：遷移中；不可視為已完成清單
+>
+> 導覽：[Backend 文件索引](README.md)
+>
+> 最後核對：2026-09-03
+
+目前程式仍在 `backend/app.py` 註冊 `/dashboard/*` router，因此步驟 5 尚未完成。新 Analytics
+及 record query implementation 已存在，但每個 production profile 的 enablement、shadow
+comparison 與 client cutover 證據不由本文件宣告完成；移除 legacy route 前必須重新驗證 gate。
+
 採用兩階段遷移。第一階段新增受治理的 Analytics 記錄查詢等效能力、以管理員角色保護資料異動，並移除明確淘汰的 action／log／classification API 與資料。第二階段只會在用戶端完成遷移，且每個設定檔皆已啟用 Analytics 後，才移除舊讀取端點。
 
 受治理的 Analytics 語意仍是唯一準則：軟刪除的問卷持續排除、assignment grain 持續分離，並接受 Cube 的新鮮度窗口。為維持相容性，問卷記錄回應會保留舊有 `sentiment` 欄位與標準的 `topic_sentiment`。

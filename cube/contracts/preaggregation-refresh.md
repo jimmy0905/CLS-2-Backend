@@ -1,5 +1,11 @@
 # 定向預先彙總重新整理契約
 
+> 文件狀態：現行 Cube／Backend internal contract
+>
+> 導覽：[Cube 安全邊界與測試](../README.md)
+>
+> 最後核對：2026-09-03
+
 上傳提交後，FastAPI 會將受影響的報表月份分組為連續日期範圍，並呼叫該設定檔的私有 Cube API：
 
 ```http

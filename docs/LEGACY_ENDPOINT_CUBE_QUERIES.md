@@ -1,5 +1,11 @@
 # 舊端點至 Cube 查詢對照表
 
+> 文件狀態：歷史相容性紀錄；pre-0012 request 不可執行
+>
+> 導覽：[Backend 文件索引](README.md)
+>
+> 現行契約：[Analytics API 參考](ANALYTICS_API_REFERENCE.md)
+
 本文件保留 pre-0012 舊儀表板端點的遷移脈絡，供歷史等效性工作使用。舊範例中的 `metrics: []` 為已淘汰的多 metric 契約，**不可執行**。目前可直接送出的單一 metric 請求，請使用[儀表板 Analytics 遷移指南](DASHBOARD_ANALYTICS_MIGRATION.md)。
 
 目前 `POST /analytics/query` 契約要求 0–3 個 `dimensions`、一個邏輯 `metric` 與一個 `aggregation`；彙總值一律在 `value`：
