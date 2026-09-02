@@ -67,7 +67,7 @@ x-backend-common: &backend-common
 services:
   backend-wtchk-cls:
     <<: *backend-common
-    profiles: ["wtchk_cls"]
+    profiles: ["wtchk_cls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wtchk_cls
@@ -139,7 +139,7 @@ services:
 
   backend-wtctw-cls:
     <<: *backend-common
-    profiles: ["wtctw_cls"]
+    profiles: ["wtctw_cls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wtctw_cls
@@ -211,7 +211,7 @@ services:
 
   backend-wtcmy-cls:
     <<: *backend-common
-    profiles: ["wtcmy_cls"]
+    profiles: ["wtcmy_cls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wtcmy_cls
@@ -283,7 +283,7 @@ services:
 
   backend-kvnl-cls:
     <<: *backend-common
-    profiles: ["kvnl_cls"]
+    profiles: ["kvnl_cls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: kvnl_cls
@@ -355,7 +355,7 @@ services:
 
   backend-sd-cls:
     <<: *backend-common
-    profiles: ["sd_cls"]
+    profiles: ["sd_cls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: sd_cls
@@ -427,7 +427,7 @@ services:
 
   backend-wtcsg-cls:
     <<: *backend-common
-    profiles: ["wtcsg_cls"]
+    profiles: ["wtcsg_cls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wtcsg_cls
@@ -499,7 +499,7 @@ services:
 
   backend-wwhk-cls:
     <<: *backend-common
-    profiles: ["wwhk_cls"]
+    profiles: ["wwhk_cls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wwhk_cls
@@ -571,7 +571,7 @@ services:
 
   backend-pnshk-cls:
     <<: *backend-common
-    profiles: ["pnshk_cls"]
+    profiles: ["pnshk_cls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: pnshk_cls
@@ -643,7 +643,7 @@ services:
 
   backend-ftrhk-cls:
     <<: *backend-common
-    profiles: ["ftrhk_cls"]
+    profiles: ["ftrhk_cls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: ftrhk_cls
@@ -715,7 +715,7 @@ services:
 
   backend-wtcth-cls:
     <<: *backend-common
-    profiles: ["wtcth_cls"]
+    profiles: ["wtcth_cls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wtcth_cls
@@ -787,7 +787,7 @@ services:
 
   backend-wtcid-cls:
     <<: *backend-common
-    profiles: ["wtcid_cls"]
+    profiles: ["wtcid_cls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wtcid_cls
@@ -859,7 +859,7 @@ services:
 
   backend-wtcvn-cls:
     <<: *backend-common
-    profiles: ["wtcvn_cls"]
+    profiles: ["wtcvn_cls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wtcvn_cls
@@ -931,7 +931,7 @@ services:
 
   backend-wtccn-cls:
     <<: *backend-common
-    profiles: ["wtccn_cls"]
+    profiles: ["wtccn_cls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wtccn_cls
@@ -1003,7 +1003,7 @@ services:
 
   backend-wtcph-cls:
     <<: *backend-common
-    profiles: ["wtcph_cls"]
+    profiles: ["wtcph_cls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wtcph_cls
@@ -1075,7 +1075,7 @@ services:
 
   backend-drlv-cls:
     <<: *backend-common
-    profiles: ["drlv_cls"]
+    profiles: ["drlv_cls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: drlv_cls
@@ -1147,7 +1147,7 @@ services:
 
   backend-drlt-cls:
     <<: *backend-common
-    profiles: ["drlt_cls"]
+    profiles: ["drlt_cls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: drlt_cls
@@ -1219,7 +1219,7 @@ services:
 
   backend-icibe-cls:
     <<: *backend-common
-    profiles: ["icibe_cls"]
+    profiles: ["icibe_cls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: icibe_cls
@@ -1291,7 +1291,7 @@ services:
 
   backend-kvbe-cls:
     <<: *backend-common
-    profiles: ["kvbe_cls"]
+    profiles: ["kvbe_cls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: kvbe_cls
@@ -1363,7 +1363,7 @@ services:
 
   backend-tps-cls:
     <<: *backend-common
-    profiles: ["tps_cls"]
+    profiles: ["tps_cls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: tps_cls
@@ -1435,7 +1435,7 @@ services:
 
   backend-wtcua-cls:
     <<: *backend-common
-    profiles: ["wtcua_cls"]
+    profiles: ["wtcua_cls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wtcua_cls
@@ -1507,7 +1507,7 @@ services:
 
   backend-wtctr-cls:
     <<: *backend-common
-    profiles: ["wtctr_cls"]
+    profiles: ["wtctr_cls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wtctr_cls
@@ -1579,7 +1579,7 @@ services:
 
   backend-mat-cls:
     <<: *backend-common
-    profiles: ["mat_cls"]
+    profiles: ["mat_cls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: mat_cls
@@ -1651,7 +1651,7 @@ services:
 
   backend-mch-cls:
     <<: *backend-common
-    profiles: ["mch_cls"]
+    profiles: ["mch_cls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: mch_cls
@@ -1723,7 +1723,7 @@ services:
 
   backend-mcz-cls:
     <<: *backend-common
-    profiles: ["mcz_cls"]
+    profiles: ["mcz_cls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: mcz_cls
@@ -1795,7 +1795,7 @@ services:
 
   backend-mfr-cls:
     <<: *backend-common
-    profiles: ["mfr_cls"]
+    profiles: ["mfr_cls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: mfr_cls
@@ -1867,7 +1867,7 @@ services:
 
   backend-mhu-cls:
     <<: *backend-common
-    profiles: ["mhu_cls"]
+    profiles: ["mhu_cls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: mhu_cls
@@ -1939,7 +1939,7 @@ services:
 
   backend-mit-cls:
     <<: *backend-common
-    profiles: ["mit_cls"]
+    profiles: ["mit_cls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: mit_cls
@@ -2011,7 +2011,7 @@ services:
 
   backend-mro-cls:
     <<: *backend-common
-    profiles: ["mro_cls"]
+    profiles: ["mro_cls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: mro_cls
@@ -2083,7 +2083,7 @@ services:
 
   backend-msk-cls:
     <<: *backend-common
-    profiles: ["msk_cls"]
+    profiles: ["msk_cls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: msk_cls
@@ -2155,7 +2155,7 @@ services:
 
   backend-icinl-cls:
     <<: *backend-common
-    profiles: ["icinl_cls"]
+    profiles: ["icinl_cls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: icinl_cls
@@ -2227,7 +2227,7 @@ services:
 
   backend-wtchk-ecls:
     <<: *backend-common
-    profiles: ["wtchk_ecls"]
+    profiles: ["wtchk_ecls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wtchk_ecls
@@ -2299,7 +2299,7 @@ services:
 
   backend-wtcph-ecls:
     <<: *backend-common
-    profiles: ["wtcph_ecls"]
+    profiles: ["wtcph_ecls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wtcph_ecls
@@ -2371,7 +2371,7 @@ services:
 
   backend-wtcmy-ecls:
     <<: *backend-common
-    profiles: ["wtcmy_ecls"]
+    profiles: ["wtcmy_ecls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wtcmy_ecls
@@ -2443,7 +2443,7 @@ services:
 
   backend-ftrhk-ecls:
     <<: *backend-common
-    profiles: ["ftrhk_ecls"]
+    profiles: ["ftrhk_ecls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: ftrhk_ecls
@@ -2515,7 +2515,7 @@ services:
 
   backend-pnshk-ecls:
     <<: *backend-common
-    profiles: ["pnshk_ecls"]
+    profiles: ["pnshk_ecls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: pnshk_ecls
@@ -2587,7 +2587,7 @@ services:
 
   backend-wwhk-ecls:
     <<: *backend-common
-    profiles: ["wwhk_ecls"]
+    profiles: ["wwhk_ecls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wwhk_ecls
@@ -2659,7 +2659,7 @@ services:
 
   backend-wtcth-ecls:
     <<: *backend-common
-    profiles: ["wtcth_ecls"]
+    profiles: ["wtcth_ecls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wtcth_ecls
@@ -2731,7 +2731,7 @@ services:
 
   backend-wtcsg-ecls:
     <<: *backend-common
-    profiles: ["wtcsg_ecls"]
+    profiles: ["wtcsg_ecls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wtcsg_ecls
@@ -2803,7 +2803,7 @@ services:
 
   backend-wtctw-ecls:
     <<: *backend-common
-    profiles: ["wtctw_ecls"]
+    profiles: ["wtctw_ecls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wtctw_ecls
@@ -2875,7 +2875,7 @@ services:
 
   backend-wtcvn-ecls:
     <<: *backend-common
-    profiles: ["wtcvn_ecls"]
+    profiles: ["wtcvn_ecls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wtcvn_ecls
@@ -2947,7 +2947,7 @@ services:
 
   backend-wtccn-ecls:
     <<: *backend-common
-    profiles: ["wtccn_ecls"]
+    profiles: ["wtccn_ecls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wtccn_ecls
@@ -3019,7 +3019,7 @@ services:
 
   backend-wtcid-ecls:
     <<: *backend-common
-    profiles: ["wtcid_ecls"]
+    profiles: ["wtcid_ecls", "asia"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wtcid_ecls
@@ -3091,7 +3091,7 @@ services:
 
   backend-sd-ecls:
     <<: *backend-common
-    profiles: ["sd_ecls"]
+    profiles: ["sd_ecls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: sd_ecls
@@ -3163,7 +3163,7 @@ services:
 
   backend-drlv-ecls:
     <<: *backend-common
-    profiles: ["drlv_ecls"]
+    profiles: ["drlv_ecls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: drlv_ecls
@@ -3235,7 +3235,7 @@ services:
 
   backend-drlt-ecls:
     <<: *backend-common
-    profiles: ["drlt_ecls"]
+    profiles: ["drlt_ecls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: drlt_ecls
@@ -3307,7 +3307,7 @@ services:
 
   backend-icibe-ecls:
     <<: *backend-common
-    profiles: ["icibe_ecls"]
+    profiles: ["icibe_ecls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: icibe_ecls
@@ -3379,7 +3379,7 @@ services:
 
   backend-icinl-ecls:
     <<: *backend-common
-    profiles: ["icinl_ecls"]
+    profiles: ["icinl_ecls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: icinl_ecls
@@ -3451,7 +3451,7 @@ services:
 
   backend-kvnl-ecls:
     <<: *backend-common
-    profiles: ["kvnl_ecls"]
+    profiles: ["kvnl_ecls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: kvnl_ecls
@@ -3523,7 +3523,7 @@ services:
 
   backend-kvbe-ecls:
     <<: *backend-common
-    profiles: ["kvbe_ecls"]
+    profiles: ["kvbe_ecls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: kvbe_ecls
@@ -3595,7 +3595,7 @@ services:
 
   backend-mat-ecls:
     <<: *backend-common
-    profiles: ["mat_ecls"]
+    profiles: ["mat_ecls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: mat_ecls
@@ -3667,7 +3667,7 @@ services:
 
   backend-mch-ecls:
     <<: *backend-common
-    profiles: ["mch_ecls"]
+    profiles: ["mch_ecls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: mch_ecls
@@ -3739,7 +3739,7 @@ services:
 
   backend-mcz-ecls:
     <<: *backend-common
-    profiles: ["mcz_ecls"]
+    profiles: ["mcz_ecls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: mcz_ecls
@@ -3811,7 +3811,7 @@ services:
 
   backend-mfr-ecls:
     <<: *backend-common
-    profiles: ["mfr_ecls"]
+    profiles: ["mfr_ecls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: mfr_ecls
@@ -3883,7 +3883,7 @@ services:
 
   backend-mhu-ecls:
     <<: *backend-common
-    profiles: ["mhu_ecls"]
+    profiles: ["mhu_ecls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: mhu_ecls
@@ -3955,7 +3955,7 @@ services:
 
   backend-mit-ecls:
     <<: *backend-common
-    profiles: ["mit_ecls"]
+    profiles: ["mit_ecls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: mit_ecls
@@ -4027,7 +4027,7 @@ services:
 
   backend-mro-ecls:
     <<: *backend-common
-    profiles: ["mro_ecls"]
+    profiles: ["mro_ecls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: mro_ecls
@@ -4099,7 +4099,7 @@ services:
 
   backend-msk-ecls:
     <<: *backend-common
-    profiles: ["msk_ecls"]
+    profiles: ["msk_ecls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: msk_ecls
@@ -4171,7 +4171,7 @@ services:
 
   backend-tps-ecls:
     <<: *backend-common
-    profiles: ["tps_ecls"]
+    profiles: ["tps_ecls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: tps_ecls
@@ -4243,7 +4243,7 @@ services:
 
   backend-wtctr-ecls:
     <<: *backend-common
-    profiles: ["wtctr_ecls"]
+    profiles: ["wtctr_ecls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wtctr_ecls
@@ -4315,7 +4315,7 @@ services:
 
   backend-wtcua-ecls:
     <<: *backend-common
-    profiles: ["wtcua_ecls"]
+    profiles: ["wtcua_ecls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: wtcua_ecls
@@ -4387,7 +4387,7 @@ services:
 
   backend-svruk-ecls:
     <<: *backend-common
-    profiles: ["svruk_ecls"]
+    profiles: ["svruk_ecls", "eu"]
     environment:
       <<: *backend-environment
       DATABASE_NAME: svruk_ecls

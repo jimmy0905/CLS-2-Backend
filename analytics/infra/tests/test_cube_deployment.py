@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[3]
 SOURCE_COMPOSE = ROOT / "docker-compose.yml"
 ANALYTICS_COMPOSE = ROOT / "docker-compose.analytics.yml"
 MANIFEST = ROOT / "deploy" / "analytics" / "profiles.json"
+PROFILE_GROUPS = ROOT / "deploy" / "profile-groups.json"
 GENERATOR = ROOT / "scripts" / "generate_analytics_compose.py"
 VALIDATOR = ROOT / "scripts" / "validate_analytics_infra.py"
 
@@ -50,9 +51,26 @@ TIMEZONE_BY_BU = {
 
 
 def _source_profiles() -> list[str]:
+    compose = yaml.safe_load(SOURCE_COMPOSE.read_text())
+    groups = set(_profile_groups())
     return sorted(
-        set(re.findall(r'profiles: \["([a-z0-9_]+)"\]', SOURCE_COMPOSE.read_text()))
+        next(profile for profile in service["profiles"] if profile not in groups)
+        for name, service in compose["services"].items()
+        if name.startswith("backend-")
     )
+
+
+def _profile_groups() -> dict[str, list[str]]:
+    return json.loads(PROFILE_GROUPS.read_text())
+
+
+def _deployment_group(profile: str) -> str:
+    business_unit = profile.partition("_")[0]
+    groups = [
+        group for group, members in _profile_groups().items() if business_unit in members
+    ]
+    assert len(groups) == 1, f"{profile} must belong to exactly one deployment group"
+    return groups[0]
 
 
 def _manifest() -> dict:
@@ -72,6 +90,19 @@ def test_manifest_covers_source_profiles_and_assigns_four_shards_round_robin():
     assert [entry["cube_store_shard"] for entry in entries] == [
         index % 4 + 1 for index in range(61)
     ]
+    assert [entry["deployment_group"] for entry in entries] == [
+        _deployment_group(entry["name"]) for entry in entries
+    ]
+
+
+def test_main_compose_assigns_every_backend_to_one_deployment_group():
+    compose = yaml.safe_load(SOURCE_COMPOSE.read_text())
+    for profile in _source_profiles():
+        suffix = profile.replace("_", "-")
+        assert compose["services"][f"backend-{suffix}"]["profiles"] == [
+            profile,
+            _deployment_group(profile),
+        ]
 
 
 def test_rollout_manifest_uses_two_canaries_then_waves_of_at_most_ten():
@@ -96,8 +127,10 @@ def test_compose_has_private_api_and_refresh_worker_for_every_profile():
         refresh = services[f"cube-refresh-{service_suffix}"]
         backend = services[f"backend-{service_suffix}"]
 
-        assert api["profiles"] == [profile]
-        assert refresh["profiles"] == [profile]
+        expected_profiles = [profile, entry["deployment_group"]]
+        assert backend["profiles"] == expected_profiles
+        assert api["profiles"] == expected_profiles
+        assert refresh["profiles"] == expected_profiles
         assert "ports" not in api and "ports" not in refresh
         shard_network = f"analytics_store_shard_{entry['cube_store_shard']}"
         assert api["networks"] == ["connex_network", shard_network]

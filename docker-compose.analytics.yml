@@ -69,6 +69,8 @@ services:
       - wtctr_ecls
       - wtcua_ecls
       - wwhk_ecls
+      - asia
+      - eu
     networks:
       - analytics_store_shard_1
     environment:
@@ -101,6 +103,8 @@ services:
       - wtctr_ecls
       - wtcua_ecls
       - wwhk_ecls
+      - asia
+      - eu
     networks:
       - analytics_store_shard_1
     environment:
@@ -136,6 +140,8 @@ services:
       - wtctr_ecls
       - wtcua_ecls
       - wwhk_ecls
+      - asia
+      - eu
     networks:
       - analytics_store_shard_1
     environment:
@@ -170,6 +176,8 @@ services:
       - wtcth_cls
       - wtctw_cls
       - wtcvn_cls
+      - asia
+      - eu
     networks:
       - analytics_store_shard_2
     environment:
@@ -201,6 +209,8 @@ services:
       - wtcth_cls
       - wtctw_cls
       - wtcvn_cls
+      - asia
+      - eu
     networks:
       - analytics_store_shard_2
     environment:
@@ -235,6 +245,8 @@ services:
       - wtcth_cls
       - wtctw_cls
       - wtcvn_cls
+      - asia
+      - eu
     networks:
       - analytics_store_shard_2
     environment:
@@ -269,6 +281,8 @@ services:
       - wtcth_ecls
       - wtctw_ecls
       - wtcvn_ecls
+      - asia
+      - eu
     networks:
       - analytics_store_shard_3
     environment:
@@ -300,6 +314,8 @@ services:
       - wtcth_ecls
       - wtctw_ecls
       - wtcvn_ecls
+      - asia
+      - eu
     networks:
       - analytics_store_shard_3
     environment:
@@ -334,6 +350,8 @@ services:
       - wtcth_ecls
       - wtctw_ecls
       - wtcvn_ecls
+      - asia
+      - eu
     networks:
       - analytics_store_shard_3
     environment:
@@ -368,6 +386,8 @@ services:
       - wtctr_cls
       - wtcua_cls
       - wwhk_cls
+      - asia
+      - eu
     networks:
       - analytics_store_shard_4
     environment:
@@ -399,6 +419,8 @@ services:
       - wtctr_cls
       - wtcua_cls
       - wwhk_cls
+      - asia
+      - eu
     networks:
       - analytics_store_shard_4
     environment:
@@ -433,6 +455,8 @@ services:
       - wtctr_cls
       - wtcua_cls
       - wwhk_cls
+      - asia
+      - eu
     networks:
       - analytics_store_shard_4
     environment:
@@ -450,7 +474,7 @@ services:
       - cubestore-router-shard-4
 
   backend-drlt-cls:
-    profiles: [drlt_cls]
+    profiles: [drlt_cls, eu]
     environment:
       ANALYTICS_ENABLED: "${DRLT_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-drlt-cls:4000
@@ -463,7 +487,7 @@ services:
 
   cube-api-drlt-cls:
     <<: *cube-runtime
-    profiles: [drlt_cls]
+    profiles: [drlt_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -495,7 +519,7 @@ services:
 
   cube-refresh-drlt-cls:
     <<: *cube-runtime
-    profiles: [drlt_cls]
+    profiles: [drlt_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -521,7 +545,7 @@ services:
       - backend-drlt-cls
 
   backend-drlt-ecls:
-    profiles: [drlt_ecls]
+    profiles: [drlt_ecls, eu]
     environment:
       ANALYTICS_ENABLED: "${DRLT_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-drlt-ecls:4000
@@ -534,7 +558,7 @@ services:
 
   cube-api-drlt-ecls:
     <<: *cube-runtime
-    profiles: [drlt_ecls]
+    profiles: [drlt_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -566,7 +590,7 @@ services:
 
   cube-refresh-drlt-ecls:
     <<: *cube-runtime
-    profiles: [drlt_ecls]
+    profiles: [drlt_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -592,7 +616,7 @@ services:
       - backend-drlt-ecls
 
   backend-drlv-cls:
-    profiles: [drlv_cls]
+    profiles: [drlv_cls, eu]
     environment:
       ANALYTICS_ENABLED: "${DRLV_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-drlv-cls:4000
@@ -605,7 +629,7 @@ services:
 
   cube-api-drlv-cls:
     <<: *cube-runtime
-    profiles: [drlv_cls]
+    profiles: [drlv_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -637,7 +661,7 @@ services:
 
   cube-refresh-drlv-cls:
     <<: *cube-runtime
-    profiles: [drlv_cls]
+    profiles: [drlv_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -663,7 +687,7 @@ services:
       - backend-drlv-cls
 
   backend-drlv-ecls:
-    profiles: [drlv_ecls]
+    profiles: [drlv_ecls, eu]
     environment:
       ANALYTICS_ENABLED: "${DRLV_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-drlv-ecls:4000
@@ -676,7 +700,7 @@ services:
 
   cube-api-drlv-ecls:
     <<: *cube-runtime
-    profiles: [drlv_ecls]
+    profiles: [drlv_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -708,7 +732,7 @@ services:
 
   cube-refresh-drlv-ecls:
     <<: *cube-runtime
-    profiles: [drlv_ecls]
+    profiles: [drlv_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -734,7 +758,7 @@ services:
       - backend-drlv-ecls
 
   backend-ftrhk-cls:
-    profiles: [ftrhk_cls]
+    profiles: [ftrhk_cls, asia]
     environment:
       ANALYTICS_ENABLED: "${FTRHK_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-ftrhk-cls:4000
@@ -747,7 +771,7 @@ services:
 
   cube-api-ftrhk-cls:
     <<: *cube-runtime
-    profiles: [ftrhk_cls]
+    profiles: [ftrhk_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -779,7 +803,7 @@ services:
 
   cube-refresh-ftrhk-cls:
     <<: *cube-runtime
-    profiles: [ftrhk_cls]
+    profiles: [ftrhk_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -805,7 +829,7 @@ services:
       - backend-ftrhk-cls
 
   backend-ftrhk-ecls:
-    profiles: [ftrhk_ecls]
+    profiles: [ftrhk_ecls, asia]
     environment:
       ANALYTICS_ENABLED: "${FTRHK_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-ftrhk-ecls:4000
@@ -818,7 +842,7 @@ services:
 
   cube-api-ftrhk-ecls:
     <<: *cube-runtime
-    profiles: [ftrhk_ecls]
+    profiles: [ftrhk_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -850,7 +874,7 @@ services:
 
   cube-refresh-ftrhk-ecls:
     <<: *cube-runtime
-    profiles: [ftrhk_ecls]
+    profiles: [ftrhk_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -876,7 +900,7 @@ services:
       - backend-ftrhk-ecls
 
   backend-icibe-cls:
-    profiles: [icibe_cls]
+    profiles: [icibe_cls, eu]
     environment:
       ANALYTICS_ENABLED: "${ICIBE_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-icibe-cls:4000
@@ -889,7 +913,7 @@ services:
 
   cube-api-icibe-cls:
     <<: *cube-runtime
-    profiles: [icibe_cls]
+    profiles: [icibe_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -921,7 +945,7 @@ services:
 
   cube-refresh-icibe-cls:
     <<: *cube-runtime
-    profiles: [icibe_cls]
+    profiles: [icibe_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -947,7 +971,7 @@ services:
       - backend-icibe-cls
 
   backend-icibe-ecls:
-    profiles: [icibe_ecls]
+    profiles: [icibe_ecls, eu]
     environment:
       ANALYTICS_ENABLED: "${ICIBE_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-icibe-ecls:4000
@@ -960,7 +984,7 @@ services:
 
   cube-api-icibe-ecls:
     <<: *cube-runtime
-    profiles: [icibe_ecls]
+    profiles: [icibe_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -992,7 +1016,7 @@ services:
 
   cube-refresh-icibe-ecls:
     <<: *cube-runtime
-    profiles: [icibe_ecls]
+    profiles: [icibe_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -1018,7 +1042,7 @@ services:
       - backend-icibe-ecls
 
   backend-icinl-cls:
-    profiles: [icinl_cls]
+    profiles: [icinl_cls, eu]
     environment:
       ANALYTICS_ENABLED: "${ICINL_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-icinl-cls:4000
@@ -1031,7 +1055,7 @@ services:
 
   cube-api-icinl-cls:
     <<: *cube-runtime
-    profiles: [icinl_cls]
+    profiles: [icinl_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -1063,7 +1087,7 @@ services:
 
   cube-refresh-icinl-cls:
     <<: *cube-runtime
-    profiles: [icinl_cls]
+    profiles: [icinl_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -1089,7 +1113,7 @@ services:
       - backend-icinl-cls
 
   backend-icinl-ecls:
-    profiles: [icinl_ecls]
+    profiles: [icinl_ecls, eu]
     environment:
       ANALYTICS_ENABLED: "${ICINL_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-icinl-ecls:4000
@@ -1102,7 +1126,7 @@ services:
 
   cube-api-icinl-ecls:
     <<: *cube-runtime
-    profiles: [icinl_ecls]
+    profiles: [icinl_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -1134,7 +1158,7 @@ services:
 
   cube-refresh-icinl-ecls:
     <<: *cube-runtime
-    profiles: [icinl_ecls]
+    profiles: [icinl_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -1160,7 +1184,7 @@ services:
       - backend-icinl-ecls
 
   backend-kvbe-cls:
-    profiles: [kvbe_cls]
+    profiles: [kvbe_cls, eu]
     environment:
       ANALYTICS_ENABLED: "${KVBE_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-kvbe-cls:4000
@@ -1173,7 +1197,7 @@ services:
 
   cube-api-kvbe-cls:
     <<: *cube-runtime
-    profiles: [kvbe_cls]
+    profiles: [kvbe_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -1205,7 +1229,7 @@ services:
 
   cube-refresh-kvbe-cls:
     <<: *cube-runtime
-    profiles: [kvbe_cls]
+    profiles: [kvbe_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -1231,7 +1255,7 @@ services:
       - backend-kvbe-cls
 
   backend-kvbe-ecls:
-    profiles: [kvbe_ecls]
+    profiles: [kvbe_ecls, eu]
     environment:
       ANALYTICS_ENABLED: "${KVBE_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-kvbe-ecls:4000
@@ -1244,7 +1268,7 @@ services:
 
   cube-api-kvbe-ecls:
     <<: *cube-runtime
-    profiles: [kvbe_ecls]
+    profiles: [kvbe_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -1276,7 +1300,7 @@ services:
 
   cube-refresh-kvbe-ecls:
     <<: *cube-runtime
-    profiles: [kvbe_ecls]
+    profiles: [kvbe_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -1302,7 +1326,7 @@ services:
       - backend-kvbe-ecls
 
   backend-kvnl-cls:
-    profiles: [kvnl_cls]
+    profiles: [kvnl_cls, eu]
     environment:
       ANALYTICS_ENABLED: "${KVNL_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-kvnl-cls:4000
@@ -1315,7 +1339,7 @@ services:
 
   cube-api-kvnl-cls:
     <<: *cube-runtime
-    profiles: [kvnl_cls]
+    profiles: [kvnl_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -1347,7 +1371,7 @@ services:
 
   cube-refresh-kvnl-cls:
     <<: *cube-runtime
-    profiles: [kvnl_cls]
+    profiles: [kvnl_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -1373,7 +1397,7 @@ services:
       - backend-kvnl-cls
 
   backend-kvnl-ecls:
-    profiles: [kvnl_ecls]
+    profiles: [kvnl_ecls, eu]
     environment:
       ANALYTICS_ENABLED: "${KVNL_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-kvnl-ecls:4000
@@ -1386,7 +1410,7 @@ services:
 
   cube-api-kvnl-ecls:
     <<: *cube-runtime
-    profiles: [kvnl_ecls]
+    profiles: [kvnl_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -1418,7 +1442,7 @@ services:
 
   cube-refresh-kvnl-ecls:
     <<: *cube-runtime
-    profiles: [kvnl_ecls]
+    profiles: [kvnl_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -1444,7 +1468,7 @@ services:
       - backend-kvnl-ecls
 
   backend-mat-cls:
-    profiles: [mat_cls]
+    profiles: [mat_cls, eu]
     environment:
       ANALYTICS_ENABLED: "${MAT_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-mat-cls:4000
@@ -1457,7 +1481,7 @@ services:
 
   cube-api-mat-cls:
     <<: *cube-runtime
-    profiles: [mat_cls]
+    profiles: [mat_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -1489,7 +1513,7 @@ services:
 
   cube-refresh-mat-cls:
     <<: *cube-runtime
-    profiles: [mat_cls]
+    profiles: [mat_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -1515,7 +1539,7 @@ services:
       - backend-mat-cls
 
   backend-mat-ecls:
-    profiles: [mat_ecls]
+    profiles: [mat_ecls, eu]
     environment:
       ANALYTICS_ENABLED: "${MAT_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-mat-ecls:4000
@@ -1528,7 +1552,7 @@ services:
 
   cube-api-mat-ecls:
     <<: *cube-runtime
-    profiles: [mat_ecls]
+    profiles: [mat_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -1560,7 +1584,7 @@ services:
 
   cube-refresh-mat-ecls:
     <<: *cube-runtime
-    profiles: [mat_ecls]
+    profiles: [mat_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -1586,7 +1610,7 @@ services:
       - backend-mat-ecls
 
   backend-mch-cls:
-    profiles: [mch_cls]
+    profiles: [mch_cls, eu]
     environment:
       ANALYTICS_ENABLED: "${MCH_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-mch-cls:4000
@@ -1599,7 +1623,7 @@ services:
 
   cube-api-mch-cls:
     <<: *cube-runtime
-    profiles: [mch_cls]
+    profiles: [mch_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -1631,7 +1655,7 @@ services:
 
   cube-refresh-mch-cls:
     <<: *cube-runtime
-    profiles: [mch_cls]
+    profiles: [mch_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -1657,7 +1681,7 @@ services:
       - backend-mch-cls
 
   backend-mch-ecls:
-    profiles: [mch_ecls]
+    profiles: [mch_ecls, eu]
     environment:
       ANALYTICS_ENABLED: "${MCH_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-mch-ecls:4000
@@ -1670,7 +1694,7 @@ services:
 
   cube-api-mch-ecls:
     <<: *cube-runtime
-    profiles: [mch_ecls]
+    profiles: [mch_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -1702,7 +1726,7 @@ services:
 
   cube-refresh-mch-ecls:
     <<: *cube-runtime
-    profiles: [mch_ecls]
+    profiles: [mch_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -1728,7 +1752,7 @@ services:
       - backend-mch-ecls
 
   backend-mcz-cls:
-    profiles: [mcz_cls]
+    profiles: [mcz_cls, eu]
     environment:
       ANALYTICS_ENABLED: "${MCZ_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-mcz-cls:4000
@@ -1741,7 +1765,7 @@ services:
 
   cube-api-mcz-cls:
     <<: *cube-runtime
-    profiles: [mcz_cls]
+    profiles: [mcz_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -1773,7 +1797,7 @@ services:
 
   cube-refresh-mcz-cls:
     <<: *cube-runtime
-    profiles: [mcz_cls]
+    profiles: [mcz_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -1799,7 +1823,7 @@ services:
       - backend-mcz-cls
 
   backend-mcz-ecls:
-    profiles: [mcz_ecls]
+    profiles: [mcz_ecls, eu]
     environment:
       ANALYTICS_ENABLED: "${MCZ_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-mcz-ecls:4000
@@ -1812,7 +1836,7 @@ services:
 
   cube-api-mcz-ecls:
     <<: *cube-runtime
-    profiles: [mcz_ecls]
+    profiles: [mcz_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -1844,7 +1868,7 @@ services:
 
   cube-refresh-mcz-ecls:
     <<: *cube-runtime
-    profiles: [mcz_ecls]
+    profiles: [mcz_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -1870,7 +1894,7 @@ services:
       - backend-mcz-ecls
 
   backend-mfr-cls:
-    profiles: [mfr_cls]
+    profiles: [mfr_cls, eu]
     environment:
       ANALYTICS_ENABLED: "${MFR_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-mfr-cls:4000
@@ -1883,7 +1907,7 @@ services:
 
   cube-api-mfr-cls:
     <<: *cube-runtime
-    profiles: [mfr_cls]
+    profiles: [mfr_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -1915,7 +1939,7 @@ services:
 
   cube-refresh-mfr-cls:
     <<: *cube-runtime
-    profiles: [mfr_cls]
+    profiles: [mfr_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -1941,7 +1965,7 @@ services:
       - backend-mfr-cls
 
   backend-mfr-ecls:
-    profiles: [mfr_ecls]
+    profiles: [mfr_ecls, eu]
     environment:
       ANALYTICS_ENABLED: "${MFR_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-mfr-ecls:4000
@@ -1954,7 +1978,7 @@ services:
 
   cube-api-mfr-ecls:
     <<: *cube-runtime
-    profiles: [mfr_ecls]
+    profiles: [mfr_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -1986,7 +2010,7 @@ services:
 
   cube-refresh-mfr-ecls:
     <<: *cube-runtime
-    profiles: [mfr_ecls]
+    profiles: [mfr_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -2012,7 +2036,7 @@ services:
       - backend-mfr-ecls
 
   backend-mhu-cls:
-    profiles: [mhu_cls]
+    profiles: [mhu_cls, eu]
     environment:
       ANALYTICS_ENABLED: "${MHU_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-mhu-cls:4000
@@ -2025,7 +2049,7 @@ services:
 
   cube-api-mhu-cls:
     <<: *cube-runtime
-    profiles: [mhu_cls]
+    profiles: [mhu_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -2057,7 +2081,7 @@ services:
 
   cube-refresh-mhu-cls:
     <<: *cube-runtime
-    profiles: [mhu_cls]
+    profiles: [mhu_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -2083,7 +2107,7 @@ services:
       - backend-mhu-cls
 
   backend-mhu-ecls:
-    profiles: [mhu_ecls]
+    profiles: [mhu_ecls, eu]
     environment:
       ANALYTICS_ENABLED: "${MHU_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-mhu-ecls:4000
@@ -2096,7 +2120,7 @@ services:
 
   cube-api-mhu-ecls:
     <<: *cube-runtime
-    profiles: [mhu_ecls]
+    profiles: [mhu_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -2128,7 +2152,7 @@ services:
 
   cube-refresh-mhu-ecls:
     <<: *cube-runtime
-    profiles: [mhu_ecls]
+    profiles: [mhu_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -2154,7 +2178,7 @@ services:
       - backend-mhu-ecls
 
   backend-mit-cls:
-    profiles: [mit_cls]
+    profiles: [mit_cls, eu]
     environment:
       ANALYTICS_ENABLED: "${MIT_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-mit-cls:4000
@@ -2167,7 +2191,7 @@ services:
 
   cube-api-mit-cls:
     <<: *cube-runtime
-    profiles: [mit_cls]
+    profiles: [mit_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -2199,7 +2223,7 @@ services:
 
   cube-refresh-mit-cls:
     <<: *cube-runtime
-    profiles: [mit_cls]
+    profiles: [mit_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -2225,7 +2249,7 @@ services:
       - backend-mit-cls
 
   backend-mit-ecls:
-    profiles: [mit_ecls]
+    profiles: [mit_ecls, eu]
     environment:
       ANALYTICS_ENABLED: "${MIT_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-mit-ecls:4000
@@ -2238,7 +2262,7 @@ services:
 
   cube-api-mit-ecls:
     <<: *cube-runtime
-    profiles: [mit_ecls]
+    profiles: [mit_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -2270,7 +2294,7 @@ services:
 
   cube-refresh-mit-ecls:
     <<: *cube-runtime
-    profiles: [mit_ecls]
+    profiles: [mit_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -2296,7 +2320,7 @@ services:
       - backend-mit-ecls
 
   backend-mro-cls:
-    profiles: [mro_cls]
+    profiles: [mro_cls, eu]
     environment:
       ANALYTICS_ENABLED: "${MRO_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-mro-cls:4000
@@ -2309,7 +2333,7 @@ services:
 
   cube-api-mro-cls:
     <<: *cube-runtime
-    profiles: [mro_cls]
+    profiles: [mro_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -2341,7 +2365,7 @@ services:
 
   cube-refresh-mro-cls:
     <<: *cube-runtime
-    profiles: [mro_cls]
+    profiles: [mro_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -2367,7 +2391,7 @@ services:
       - backend-mro-cls
 
   backend-mro-ecls:
-    profiles: [mro_ecls]
+    profiles: [mro_ecls, eu]
     environment:
       ANALYTICS_ENABLED: "${MRO_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-mro-ecls:4000
@@ -2380,7 +2404,7 @@ services:
 
   cube-api-mro-ecls:
     <<: *cube-runtime
-    profiles: [mro_ecls]
+    profiles: [mro_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -2412,7 +2436,7 @@ services:
 
   cube-refresh-mro-ecls:
     <<: *cube-runtime
-    profiles: [mro_ecls]
+    profiles: [mro_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -2438,7 +2462,7 @@ services:
       - backend-mro-ecls
 
   backend-msk-cls:
-    profiles: [msk_cls]
+    profiles: [msk_cls, eu]
     environment:
       ANALYTICS_ENABLED: "${MSK_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-msk-cls:4000
@@ -2451,7 +2475,7 @@ services:
 
   cube-api-msk-cls:
     <<: *cube-runtime
-    profiles: [msk_cls]
+    profiles: [msk_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -2483,7 +2507,7 @@ services:
 
   cube-refresh-msk-cls:
     <<: *cube-runtime
-    profiles: [msk_cls]
+    profiles: [msk_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -2509,7 +2533,7 @@ services:
       - backend-msk-cls
 
   backend-msk-ecls:
-    profiles: [msk_ecls]
+    profiles: [msk_ecls, eu]
     environment:
       ANALYTICS_ENABLED: "${MSK_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-msk-ecls:4000
@@ -2522,7 +2546,7 @@ services:
 
   cube-api-msk-ecls:
     <<: *cube-runtime
-    profiles: [msk_ecls]
+    profiles: [msk_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -2554,7 +2578,7 @@ services:
 
   cube-refresh-msk-ecls:
     <<: *cube-runtime
-    profiles: [msk_ecls]
+    profiles: [msk_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -2580,7 +2604,7 @@ services:
       - backend-msk-ecls
 
   backend-pnshk-cls:
-    profiles: [pnshk_cls]
+    profiles: [pnshk_cls, asia]
     environment:
       ANALYTICS_ENABLED: "${PNSHK_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-pnshk-cls:4000
@@ -2593,7 +2617,7 @@ services:
 
   cube-api-pnshk-cls:
     <<: *cube-runtime
-    profiles: [pnshk_cls]
+    profiles: [pnshk_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -2625,7 +2649,7 @@ services:
 
   cube-refresh-pnshk-cls:
     <<: *cube-runtime
-    profiles: [pnshk_cls]
+    profiles: [pnshk_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -2651,7 +2675,7 @@ services:
       - backend-pnshk-cls
 
   backend-pnshk-ecls:
-    profiles: [pnshk_ecls]
+    profiles: [pnshk_ecls, asia]
     environment:
       ANALYTICS_ENABLED: "${PNSHK_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-pnshk-ecls:4000
@@ -2664,7 +2688,7 @@ services:
 
   cube-api-pnshk-ecls:
     <<: *cube-runtime
-    profiles: [pnshk_ecls]
+    profiles: [pnshk_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -2696,7 +2720,7 @@ services:
 
   cube-refresh-pnshk-ecls:
     <<: *cube-runtime
-    profiles: [pnshk_ecls]
+    profiles: [pnshk_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -2722,7 +2746,7 @@ services:
       - backend-pnshk-ecls
 
   backend-sd-cls:
-    profiles: [sd_cls]
+    profiles: [sd_cls, eu]
     environment:
       ANALYTICS_ENABLED: "${SD_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-sd-cls:4000
@@ -2735,7 +2759,7 @@ services:
 
   cube-api-sd-cls:
     <<: *cube-runtime
-    profiles: [sd_cls]
+    profiles: [sd_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -2767,7 +2791,7 @@ services:
 
   cube-refresh-sd-cls:
     <<: *cube-runtime
-    profiles: [sd_cls]
+    profiles: [sd_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -2793,7 +2817,7 @@ services:
       - backend-sd-cls
 
   backend-sd-ecls:
-    profiles: [sd_ecls]
+    profiles: [sd_ecls, eu]
     environment:
       ANALYTICS_ENABLED: "${SD_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-sd-ecls:4000
@@ -2806,7 +2830,7 @@ services:
 
   cube-api-sd-ecls:
     <<: *cube-runtime
-    profiles: [sd_ecls]
+    profiles: [sd_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -2838,7 +2862,7 @@ services:
 
   cube-refresh-sd-ecls:
     <<: *cube-runtime
-    profiles: [sd_ecls]
+    profiles: [sd_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -2864,7 +2888,7 @@ services:
       - backend-sd-ecls
 
   backend-svruk-ecls:
-    profiles: [svruk_ecls]
+    profiles: [svruk_ecls, eu]
     environment:
       ANALYTICS_ENABLED: "${SVRUK_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-svruk-ecls:4000
@@ -2877,7 +2901,7 @@ services:
 
   cube-api-svruk-ecls:
     <<: *cube-runtime
-    profiles: [svruk_ecls]
+    profiles: [svruk_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -2909,7 +2933,7 @@ services:
 
   cube-refresh-svruk-ecls:
     <<: *cube-runtime
-    profiles: [svruk_ecls]
+    profiles: [svruk_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -2935,7 +2959,7 @@ services:
       - backend-svruk-ecls
 
   backend-tps-cls:
-    profiles: [tps_cls]
+    profiles: [tps_cls, eu]
     environment:
       ANALYTICS_ENABLED: "${TPS_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-tps-cls:4000
@@ -2948,7 +2972,7 @@ services:
 
   cube-api-tps-cls:
     <<: *cube-runtime
-    profiles: [tps_cls]
+    profiles: [tps_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -2980,7 +3004,7 @@ services:
 
   cube-refresh-tps-cls:
     <<: *cube-runtime
-    profiles: [tps_cls]
+    profiles: [tps_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -3006,7 +3030,7 @@ services:
       - backend-tps-cls
 
   backend-tps-ecls:
-    profiles: [tps_ecls]
+    profiles: [tps_ecls, eu]
     environment:
       ANALYTICS_ENABLED: "${TPS_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-tps-ecls:4000
@@ -3019,7 +3043,7 @@ services:
 
   cube-api-tps-ecls:
     <<: *cube-runtime
-    profiles: [tps_ecls]
+    profiles: [tps_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -3051,7 +3075,7 @@ services:
 
   cube-refresh-tps-ecls:
     <<: *cube-runtime
-    profiles: [tps_ecls]
+    profiles: [tps_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -3077,7 +3101,7 @@ services:
       - backend-tps-ecls
 
   backend-wtccn-cls:
-    profiles: [wtccn_cls]
+    profiles: [wtccn_cls, asia]
     environment:
       ANALYTICS_ENABLED: "${WTCCN_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wtccn-cls:4000
@@ -3090,7 +3114,7 @@ services:
 
   cube-api-wtccn-cls:
     <<: *cube-runtime
-    profiles: [wtccn_cls]
+    profiles: [wtccn_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -3122,7 +3146,7 @@ services:
 
   cube-refresh-wtccn-cls:
     <<: *cube-runtime
-    profiles: [wtccn_cls]
+    profiles: [wtccn_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -3148,7 +3172,7 @@ services:
       - backend-wtccn-cls
 
   backend-wtccn-ecls:
-    profiles: [wtccn_ecls]
+    profiles: [wtccn_ecls, asia]
     environment:
       ANALYTICS_ENABLED: "${WTCCN_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wtccn-ecls:4000
@@ -3161,7 +3185,7 @@ services:
 
   cube-api-wtccn-ecls:
     <<: *cube-runtime
-    profiles: [wtccn_ecls]
+    profiles: [wtccn_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -3193,7 +3217,7 @@ services:
 
   cube-refresh-wtccn-ecls:
     <<: *cube-runtime
-    profiles: [wtccn_ecls]
+    profiles: [wtccn_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -3219,7 +3243,7 @@ services:
       - backend-wtccn-ecls
 
   backend-wtchk-cls:
-    profiles: [wtchk_cls]
+    profiles: [wtchk_cls, asia]
     environment:
       ANALYTICS_ENABLED: "${WTCHK_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wtchk-cls:4000
@@ -3232,7 +3256,7 @@ services:
 
   cube-api-wtchk-cls:
     <<: *cube-runtime
-    profiles: [wtchk_cls]
+    profiles: [wtchk_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -3264,7 +3288,7 @@ services:
 
   cube-refresh-wtchk-cls:
     <<: *cube-runtime
-    profiles: [wtchk_cls]
+    profiles: [wtchk_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -3290,7 +3314,7 @@ services:
       - backend-wtchk-cls
 
   backend-wtchk-ecls:
-    profiles: [wtchk_ecls]
+    profiles: [wtchk_ecls, asia]
     environment:
       ANALYTICS_ENABLED: "${WTCHK_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wtchk-ecls:4000
@@ -3303,7 +3327,7 @@ services:
 
   cube-api-wtchk-ecls:
     <<: *cube-runtime
-    profiles: [wtchk_ecls]
+    profiles: [wtchk_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -3335,7 +3359,7 @@ services:
 
   cube-refresh-wtchk-ecls:
     <<: *cube-runtime
-    profiles: [wtchk_ecls]
+    profiles: [wtchk_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -3361,7 +3385,7 @@ services:
       - backend-wtchk-ecls
 
   backend-wtcid-cls:
-    profiles: [wtcid_cls]
+    profiles: [wtcid_cls, asia]
     environment:
       ANALYTICS_ENABLED: "${WTCID_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wtcid-cls:4000
@@ -3374,7 +3398,7 @@ services:
 
   cube-api-wtcid-cls:
     <<: *cube-runtime
-    profiles: [wtcid_cls]
+    profiles: [wtcid_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -3406,7 +3430,7 @@ services:
 
   cube-refresh-wtcid-cls:
     <<: *cube-runtime
-    profiles: [wtcid_cls]
+    profiles: [wtcid_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -3432,7 +3456,7 @@ services:
       - backend-wtcid-cls
 
   backend-wtcid-ecls:
-    profiles: [wtcid_ecls]
+    profiles: [wtcid_ecls, asia]
     environment:
       ANALYTICS_ENABLED: "${WTCID_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wtcid-ecls:4000
@@ -3445,7 +3469,7 @@ services:
 
   cube-api-wtcid-ecls:
     <<: *cube-runtime
-    profiles: [wtcid_ecls]
+    profiles: [wtcid_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -3477,7 +3501,7 @@ services:
 
   cube-refresh-wtcid-ecls:
     <<: *cube-runtime
-    profiles: [wtcid_ecls]
+    profiles: [wtcid_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -3503,7 +3527,7 @@ services:
       - backend-wtcid-ecls
 
   backend-wtcmy-cls:
-    profiles: [wtcmy_cls]
+    profiles: [wtcmy_cls, asia]
     environment:
       ANALYTICS_ENABLED: "${WTCMY_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wtcmy-cls:4000
@@ -3516,7 +3540,7 @@ services:
 
   cube-api-wtcmy-cls:
     <<: *cube-runtime
-    profiles: [wtcmy_cls]
+    profiles: [wtcmy_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -3548,7 +3572,7 @@ services:
 
   cube-refresh-wtcmy-cls:
     <<: *cube-runtime
-    profiles: [wtcmy_cls]
+    profiles: [wtcmy_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -3574,7 +3598,7 @@ services:
       - backend-wtcmy-cls
 
   backend-wtcmy-ecls:
-    profiles: [wtcmy_ecls]
+    profiles: [wtcmy_ecls, asia]
     environment:
       ANALYTICS_ENABLED: "${WTCMY_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wtcmy-ecls:4000
@@ -3587,7 +3611,7 @@ services:
 
   cube-api-wtcmy-ecls:
     <<: *cube-runtime
-    profiles: [wtcmy_ecls]
+    profiles: [wtcmy_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -3619,7 +3643,7 @@ services:
 
   cube-refresh-wtcmy-ecls:
     <<: *cube-runtime
-    profiles: [wtcmy_ecls]
+    profiles: [wtcmy_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -3645,7 +3669,7 @@ services:
       - backend-wtcmy-ecls
 
   backend-wtcph-cls:
-    profiles: [wtcph_cls]
+    profiles: [wtcph_cls, asia]
     environment:
       ANALYTICS_ENABLED: "${WTCPH_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wtcph-cls:4000
@@ -3658,7 +3682,7 @@ services:
 
   cube-api-wtcph-cls:
     <<: *cube-runtime
-    profiles: [wtcph_cls]
+    profiles: [wtcph_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -3690,7 +3714,7 @@ services:
 
   cube-refresh-wtcph-cls:
     <<: *cube-runtime
-    profiles: [wtcph_cls]
+    profiles: [wtcph_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -3716,7 +3740,7 @@ services:
       - backend-wtcph-cls
 
   backend-wtcph-ecls:
-    profiles: [wtcph_ecls]
+    profiles: [wtcph_ecls, asia]
     environment:
       ANALYTICS_ENABLED: "${WTCPH_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wtcph-ecls:4000
@@ -3729,7 +3753,7 @@ services:
 
   cube-api-wtcph-ecls:
     <<: *cube-runtime
-    profiles: [wtcph_ecls]
+    profiles: [wtcph_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -3761,7 +3785,7 @@ services:
 
   cube-refresh-wtcph-ecls:
     <<: *cube-runtime
-    profiles: [wtcph_ecls]
+    profiles: [wtcph_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -3787,7 +3811,7 @@ services:
       - backend-wtcph-ecls
 
   backend-wtcsg-cls:
-    profiles: [wtcsg_cls]
+    profiles: [wtcsg_cls, asia]
     environment:
       ANALYTICS_ENABLED: "${WTCSG_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wtcsg-cls:4000
@@ -3800,7 +3824,7 @@ services:
 
   cube-api-wtcsg-cls:
     <<: *cube-runtime
-    profiles: [wtcsg_cls]
+    profiles: [wtcsg_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -3832,7 +3856,7 @@ services:
 
   cube-refresh-wtcsg-cls:
     <<: *cube-runtime
-    profiles: [wtcsg_cls]
+    profiles: [wtcsg_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -3858,7 +3882,7 @@ services:
       - backend-wtcsg-cls
 
   backend-wtcsg-ecls:
-    profiles: [wtcsg_ecls]
+    profiles: [wtcsg_ecls, asia]
     environment:
       ANALYTICS_ENABLED: "${WTCSG_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wtcsg-ecls:4000
@@ -3871,7 +3895,7 @@ services:
 
   cube-api-wtcsg-ecls:
     <<: *cube-runtime
-    profiles: [wtcsg_ecls]
+    profiles: [wtcsg_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -3903,7 +3927,7 @@ services:
 
   cube-refresh-wtcsg-ecls:
     <<: *cube-runtime
-    profiles: [wtcsg_ecls]
+    profiles: [wtcsg_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -3929,7 +3953,7 @@ services:
       - backend-wtcsg-ecls
 
   backend-wtcth-cls:
-    profiles: [wtcth_cls]
+    profiles: [wtcth_cls, asia]
     environment:
       ANALYTICS_ENABLED: "${WTCTH_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wtcth-cls:4000
@@ -3942,7 +3966,7 @@ services:
 
   cube-api-wtcth-cls:
     <<: *cube-runtime
-    profiles: [wtcth_cls]
+    profiles: [wtcth_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -3974,7 +3998,7 @@ services:
 
   cube-refresh-wtcth-cls:
     <<: *cube-runtime
-    profiles: [wtcth_cls]
+    profiles: [wtcth_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -4000,7 +4024,7 @@ services:
       - backend-wtcth-cls
 
   backend-wtcth-ecls:
-    profiles: [wtcth_ecls]
+    profiles: [wtcth_ecls, asia]
     environment:
       ANALYTICS_ENABLED: "${WTCTH_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wtcth-ecls:4000
@@ -4013,7 +4037,7 @@ services:
 
   cube-api-wtcth-ecls:
     <<: *cube-runtime
-    profiles: [wtcth_ecls]
+    profiles: [wtcth_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -4045,7 +4069,7 @@ services:
 
   cube-refresh-wtcth-ecls:
     <<: *cube-runtime
-    profiles: [wtcth_ecls]
+    profiles: [wtcth_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -4071,7 +4095,7 @@ services:
       - backend-wtcth-ecls
 
   backend-wtctr-cls:
-    profiles: [wtctr_cls]
+    profiles: [wtctr_cls, eu]
     environment:
       ANALYTICS_ENABLED: "${WTCTR_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wtctr-cls:4000
@@ -4084,7 +4108,7 @@ services:
 
   cube-api-wtctr-cls:
     <<: *cube-runtime
-    profiles: [wtctr_cls]
+    profiles: [wtctr_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -4116,7 +4140,7 @@ services:
 
   cube-refresh-wtctr-cls:
     <<: *cube-runtime
-    profiles: [wtctr_cls]
+    profiles: [wtctr_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -4142,7 +4166,7 @@ services:
       - backend-wtctr-cls
 
   backend-wtctr-ecls:
-    profiles: [wtctr_ecls]
+    profiles: [wtctr_ecls, eu]
     environment:
       ANALYTICS_ENABLED: "${WTCTR_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wtctr-ecls:4000
@@ -4155,7 +4179,7 @@ services:
 
   cube-api-wtctr-ecls:
     <<: *cube-runtime
-    profiles: [wtctr_ecls]
+    profiles: [wtctr_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -4187,7 +4211,7 @@ services:
 
   cube-refresh-wtctr-ecls:
     <<: *cube-runtime
-    profiles: [wtctr_ecls]
+    profiles: [wtctr_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -4213,7 +4237,7 @@ services:
       - backend-wtctr-ecls
 
   backend-wtctw-cls:
-    profiles: [wtctw_cls]
+    profiles: [wtctw_cls, asia]
     environment:
       ANALYTICS_ENABLED: "${WTCTW_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wtctw-cls:4000
@@ -4226,7 +4250,7 @@ services:
 
   cube-api-wtctw-cls:
     <<: *cube-runtime
-    profiles: [wtctw_cls]
+    profiles: [wtctw_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -4258,7 +4282,7 @@ services:
 
   cube-refresh-wtctw-cls:
     <<: *cube-runtime
-    profiles: [wtctw_cls]
+    profiles: [wtctw_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -4284,7 +4308,7 @@ services:
       - backend-wtctw-cls
 
   backend-wtctw-ecls:
-    profiles: [wtctw_ecls]
+    profiles: [wtctw_ecls, asia]
     environment:
       ANALYTICS_ENABLED: "${WTCTW_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wtctw-ecls:4000
@@ -4297,7 +4321,7 @@ services:
 
   cube-api-wtctw-ecls:
     <<: *cube-runtime
-    profiles: [wtctw_ecls]
+    profiles: [wtctw_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -4329,7 +4353,7 @@ services:
 
   cube-refresh-wtctw-ecls:
     <<: *cube-runtime
-    profiles: [wtctw_ecls]
+    profiles: [wtctw_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -4355,7 +4379,7 @@ services:
       - backend-wtctw-ecls
 
   backend-wtcua-cls:
-    profiles: [wtcua_cls]
+    profiles: [wtcua_cls, eu]
     environment:
       ANALYTICS_ENABLED: "${WTCUA_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wtcua-cls:4000
@@ -4368,7 +4392,7 @@ services:
 
   cube-api-wtcua-cls:
     <<: *cube-runtime
-    profiles: [wtcua_cls]
+    profiles: [wtcua_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -4400,7 +4424,7 @@ services:
 
   cube-refresh-wtcua-cls:
     <<: *cube-runtime
-    profiles: [wtcua_cls]
+    profiles: [wtcua_cls, eu]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -4426,7 +4450,7 @@ services:
       - backend-wtcua-cls
 
   backend-wtcua-ecls:
-    profiles: [wtcua_ecls]
+    profiles: [wtcua_ecls, eu]
     environment:
       ANALYTICS_ENABLED: "${WTCUA_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wtcua-ecls:4000
@@ -4439,7 +4463,7 @@ services:
 
   cube-api-wtcua-ecls:
     <<: *cube-runtime
-    profiles: [wtcua_ecls]
+    profiles: [wtcua_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -4471,7 +4495,7 @@ services:
 
   cube-refresh-wtcua-ecls:
     <<: *cube-runtime
-    profiles: [wtcua_ecls]
+    profiles: [wtcua_ecls, eu]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -4497,7 +4521,7 @@ services:
       - backend-wtcua-ecls
 
   backend-wtcvn-cls:
-    profiles: [wtcvn_cls]
+    profiles: [wtcvn_cls, asia]
     environment:
       ANALYTICS_ENABLED: "${WTCVN_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wtcvn-cls:4000
@@ -4510,7 +4534,7 @@ services:
 
   cube-api-wtcvn-cls:
     <<: *cube-runtime
-    profiles: [wtcvn_cls]
+    profiles: [wtcvn_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -4542,7 +4566,7 @@ services:
 
   cube-refresh-wtcvn-cls:
     <<: *cube-runtime
-    profiles: [wtcvn_cls]
+    profiles: [wtcvn_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_2
@@ -4568,7 +4592,7 @@ services:
       - backend-wtcvn-cls
 
   backend-wtcvn-ecls:
-    profiles: [wtcvn_ecls]
+    profiles: [wtcvn_ecls, asia]
     environment:
       ANALYTICS_ENABLED: "${WTCVN_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wtcvn-ecls:4000
@@ -4581,7 +4605,7 @@ services:
 
   cube-api-wtcvn-ecls:
     <<: *cube-runtime
-    profiles: [wtcvn_ecls]
+    profiles: [wtcvn_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -4613,7 +4637,7 @@ services:
 
   cube-refresh-wtcvn-ecls:
     <<: *cube-runtime
-    profiles: [wtcvn_ecls]
+    profiles: [wtcvn_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_3
@@ -4639,7 +4663,7 @@ services:
       - backend-wtcvn-ecls
 
   backend-wwhk-cls:
-    profiles: [wwhk_cls]
+    profiles: [wwhk_cls, asia]
     environment:
       ANALYTICS_ENABLED: "${WWHK_CLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wwhk-cls:4000
@@ -4652,7 +4676,7 @@ services:
 
   cube-api-wwhk-cls:
     <<: *cube-runtime
-    profiles: [wwhk_cls]
+    profiles: [wwhk_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -4684,7 +4708,7 @@ services:
 
   cube-refresh-wwhk-cls:
     <<: *cube-runtime
-    profiles: [wwhk_cls]
+    profiles: [wwhk_cls, asia]
     networks:
       - connex_network
       - analytics_store_shard_4
@@ -4710,7 +4734,7 @@ services:
       - backend-wwhk-cls
 
   backend-wwhk-ecls:
-    profiles: [wwhk_ecls]
+    profiles: [wwhk_ecls, asia]
     environment:
       ANALYTICS_ENABLED: "${WWHK_ECLS_ANALYTICS_ENABLED:-false}"
       ANALYTICS_CUBE_API_URL: http://cube-api-wwhk-ecls:4000
@@ -4723,7 +4747,7 @@ services:
 
   cube-api-wwhk-ecls:
     <<: *cube-runtime
-    profiles: [wwhk_ecls]
+    profiles: [wwhk_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_1
@@ -4755,7 +4779,7 @@ services:
 
   cube-refresh-wwhk-ecls:
     <<: *cube-runtime
-    profiles: [wwhk_ecls]
+    profiles: [wwhk_ecls, asia]
     networks:
       - connex_network
       - analytics_store_shard_1

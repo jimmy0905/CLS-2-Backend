@@ -75,6 +75,29 @@ docker compose \\
 
 FastAPI 只接受相符前端簽發、有效期 60 秒的 RS256 Bearer token。簽發者為 `clsense-frontend:<profile>`，受眾為 `clsense-api:<profile>`；後端不再提供登入、續期、Entra 回呼或使用者管理端點。
 
+### 區域部署群組
+
+每個後端服務除了原本的個別設定檔外，亦會加入一個區域 Compose
+設定檔。以 `--profile asia` 或 `--profile eu` 可啟動整個區域；對應的
+環境檔必須包含該群組全部設定檔的有效值。
+
+```bash
+# Asia: WTCHK, WTCMY, WTCSG, WWHK, PNSHK, FTRHK, WTCTH, WTCID,
+#       WTCTW, WTCPH, WTCVN, WTCCN
+docker compose --env-file ./deploy/profile/asia.env --env-file ./.env \
+  --profile asia up -d --build
+
+# EU: SD, KVNL, DRLV, DRLT, ICIBE, ICINL, KVBE, MAT, MCH, MCZ, MFR,
+#     MHU, MIT, MRO, MSK, TPS, WTCTR, WTCUA, SVRUK
+docker compose --env-file ./deploy/profile/eu.env --env-file ./.env \
+  --profile eu up -d --build
+```
+
+[`deploy/profile-groups.json`](deploy/profile-groups.json) is the source of
+truth for the BU-to-group mapping. It applies to both CLS and ECLS profiles;
+SVRUK has an ECLS profile only. The analytics overlay inherits the same group
+profiles when used with the main Compose file.
+
 ## 可觀測性與資料保留
 
 伺服器會同步將結構化 JSON 日誌輸出至 stdout 與每日輪替的持久化檔案。`docker logs` 可查看即時及近期紀錄；每個設定檔專屬的 `/var/log/clsense/server.log` volume 則保存完整歷史。每個請求都會產生完成紀錄，包含 UTC 時間戳記、服務、設定檔、請求 ID、方法、路徑、狀態、耗時、用戶端 IP、程式來源與執行緒。請求 ID 亦會在 `X-Request-ID` 回傳；請求中介層絕不記錄 query string、HTTP body 或憑證。未預期錯誤會包含類型、原因與堆疊追蹤。

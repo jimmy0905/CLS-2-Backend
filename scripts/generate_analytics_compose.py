@@ -21,7 +21,9 @@ SOURCE_COMPOSE = ROOT / "docker-compose.yml"
 OUTPUT_COMPOSE = ROOT / "docker-compose.analytics.yml"
 OUTPUT_MANIFEST = ROOT / "deploy" / "analytics" / "profiles.json"
 SHARD_OVERRIDES = ROOT / "deploy" / "analytics" / "shard-overrides.json"
-PROFILE_PATTERN = re.compile(r'^\s+profiles:\s*\["([a-z0-9_]+)"\]\s*$', re.MULTILINE)
+PROFILE_GROUPS = ROOT / "deploy" / "profile-groups.json"
+PROFILE_PATTERN = re.compile(r"^\s+profiles:\s*\[([^]]+)\]\s*$", re.MULTILINE)
+PROFILE_VALUE_PATTERN = re.compile(r'"([a-z0-9_]+)"')
 CANARIES = frozenset({"wtchk_cls", "wtchk_ecls"})
 SHARD_COUNT = 4
 ROLLOUT_WAVE_SIZE = 10
@@ -61,8 +63,58 @@ TIMEZONE_BY_BU = {
 }
 
 
+def configured_profile_groups() -> dict[str, str]:
+    group_members = json.loads(PROFILE_GROUPS.read_text())
+    if not isinstance(group_members, dict):
+        raise RuntimeError("profile-groups.json must contain an object")
+
+    groups_by_bu: dict[str, str] = {}
+    for group, members in group_members.items():
+        if not isinstance(group, str) or not isinstance(members, list):
+            raise RuntimeError("profile-groups.json must map group names to BU lists")
+        for business_unit in members:
+            if not isinstance(business_unit, str):
+                raise RuntimeError("profile-groups.json BU names must be strings")
+            previous_group = groups_by_bu.setdefault(business_unit, group)
+            if previous_group != group:
+                raise RuntimeError(
+                    f"{business_unit} belongs to both {previous_group} and {group}"
+                )
+    return groups_by_bu
+
+
+def source_profile_groups() -> dict[str, str]:
+    groups_by_bu = configured_profile_groups()
+    group_names = set(groups_by_bu.values())
+    profiles: dict[str, str] = {}
+
+    for match in PROFILE_PATTERN.finditer(SOURCE_COMPOSE.read_text()):
+        values = PROFILE_VALUE_PATTERN.findall(match.group(1))
+        profile_names = [value for value in values if value not in group_names]
+        deployment_groups = [value for value in values if value in group_names]
+        if len(profile_names) != 1 or len(deployment_groups) != 1:
+            raise RuntimeError(
+                "Every application service must have one profile and one deployment group"
+            )
+
+        profile = profile_names[0]
+        deployment_group = deployment_groups[0]
+        business_unit = profile.partition("_")[0]
+        expected_group = groups_by_bu.get(business_unit)
+        if expected_group is None:
+            raise RuntimeError(f"No deployment group is configured for {business_unit}")
+        if deployment_group != expected_group:
+            raise RuntimeError(
+                f"{profile} is assigned to {deployment_group}; expected {expected_group}"
+            )
+        if profile in profiles:
+            raise RuntimeError(f"Duplicate Compose profile: {profile}")
+        profiles[profile] = deployment_group
+    return profiles
+
+
 def source_profiles() -> list[str]:
-    profiles = sorted(set(PROFILE_PATTERN.findall(SOURCE_COMPOSE.read_text())))
+    profiles = sorted(source_profile_groups())
     if not profiles:
         raise RuntimeError("No Compose profiles found in docker-compose.yml")
     missing_canaries = CANARIES.difference(profiles)
@@ -85,7 +137,9 @@ def shard_overrides(profiles: list[str]) -> dict[str, int]:
     return overrides
 
 
-def manifest_document(profiles: list[str]) -> dict:
+def manifest_document(
+    profiles: list[str], profile_groups: dict[str, str]
+) -> dict:
     overrides = shard_overrides(profiles)
     non_canaries = [profile for profile in profiles if profile not in CANARIES]
     rollout_wave = {
@@ -101,6 +155,7 @@ def manifest_document(profiles: list[str]) -> dict:
         "profiles": [
             {
                 "name": profile,
+                "deployment_group": profile_groups[profile],
                 "cube_store_shard": overrides.get(profile, index % SHARD_COUNT + 1),
                 "rollout_wave": 0 if profile in CANARIES else rollout_wave[profile],
             }
@@ -136,6 +191,16 @@ def compose_document(manifest: dict) -> str:
             for entry in entries
             if entry["cube_store_shard"] == shard
         ]
+        for shard in range(1, SHARD_COUNT + 1)
+    }
+    deployment_groups_by_shard = {
+        shard: sorted(
+            {
+                entry["deployment_group"]
+                for entry in entries
+                if entry["cube_store_shard"] == shard
+            }
+        )
         for shard in range(1, SHARD_COUNT + 1)
     }
     lines = [
@@ -206,7 +271,9 @@ def compose_document(manifest: dict) -> str:
                 f"  {router}:",
                 "    <<: *cubestore-runtime",
                 "    profiles:",
-                *_yaml_list(profiles_by_shard[shard], 6),
+                *_yaml_list(
+                    profiles_by_shard[shard] + deployment_groups_by_shard[shard], 6
+                ),
                 "    networks:",
                 f"      - analytics_store_shard_{shard}",
                 "    environment:",
@@ -228,7 +295,9 @@ def compose_document(manifest: dict) -> str:
                     f"  {worker}:",
                     "    <<: *cubestore-runtime",
                     "    profiles:",
-                    *_yaml_list(profiles_by_shard[shard], 6),
+                    *_yaml_list(
+                        profiles_by_shard[shard] + deployment_groups_by_shard[shard], 6
+                    ),
                     "    networks:",
                     f"      - analytics_store_shard_{shard}",
                     "    environment:",
@@ -250,6 +319,7 @@ def compose_document(manifest: dict) -> str:
 
     for entry in entries:
         profile = entry["name"]
+        deployment_group = entry["deployment_group"]
         suffix = _service_suffix(profile)
         prefix = _profile_env_prefix(profile)
         refresh_time_zones = _refresh_time_zones(profile)
@@ -275,7 +345,7 @@ def compose_document(manifest: dict) -> str:
         lines.extend(
             [
                 f"  {backend}:",
-                f"    profiles: [{profile}]",
+                f"    profiles: [{profile}, {deployment_group}]",
                 "    environment:",
                 f'      ANALYTICS_ENABLED: "${{{prefix}_ANALYTICS_ENABLED:-false}}"',
                 f"      ANALYTICS_CUBE_API_URL: http://cube-api-{suffix}:4000",
@@ -288,7 +358,7 @@ def compose_document(manifest: dict) -> str:
                 "",
                 f"  cube-api-{suffix}:",
                 "    <<: *cube-runtime",
-                f"    profiles: [{profile}]",
+                f"    profiles: [{profile}, {deployment_group}]",
                 "    networks:",
                 "      - connex_network",
                 f"      - {shard_network}",
@@ -307,7 +377,7 @@ def compose_document(manifest: dict) -> str:
                 "",
                 f"  cube-refresh-{suffix}:",
                 "    <<: *cube-runtime",
-                f"    profiles: [{profile}]",
+                f"    profiles: [{profile}, {deployment_group}]",
                 "    networks:",
                 "      - connex_network",
                 f"      - {shard_network}",
@@ -374,7 +444,8 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    manifest = manifest_document(source_profiles())
+    profile_groups = source_profile_groups()
+    manifest = manifest_document(sorted(profile_groups), profile_groups)
     manifest_text = json.dumps(manifest, indent=2) + "\n"
     compose_text = compose_document(manifest)
 
