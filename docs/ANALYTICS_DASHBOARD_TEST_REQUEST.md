@@ -4,7 +4,7 @@
 
 ## 測試流程
 
-1. 開啟 `wtchk_cls` Web 應用程式，使用有效的 viewer 帳號登入。
+1. 開啟 `wtchk_cls` Web 應用程式，使用有效帳號登入。
 2. 確認已驗證的工作階段可存取受治理的 Analytics catalog 與已發佈圖表。
 3. 從 Analytics filter-options API 載入可用的篩選值。
 4. 個別及組合套用篩選條件，確認可用的相依選項正確更新。
@@ -64,10 +64,9 @@
 
 ## 驗證與授權檢查
 
-- viewer 可以登入並讀取已發佈的 catalog 成員與圖表。
 - 未驗證請求會遭拒絕。
-- viewer 無法存取管理員圖表管理端點。
-- 圖表清單只包含已發佈、viewer 可見的圖表。
+- 持有正確 static bearer 的請求可讀取 catalog、圖表與 `/admin/analytics/charts`。
+- 圖表清單只包含此 static bearer 可見的已發佈圖表。
 - Analytics 回應包含 `Cache-Control: no-store, private`。
 
 ## 應交付的證據
@@ -89,24 +88,24 @@
 
 此請求的即時、可重複版本位於 `backend/tests/test_analytics_dashboard_e2e.py`。它在一般單元測試執行期間停用，但可對任何公開應用程式 API 的部署執行：
 
-請將 `env.testing.example` 作為本機 VS Code／測試環境範本。將其值複製到被忽略的 `.env` 檔，並在執行前由對應 profile 的前端取得短效 bearer token。
+請將 `env.testing.example` 作為本機 VS Code／測試環境範本。將其值複製到被忽略的 `.env` 檔，並在執行前設定對應 profile 的 static API bearer token。
 
 ```bash
 ANALYTICS_E2E=1 \\
 ANALYTICS_E2E_BASE_URL=http://localhost:8000 \\
-ANALYTICS_E2E_TOKEN=<frontend-issued-60-second-token> \\
+ANALYTICS_E2E_API_TOKEN=<profile-backend-api-token> \\
 .venv/bin/python -m pytest -m analytics_e2e -v \\
   --log-cli-level=INFO \\
   backend/tests/test_analytics_dashboard_e2e.py
 ```
 
-後端不再接受使用者名稱／密碼；`ANALYTICS_E2E_TOKEN` 必須由前端以對應 profile 的 RS256 私鑰簽發。若 API 位於設定檔路徑之後，請設定 `ANALYTICS_E2E_API_PREFIX=/wtchk/api`。執行器預設使用 `Asia/Hong_Kong` 與寬廣日期範圍；可透過 `ANALYTICS_E2E_TIMEZONE`、`ANALYTICS_E2E_FROM_DATE` 和 `ANALYTICS_E2E_TO_DATE` 覆寫。
+後端不再接受使用者名稱／密碼；`ANALYTICS_E2E_API_TOKEN` 必須等於對應 profile 的 256-bit bearer token。若 API 位於設定檔路徑之後，請設定 `ANALYTICS_E2E_API_PREFIX=/wtchk/api`。執行器預設使用 `Asia/Hong_Kong` 與寬廣日期範圍；可透過 `ANALYTICS_E2E_TIMEZONE`、`ANALYTICS_E2E_FROM_DATE` 和 `ANALYTICS_E2E_TO_DATE` 覆寫。
 
 執行器會為每個 HTTP 請求記錄一筆 `analytics_e2e query_result`。每筆紀錄包含方法、URL、狀態、請求內容與回應結果。機密值會遮蔽，且預設將記錄值限制在 50,000 bytes；以 `ANALYTICS_E2E_LOG_MAX_BYTES` 變更上限。
 
-VS Code Test Explorer 會使用工作區的 `.env`，並依已提交的工作區設定顯示 INFO 日誌。從 Test Explorer 執行這些即時測試前，請在本機 `.env` 加入 `ANALYTICS_E2E=1` 與剛簽發的 `ANALYTICS_E2E_TOKEN`；`ANALYTICS_E2E_EXPECTED_ROLE` 應與 token 的簽署角色一致。結果顯示為 `s` 表示即時套件被略過，且未發出 HTTP 查詢，因此沒有可顯示的 query-result 日誌。
+VS Code Test Explorer 會使用工作區的 `.env`，並依已提交的工作區設定顯示 INFO 日誌。從 Test Explorer 執行這些即時測試前，請在本機 `.env` 加入 `ANALYTICS_E2E=1` 與 `ANALYTICS_E2E_API_TOKEN`。結果顯示為 `s` 表示即時套件被略過，且未發出 HTTP 查詢，因此沒有可顯示的 query-result 日誌。
 套件執行時，請查看 VS Code 的 Python Test Log 或整合式終端機；`Query Results` 面板屬於資料庫查詢擴充功能，不會接收這些 HTTP 測試日誌。
 
-使用前端簽發的管理員 token 時，請設定 `ANALYTICS_E2E_EXPECTED_ROLE=admin`。預設角色是 `viewer`；圖表管理存取對 viewer 預期回傳 `403`，對管理員預期回傳 `200`。
+所有 bearer-authenticated 呼叫端都可存取圖表管理路徑；E2E 測試對 `/admin/analytics/charts` 預期回傳 `200`。
 
-舊計算比較可透過 `ANALYTICS_E2E_COMPARISON_MANIFEST=/path/to/cases.json` 啟用，並可選擇設定 `ANALYTICS_E2E_LEGACY_BASE_URL`。每個 manifest case 會指定舊請求、已發佈圖表 slug，以及從新列 key 對應至等效舊列 key 的 `row_key_map`。比較前會排序列，因此測試可將計算不一致與排序差異分別報告。執行器亦會驗證驗證流程、已發佈圖表／model-version 一致性、篩選器探索、非 UTC 的有界日期、數值／無匹配篩選、assignment-grain 隔離、新鮮度中繼資料，以及 viewer/admin 授權。
+舊計算比較可透過 `ANALYTICS_E2E_COMPARISON_MANIFEST=/path/to/cases.json` 啟用，並可選擇設定 `ANALYTICS_E2E_LEGACY_BASE_URL`。每個 manifest case 會指定舊請求、已發佈圖表 slug，以及從新列 key 對應至等效舊列 key 的 `row_key_map`。比較前會排序列，因此測試可將計算不一致與排序差異分別報告。執行器亦會驗證驗證流程、已發佈圖表／model-version 一致性、篩選器探索、非 UTC 的有界日期、數值／無匹配篩選、assignment-grain 隔離、新鮮度中繼資料，以及 static bearer 存取。

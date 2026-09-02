@@ -5310,7 +5310,7 @@
       }
     },
     "securitySchemes": {
-      "FrontendBearer": {
+      "StaticBearer": {
         "scheme": "bearer",
         "type": "http"
       }
@@ -5345,7 +5345,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "List chart definitions",
@@ -5392,7 +5392,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Create chart definition",
@@ -5442,7 +5442,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Delete chart definition",
@@ -5490,7 +5490,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get chart definition",
@@ -5548,7 +5548,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Update chart definition",
@@ -5598,7 +5598,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Publish chart definition",
@@ -5625,7 +5625,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "List measurable chart targets",
@@ -5679,7 +5679,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Resolve remaining chart builder options",
@@ -5728,7 +5728,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Run a chart builder selection",
@@ -5755,7 +5755,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get the active analytics catalog",
@@ -5813,7 +5813,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get field data availability",
@@ -5845,7 +5845,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "List published charts",
@@ -5912,7 +5912,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Run published chart data",
@@ -5961,7 +5961,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Drill down to survey responses",
@@ -6010,7 +6010,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Queue analytics export",
@@ -6060,7 +6060,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get analytics export status",
@@ -6106,7 +6106,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Download analytics export",
@@ -6155,7 +6155,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "List available filter values",
@@ -6204,7 +6204,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Run a governed aggregate query",
@@ -6251,7 +6251,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Resolve analytics query capabilities",
@@ -6313,7 +6313,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "List finite analytics query combinations",
@@ -6362,7 +6362,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Query governed analytics records",
@@ -6386,7 +6386,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Channels",
@@ -6428,7 +6428,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Create Channel",
@@ -6473,7 +6473,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Delete Channel",
@@ -6516,7 +6516,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Channel",
@@ -6569,7 +6569,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Update Channel",
@@ -7420,7 +7420,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Channel And Delivery Service Distribution",
@@ -7476,7 +7476,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Data Coverage",
@@ -8327,7 +8327,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Department Distribution",
@@ -9190,7 +9190,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Keyword Analysis",
@@ -9247,7 +9247,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Last Updated Date",
@@ -10098,7 +10098,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Sentiment Distribution",
@@ -10960,7 +10960,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Store Column Sentiment Distribution",
@@ -11811,7 +11811,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Store Distribution",
@@ -12662,7 +12662,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Topic Distribution",
@@ -13509,7 +13509,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Topic Sentiment Score",
@@ -13533,7 +13533,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Delivery Services",
@@ -13575,7 +13575,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Create Delivery Service",
@@ -13620,7 +13620,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Delete Delivery Service",
@@ -13663,7 +13663,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Delivery Service",
@@ -13716,7 +13716,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Update Delivery Service",
@@ -13740,7 +13740,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Departments",
@@ -13782,7 +13782,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Create Department",
@@ -13827,7 +13827,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Delete Department",
@@ -13870,7 +13870,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Department",
@@ -13923,7 +13923,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Update Department",
@@ -14853,7 +14853,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Stores",
@@ -14897,7 +14897,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Create Store",
@@ -15742,7 +15742,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Export Stores Csv",
@@ -15786,7 +15786,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Upsert Stores From Csv",
@@ -15831,7 +15831,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Delete Store",
@@ -15876,7 +15876,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Store",
@@ -15923,7 +15923,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Top K Performance Channels By Ids",
@@ -15970,7 +15970,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Strategy For Column By Value",
@@ -16017,7 +16017,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Top K Performance Delivery Services By Ids",
@@ -16064,7 +16064,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Strategy For Store By Ids",
@@ -16913,7 +16913,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Strategy V2",
@@ -17776,7 +17776,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Top K Performance Channels",
@@ -18650,7 +18650,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Top K Performance Columns",
@@ -19513,7 +19513,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Top K Performance Delivery Services",
@@ -20376,7 +20376,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Top K Performance Stores",
@@ -21246,7 +21246,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Surveys",
@@ -21290,7 +21290,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Create Survey",
@@ -22135,7 +22135,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Download Surveys",
@@ -22182,7 +22182,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Delete Survey",
@@ -22245,7 +22245,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Survey",
@@ -22300,7 +22300,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Update Survey",
@@ -22330,7 +22330,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Upload Tasks",
@@ -22354,7 +22354,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Download Example Task",
@@ -22399,7 +22399,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Download Uploaded Task",
@@ -22443,7 +22443,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Upload Tasks",
@@ -22490,7 +22490,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Upload Task",
@@ -22514,7 +22514,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Topics",
@@ -22556,7 +22556,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Create Topic",
@@ -22601,7 +22601,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Delete Topic",
@@ -22644,7 +22644,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Get Topic",
@@ -22697,7 +22697,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Update Topic",
@@ -22743,7 +22743,7 @@
         },
         "security": [
           {
-            "FrontendBearer": []
+            "StaticBearer": []
           }
         ],
         "summary": "Translate",

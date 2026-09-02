@@ -5,7 +5,6 @@ x-backend-environment: &backend-environment
   DATABASE_USER: "${DATABASE_USER:-postgres}"
   DATABASE_PASSWORD: "${DATABASE_PASSWORD:-}"
   DATABASE_PORT: "${DATABASE_PORT:-5432}"
-  API_JWT_CLOCK_SKEW_SECONDS: "${API_JWT_CLOCK_SKEW_SECONDS:-30}"
   CORS_ORIGINS: "${CORS_ORIGINS:-*}"
   FASTAPI_DOCS_URL: "${FASTAPI_DOCS_URL:-/docs}"
   FASTAPI_REDOC_URL: "${FASTAPI_REDOC_URL:-/redoc}"
@@ -75,7 +74,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wtchk_cls
       LOG_SERVICE_NAME: clsense-wtchk_cls
-      API_JWT_PUBLIC_KEY: "${WTCHK_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WTCHK_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCHK_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -147,7 +146,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wtctw_cls
       LOG_SERVICE_NAME: clsense-wtctw_cls
-      API_JWT_PUBLIC_KEY: "${WTCTW_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WTCTW_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCTW_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -219,7 +218,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wtcmy_cls
       LOG_SERVICE_NAME: clsense-wtcmy_cls
-      API_JWT_PUBLIC_KEY: "${WTCMY_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WTCMY_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCMY_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -291,7 +290,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: kvnl_cls
       LOG_SERVICE_NAME: clsense-kvnl_cls
-      API_JWT_PUBLIC_KEY: "${KVNL_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${KVNL_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${KVNL_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -363,7 +362,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: sd_cls
       LOG_SERVICE_NAME: clsense-sd_cls
-      API_JWT_PUBLIC_KEY: "${SD_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${SD_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${SD_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -435,7 +434,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wtcsg_cls
       LOG_SERVICE_NAME: clsense-wtcsg_cls
-      API_JWT_PUBLIC_KEY: "${WTCSG_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WTCSG_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCSG_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -507,7 +506,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wwhk_cls
       LOG_SERVICE_NAME: clsense-wwhk_cls
-      API_JWT_PUBLIC_KEY: "${WWHK_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WWHK_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WWHK_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -579,7 +578,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: pnshk_cls
       LOG_SERVICE_NAME: clsense-pnshk_cls
-      API_JWT_PUBLIC_KEY: "${PNSHK_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${PNSHK_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${PNSHK_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -651,7 +650,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: ftrhk_cls
       LOG_SERVICE_NAME: clsense-ftrhk_cls
-      API_JWT_PUBLIC_KEY: "${FTRHK_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${FTRHK_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${FTRHK_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -723,7 +722,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wtcth_cls
       LOG_SERVICE_NAME: clsense-wtcth_cls
-      API_JWT_PUBLIC_KEY: "${WTCTH_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WTCTH_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCTH_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -795,7 +794,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wtcid_cls
       LOG_SERVICE_NAME: clsense-wtcid_cls
-      API_JWT_PUBLIC_KEY: "${WTCID_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WTCID_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCID_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -867,7 +866,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wtcvn_cls
       LOG_SERVICE_NAME: clsense-wtcvn_cls
-      API_JWT_PUBLIC_KEY: "${WTCVN_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WTCVN_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCVN_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -939,7 +938,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wtccn_cls
       LOG_SERVICE_NAME: clsense-wtccn_cls
-      API_JWT_PUBLIC_KEY: "${WTCCN_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WTCCN_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCCN_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1011,7 +1010,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wtcph_cls
       LOG_SERVICE_NAME: clsense-wtcph_cls
-      API_JWT_PUBLIC_KEY: "${WTCPH_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WTCPH_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCPH_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1083,7 +1082,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: drlv_cls
       LOG_SERVICE_NAME: clsense-drlv_cls
-      API_JWT_PUBLIC_KEY: "${DRLV_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${DRLV_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${DRLV_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1155,7 +1154,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: drlt_cls
       LOG_SERVICE_NAME: clsense-drlt_cls
-      API_JWT_PUBLIC_KEY: "${DRLT_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${DRLT_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${DRLT_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1227,7 +1226,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: icibe_cls
       LOG_SERVICE_NAME: clsense-icibe_cls
-      API_JWT_PUBLIC_KEY: "${ICIBE_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${ICIBE_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${ICIBE_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1299,7 +1298,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: kvbe_cls
       LOG_SERVICE_NAME: clsense-kvbe_cls
-      API_JWT_PUBLIC_KEY: "${KVBE_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${KVBE_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${KVBE_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1371,7 +1370,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: tps_cls
       LOG_SERVICE_NAME: clsense-tps_cls
-      API_JWT_PUBLIC_KEY: "${TPS_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${TPS_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${TPS_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1443,7 +1442,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wtcua_cls
       LOG_SERVICE_NAME: clsense-wtcua_cls
-      API_JWT_PUBLIC_KEY: "${WTCUA_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WTCUA_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCUA_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1515,7 +1514,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: wtctr_cls
       LOG_SERVICE_NAME: clsense-wtctr_cls
-      API_JWT_PUBLIC_KEY: "${WTCTR_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WTCTR_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCTR_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1587,7 +1586,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: mat_cls
       LOG_SERVICE_NAME: clsense-mat_cls
-      API_JWT_PUBLIC_KEY: "${MAT_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${MAT_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${MAT_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1659,7 +1658,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: mch_cls
       LOG_SERVICE_NAME: clsense-mch_cls
-      API_JWT_PUBLIC_KEY: "${MCH_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${MCH_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${MCH_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1731,7 +1730,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: mcz_cls
       LOG_SERVICE_NAME: clsense-mcz_cls
-      API_JWT_PUBLIC_KEY: "${MCZ_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${MCZ_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${MCZ_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1803,7 +1802,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: mfr_cls
       LOG_SERVICE_NAME: clsense-mfr_cls
-      API_JWT_PUBLIC_KEY: "${MFR_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${MFR_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${MFR_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1875,7 +1874,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: mhu_cls
       LOG_SERVICE_NAME: clsense-mhu_cls
-      API_JWT_PUBLIC_KEY: "${MHU_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${MHU_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${MHU_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -1947,7 +1946,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: mit_cls
       LOG_SERVICE_NAME: clsense-mit_cls
-      API_JWT_PUBLIC_KEY: "${MIT_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${MIT_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${MIT_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2019,7 +2018,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: mro_cls
       LOG_SERVICE_NAME: clsense-mro_cls
-      API_JWT_PUBLIC_KEY: "${MRO_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${MRO_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${MRO_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2091,7 +2090,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: msk_cls
       LOG_SERVICE_NAME: clsense-msk_cls
-      API_JWT_PUBLIC_KEY: "${MSK_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${MSK_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${MSK_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2163,7 +2162,7 @@ services:
       IS_ECLS_ENABLED: "false"
       DEPLOYMENT_PROFILE: icinl_cls
       LOG_SERVICE_NAME: clsense-icinl_cls
-      API_JWT_PUBLIC_KEY: "${ICINL_CLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${ICINL_CLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${ICINL_CLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2235,7 +2234,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wtchk_ecls
       LOG_SERVICE_NAME: clsense-wtchk_ecls
-      API_JWT_PUBLIC_KEY: "${WTCHK_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WTCHK_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCHK_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2307,7 +2306,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wtcph_ecls
       LOG_SERVICE_NAME: clsense-wtcph_ecls
-      API_JWT_PUBLIC_KEY: "${WTCPH_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WTCPH_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCPH_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2379,7 +2378,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wtcmy_ecls
       LOG_SERVICE_NAME: clsense-wtcmy_ecls
-      API_JWT_PUBLIC_KEY: "${WTCMY_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WTCMY_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCMY_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2451,7 +2450,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: ftrhk_ecls
       LOG_SERVICE_NAME: clsense-ftrhk_ecls
-      API_JWT_PUBLIC_KEY: "${FTRHK_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${FTRHK_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${FTRHK_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2523,7 +2522,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: pnshk_ecls
       LOG_SERVICE_NAME: clsense-pnshk_ecls
-      API_JWT_PUBLIC_KEY: "${PNSHK_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${PNSHK_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${PNSHK_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2595,7 +2594,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wwhk_ecls
       LOG_SERVICE_NAME: clsense-wwhk_ecls
-      API_JWT_PUBLIC_KEY: "${WWHK_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WWHK_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WWHK_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2667,7 +2666,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wtcth_ecls
       LOG_SERVICE_NAME: clsense-wtcth_ecls
-      API_JWT_PUBLIC_KEY: "${WTCTH_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WTCTH_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCTH_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2739,7 +2738,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wtcsg_ecls
       LOG_SERVICE_NAME: clsense-wtcsg_ecls
-      API_JWT_PUBLIC_KEY: "${WTCSG_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WTCSG_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCSG_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2811,7 +2810,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wtctw_ecls
       LOG_SERVICE_NAME: clsense-wtctw_ecls
-      API_JWT_PUBLIC_KEY: "${WTCTW_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WTCTW_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCTW_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2883,7 +2882,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wtcvn_ecls
       LOG_SERVICE_NAME: clsense-wtcvn_ecls
-      API_JWT_PUBLIC_KEY: "${WTCVN_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WTCVN_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCVN_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -2955,7 +2954,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wtccn_ecls
       LOG_SERVICE_NAME: clsense-wtccn_ecls
-      API_JWT_PUBLIC_KEY: "${WTCCN_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WTCCN_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCCN_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3027,7 +3026,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wtcid_ecls
       LOG_SERVICE_NAME: clsense-wtcid_ecls
-      API_JWT_PUBLIC_KEY: "${WTCID_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WTCID_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCID_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3099,7 +3098,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: sd_ecls
       LOG_SERVICE_NAME: clsense-sd_ecls
-      API_JWT_PUBLIC_KEY: "${SD_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${SD_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${SD_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3171,7 +3170,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: drlv_ecls
       LOG_SERVICE_NAME: clsense-drlv_ecls
-      API_JWT_PUBLIC_KEY: "${DRLV_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${DRLV_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${DRLV_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3243,7 +3242,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: drlt_ecls
       LOG_SERVICE_NAME: clsense-drlt_ecls
-      API_JWT_PUBLIC_KEY: "${DRLT_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${DRLT_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${DRLT_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3315,7 +3314,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: icibe_ecls
       LOG_SERVICE_NAME: clsense-icibe_ecls
-      API_JWT_PUBLIC_KEY: "${ICIBE_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${ICIBE_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${ICIBE_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3387,7 +3386,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: icinl_ecls
       LOG_SERVICE_NAME: clsense-icinl_ecls
-      API_JWT_PUBLIC_KEY: "${ICINL_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${ICINL_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${ICINL_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3459,7 +3458,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: kvnl_ecls
       LOG_SERVICE_NAME: clsense-kvnl_ecls
-      API_JWT_PUBLIC_KEY: "${KVNL_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${KVNL_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${KVNL_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3531,7 +3530,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: kvbe_ecls
       LOG_SERVICE_NAME: clsense-kvbe_ecls
-      API_JWT_PUBLIC_KEY: "${KVBE_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${KVBE_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${KVBE_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3603,7 +3602,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: mat_ecls
       LOG_SERVICE_NAME: clsense-mat_ecls
-      API_JWT_PUBLIC_KEY: "${MAT_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${MAT_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${MAT_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3675,7 +3674,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: mch_ecls
       LOG_SERVICE_NAME: clsense-mch_ecls
-      API_JWT_PUBLIC_KEY: "${MCH_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${MCH_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${MCH_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3747,7 +3746,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: mcz_ecls
       LOG_SERVICE_NAME: clsense-mcz_ecls
-      API_JWT_PUBLIC_KEY: "${MCZ_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${MCZ_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${MCZ_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3819,7 +3818,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: mfr_ecls
       LOG_SERVICE_NAME: clsense-mfr_ecls
-      API_JWT_PUBLIC_KEY: "${MFR_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${MFR_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${MFR_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3891,7 +3890,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: mhu_ecls
       LOG_SERVICE_NAME: clsense-mhu_ecls
-      API_JWT_PUBLIC_KEY: "${MHU_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${MHU_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${MHU_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -3963,7 +3962,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: mit_ecls
       LOG_SERVICE_NAME: clsense-mit_ecls
-      API_JWT_PUBLIC_KEY: "${MIT_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${MIT_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${MIT_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -4035,7 +4034,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: mro_ecls
       LOG_SERVICE_NAME: clsense-mro_ecls
-      API_JWT_PUBLIC_KEY: "${MRO_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${MRO_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${MRO_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -4107,7 +4106,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: msk_ecls
       LOG_SERVICE_NAME: clsense-msk_ecls
-      API_JWT_PUBLIC_KEY: "${MSK_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${MSK_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${MSK_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -4179,7 +4178,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: tps_ecls
       LOG_SERVICE_NAME: clsense-tps_ecls
-      API_JWT_PUBLIC_KEY: "${TPS_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${TPS_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${TPS_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -4251,7 +4250,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wtctr_ecls
       LOG_SERVICE_NAME: clsense-wtctr_ecls
-      API_JWT_PUBLIC_KEY: "${WTCTR_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WTCTR_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCTR_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -4323,7 +4322,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: wtcua_ecls
       LOG_SERVICE_NAME: clsense-wtcua_ecls
-      API_JWT_PUBLIC_KEY: "${WTCUA_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${WTCUA_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${WTCUA_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"
@@ -4395,7 +4394,7 @@ services:
       IS_ECLS_ENABLED: "true"
       DEPLOYMENT_PROFILE: svruk_ecls
       LOG_SERVICE_NAME: clsense-svruk_ecls
-      API_JWT_PUBLIC_KEY: "${SVRUK_ECLS_API_JWT_PUBLIC_KEY:-}"
+      API_BEARER_TOKEN: "${SVRUK_ECLS_BACKEND_API_TOKEN:-}"
       ANALYZE_FEEDBACK_API_URL: ${SVRUK_ECLS_ANALYZE_FEEDBACK_API_URL:-}
       # Profile-specific feedback and survey-export settings.
       ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL: "false"

@@ -6,7 +6,7 @@ Create Date: 2026-08-31 10:00:00.000000
 
 This is an intentionally one-way maintenance-window migration. Rollback must
 restore the pre-cutover database backup because password credentials are
-removed after their verified import into the frontend auth database.
+removed after their verified import into the frontend database.
 """
 
 from __future__ import annotations
@@ -74,7 +74,7 @@ def _verify_frontend_import() -> None:
     if receipt_table is None:
         raise RuntimeError(
             "Active backend administrators have not been imported into the "
-            "frontend auth database"
+            "frontend database"
         )
     receipt = (
         connection.execute(

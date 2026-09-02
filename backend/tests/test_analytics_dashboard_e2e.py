@@ -4,12 +4,12 @@ Run the live suite explicitly so the normal unit-test run stays hermetic::
 
     ANALYTICS_E2E=1 \
     ANALYTICS_E2E_BASE_URL=http://localhost:8000 \
-    ANALYTICS_E2E_TOKEN='<frontend-issued-rs256-token>' \
+    ANALYTICS_E2E_API_TOKEN='<profile-backend-api-token>' \
     .venv/bin/python -m pytest -m analytics_e2e -v --log-cli-level=INFO \
         backend/tests/test_analytics_dashboard_e2e.py
 
-An already-issued application JWT can be supplied with
-``ANALYTICS_E2E_TOKEN``.  For legacy comparisons, provide
+The profile's static API bearer token is supplied with
+``ANALYTICS_E2E_API_TOKEN``. For legacy comparisons, provide
 ``ANALYTICS_E2E_COMPARISON_MANIFEST`` pointing to a JSON file containing a
 list of cases.  Each case has this shape::
 
@@ -93,8 +93,7 @@ FILTER_MEMBERS = {
 class E2EConfig:
     base_url: str
     api_prefix: str
-    token: str | None = field(repr=False)
-    expected_role: str
+    api_token: str | None = field(repr=False)
     timezone: str
     from_date: str
     to_date: str
@@ -105,8 +104,7 @@ class E2EConfig:
         return cls(
             base_url=os.getenv("ANALYTICS_E2E_BASE_URL", "http://localhost:8000").rstrip("/"),
             api_prefix=os.getenv("ANALYTICS_E2E_API_PREFIX", "").strip("/"),
-            token=os.getenv("ANALYTICS_E2E_TOKEN") or None,
-            expected_role=os.getenv("ANALYTICS_E2E_EXPECTED_ROLE", "viewer"),
+            api_token=os.getenv("ANALYTICS_E2E_API_TOKEN") or None,
             timezone=os.getenv("ANALYTICS_E2E_TIMEZONE", "Asia/Hong_Kong"),
             from_date=os.getenv("ANALYTICS_E2E_FROM_DATE", "2020-01-01T00:00:00Z"),
             to_date=os.getenv("ANALYTICS_E2E_TO_DATE", "2030-01-01T00:00:00Z"),
@@ -117,6 +115,12 @@ class E2EConfig:
         suffix = f"/{self.api_prefix}" if self.api_prefix else ""
         return f"{self.base_url}{suffix}/{path.lstrip('/')}"
 
+    def authentication_headers(self) -> dict[str, str]:
+        assert self.api_token is not None
+        return {
+            "Authorization": f"Bearer {self.api_token}",
+        }
+
 
 def _require_e2e_enabled() -> None:
     if os.getenv("ANALYTICS_E2E", "").lower() not in {"1", "true", "yes"}:
@@ -124,8 +128,10 @@ def _require_e2e_enabled() -> None:
 
 
 def _require_auth(config: E2EConfig) -> None:
-    if not config.token:
-        pytest.skip("Set ANALYTICS_E2E_TOKEN to a matching frontend-issued bearer token")
+    required = {"ANALYTICS_E2E_API_TOKEN": config.api_token}
+    missing = [name for name, value in required.items() if not value]
+    if missing:
+        pytest.skip(f"Set {', '.join(missing)} for static API authentication")
 
 
 def _redact(value: Any, key: str | None = None) -> Any:
@@ -246,7 +252,7 @@ def e2e_config() -> E2EConfig:
 def e2e_client(e2e_config: E2EConfig) -> httpx.Client:
     _require_auth(e2e_config)
     client = httpx.Client(timeout=e2e_config.timeout, follow_redirects=True)
-    client.headers.update({"Authorization": f"Bearer {e2e_config.token}"})
+    client.headers.update(e2e_config.authentication_headers())
     yield client
     client.close()
 
@@ -282,8 +288,6 @@ def published_charts(
     assert not missing, f"Published default charts are missing: {missing}"
     for chart in charts.values():
         assert chart.get("status") == "published"
-        if e2e_config.expected_role != "admin":
-            assert chart.get("visibility") == "viewer"
         assert chart.get("model_version") == catalog["model_version"]
         assert isinstance(chart.get("definition"), dict)
     return charts
@@ -348,6 +352,7 @@ def _chart_data(
 
 
 def test_unauthenticated_analytics_requests_are_rejected(e2e_config: E2EConfig) -> None:
+    _require_e2e_enabled()
     client = httpx.Client(timeout=e2e_config.timeout, follow_redirects=False)
     try:
         for path in ("analytics/catalog", "analytics/charts/published"):
@@ -362,7 +367,7 @@ def test_unauthenticated_analytics_requests_are_rejected(e2e_config: E2EConfig) 
         client.close()
 
 
-def test_catalog_and_published_charts_are_viewer_visible(
+def test_catalog_and_published_charts_are_bearer_visible(
     catalog: dict[str, Any], published_charts: dict[str, dict[str, Any]]
 ) -> None:
     assert len(published_charts) >= len(DEFAULT_CHART_SLUGS)
@@ -517,13 +522,12 @@ def test_assignment_grains_reject_cross_assignment_filters(
     assert response.status_code == 422, response.text[:1_000]
 
 
-def test_configured_role_has_expected_chart_management_access(
+def test_static_bearer_has_chart_management_access(
     e2e_client: httpx.Client, e2e_config: E2EConfig
 ) -> None:
     response = e2e_client.get(e2e_config.url("admin/analytics/charts"))
     _log_http_result(response, label="admin/analytics/charts")
-    expected = 200 if e2e_config.expected_role == "admin" else 403
-    assert response.status_code == expected, response.text[:1_000]
+    assert response.status_code == 200, response.text[:1_000]
 
 
 def test_legacy_comparison_manifest(

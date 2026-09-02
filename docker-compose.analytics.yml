@@ -2,7 +2,7 @@
 # Use together with docker-compose.yml. No analytics service publishes a host port.
 
 x-cube-runtime: &cube-runtime
-  image: "cubejs/cube:v1.7.26@${CUBE_IMAGE_DIGEST:?Set a tested sha256 digest for Cube v1.7.26}"
+  image: "cubejs/cube:v1.7.26@sha256:51d467b223492da5c35139c31760c5329e770028bbe6cb4faa590400e5445941"
   restart: unless-stopped
   read_only: true
   init: true
@@ -24,7 +24,7 @@ x-cube-environment: &cube-environment
   CUBEJS_DB_TYPE: postgres
   CUBEJS_DB_HOST: postgres
   CUBEJS_DB_PORT: "${ANALYTICS_DATABASE_PORT:-5432}"
-  CUBEJS_DB_SSL: "${ANALYTICS_DATABASE_SSL:-true}"
+  CUBEJS_DB_SSL: "${ANALYTICS_DATABASE_SSL:-false}"
   CUBEJS_DEV_MODE: "false"
   CUBEJS_TELEMETRY: "false"
   CUBEJS_JWT_AUDIENCE: "cube"
@@ -35,7 +35,7 @@ x-cube-environment: &cube-environment
   CUBEJS_DB_QUERY_TIMEOUT: "${ANALYTICS_DB_QUERY_TIMEOUT_SECONDS:-300}"
 
 x-cubestore-runtime: &cubestore-runtime
-  image: "cubejs/cubestore:v1.7.26@${CUBESTORE_IMAGE_DIGEST:?Set a tested sha256 digest for Cube Store v1.7.26}"
+  image: "cubejs/cubestore:v1.7.26@sha256:038d4491cd77799a440655053f8f67ea16d3d2ecceffe812d314e47993f1ce08"
   platform: "${CUBESTORE_PLATFORM:-linux/amd64}"
   restart: unless-stopped
   init: true

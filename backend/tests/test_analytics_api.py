@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import os
 from pathlib import Path
 import re
@@ -7,7 +8,7 @@ from types import SimpleNamespace
 import sys
 
 import pytest
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
 
@@ -20,6 +21,7 @@ os.environ.setdefault("DATABASE_NAME", "test")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import core.config as config
+import core.security as security
 from features.analytics.endpoints import analytics
 from features.analytics.model.semantic import (
     Aggregation,
@@ -1363,19 +1365,29 @@ def test_internal_catalog_requires_signed_profile_request_and_uses_camel_case(
     }
 
 
-def test_admin_routes_require_an_administrator(monkeypatch) -> None:
-    db = FakeDb()
-    monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
+def test_admin_routes_require_only_the_static_bearer(monkeypatch) -> None:
+    token = base64.b64encode(b"0123456789abcdef0123456789abcdef").decode()
+    monkeypatch.setattr(security, "API_BEARER_TOKEN", token)
+
     app = FastAPI()
-    app.include_router(analytics.router)
-    viewer = SimpleNamespace(id="viewer-1", role="user")
-    app.dependency_overrides[get_db] = lambda: db
-    app.dependency_overrides[get_current_actor] = lambda: viewer
+
+    @app.get("/admin/example")
+    async def admin_example(_: object = Depends(require_admin)) -> dict[str, bool]:
+        return {"ok": True}
 
     client = TestClient(app)
 
-    assert client.get("/admin/analytics/charts").status_code == 403
-    assert client.get("/admin/analytics/candidates").status_code == 404
+    response = client.get(
+        "/admin/example",
+        headers={
+            "Authorization": f"Bearer {token}",
+            # Legacy actor headers are ignored; bearer is the whole contract.
+            "X-CLS-Actor-Role": "viewer",
+            "X-CLS-Actor-Profile": "another-profile",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
 
 
 def test_chart_rollups_are_stable_structured_and_mark_non_additive() -> None:

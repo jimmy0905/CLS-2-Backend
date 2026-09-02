@@ -18,15 +18,14 @@ https://<api-host>/wtchk/api
 
 ```text
 GET https://<api-host>/wtchk/api/analytics/catalog
-Authorization: Bearer <access-token>
+Authorization: Bearer <profile-api-bearer>
 ```
 
-所有 viewer 與 administrator Analytics endpoint 均需一般應用程式 access token。`ANALYTICS_ENABLED=false` 時會回傳 `404`，讓 BU 可在不向使用者公開 Analytics 的 shadow mode 中編譯 Cube metadata。Analytics response 均帶有 `Cache-Control: no-store, private`。
+所有公開 Analytics endpoint 均只需相符 profile 的 static API bearer；後端不會讀取使用者、角色或 actor header。`ANALYTICS_ENABLED=false` 時會回傳 `404`，讓 BU 可在不向使用者公開 Analytics 的 shadow mode 中編譯 Cube metadata。Analytics response 均帶有 `Cache-Control: no-store, private`。
 
 | 呼叫端 | 存取權 |
 | --- | --- |
-| Viewer | 已發佈、viewer 可見的 catalog member；查詢、chart、drilldown 及自己的 export。 |
-| Admin | 包含 viewer 存取權，另加 chart governance、publication 與所有 export job。 |
+| Static bearer | 所有公開 Analytics 路徑，包括 chart governance、publication 與所有 export job。 |
 | Cube service | 僅私有 internal catalog endpoint，使用 profile-bound HMAC 驗證；不是 browser endpoint。 |
 
 ## Semantic View 與資料粒度
@@ -101,13 +100,13 @@ Authorization: Bearer <access-token>
 
 Dimension 與 time value 會保留 `schema` 宣告的 key。未選 time dimension 時，`schema.time_dimension` 為 `null`；即使結果為空，`rows` 與 `warnings` 也必定存在。Weighted、filtered、variance、standard-deviation、percentile 與 confidence-interval measure 可保留在 governance metadata，但不透過簡化 query contract 公開。
 
-常見錯誤：`401`（缺少、無效、已刪除或錯誤 profile 的 token）、`403`（角色不足）、`404`（Analytics 停用或資源不可見）、`422`（無效的受治理輸入或遭拒的 semantic query）、`503`（Cube 或 Analytics 資料庫無法使用）。錯誤訊息刻意不洩漏 Cube／PostgreSQL 實作細節。
+常見錯誤：`401`（缺少、無效、已刪除或錯誤 profile 的 token）、`404`（Analytics 停用或資源不存在）、`422`（無效的受治理輸入或遭拒的 semantic query）、`503`（Cube 或 Analytics 資料庫無法使用）。錯誤訊息刻意不洩漏 Cube／PostgreSQL 實作細節。
 
-## Viewer Endpoint（檢視者端點）
+## Static-bearer Endpoint
 
 ### `GET /analytics/catalog`
 
-回傳目前角色可使用的 active immutable catalog，包括 active model version、semantic view、可見 field 與可執行的邏輯 `metric_targets`。不會揭露 candidate header、admin-only field、raw payload key、SQL expression、governed Cube metric slug 或 draft definition。每個 field 另提供 `filter_control`（`select`、`search` 或 `input`）及 `minimum_search_length`；前端必須依此決定是否可載入 option。
+回傳 static bearer 可使用的 active immutable catalog，包括 active model version、semantic view、可見 field 與可執行的邏輯 `metric_targets`。不會揭露 candidate header、raw payload key、SQL expression、governed Cube metric slug 或 draft definition。每個 field 另提供 `filter_control`（`select`、`search` 或 `input`）及 `minimum_search_length`；前端必須依此決定是否可載入 option。
 
 在建立探索 UI 前先呼叫此 endpoint。用戶端只能將本 response 回傳的 slug 送至 query endpoint。`combinations` 提供可供機器讀取的 query limit 與 grain definition；chart renderer compatibility 由前端依 response shape 決定。
 
@@ -134,7 +133,7 @@ Dimension 與 time value 會保留 `schema` 宣告的 key。未選 time dimensio
 GET /analytics/query-combinations?semantic_view=survey_responses
 ```
 
-每個回傳的 `query` 都是可直接執行、且已通過 active-catalog、member visibility、semantic-view、time-dimension 與 metric validation 的 `POST /analytics/query` body。用戶端只可修改其 `allowed_overrides` 中的欄位。回傳 count 是依 semantic-view 與角色過濾後的 template 數。
+每個回傳的 `query` 都是可直接執行、且已通過 active-catalog、member visibility、semantic-view、time-dimension 與 metric validation 的 `POST /analytics/query` body。用戶端只可修改其 `allowed_overrides` 中的欄位。回傳 count 是依 semantic-view 與 static bearer visibility 過濾後的 template 數。
 
 `responding_stores_by_region` 類 template 使用 `survey_responses` 的 `store/count`，計算至少有一筆相符 response 的相異門市。response date range 表示「期間內有回應的門市」；零筆相符 response 的門市無法出現在 response-grain view。需要完整門市主檔時，使用受治理 `stores` record resource。
 
@@ -146,11 +145,11 @@ GET /analytics/query-combinations?semantic_view=survey_responses
 | --- | --- | --- |
 | `semantic_view` | 否，預設 `survey_responses` | `survey_responses`、`survey_topics`、`survey_departments` 或 `survey_keywords` 之一。 |
 
-相同 role／view／model-version 的首次請求可能掃描 reporting view；相同請求最多快取 15 分鐘。`available: true` 只表示至少有一筆 reporting row 有非 null 值，不表示每一列完整。Viewer request 不會揭露 admin-only field。
+相同 static bearer／view／model-version 的首次請求可能掃描 reporting view；相同請求最多快取 15 分鐘。`available: true` 只表示至少有一筆 reporting row 有非 null 值，不表示每一列完整。
 
 ### `POST /analytics/filter-options`
 
-回傳可填入一個前端 filter control 的 value。目標 `member` 必須是指定 semantic view 中已發佈、且角色可見的 dimension。回應排除 null value、依相符 row count 排序，且絕不公開 raw／unpromoted payload key。
+回傳可填入一個前端 filter control 的 value。目標 `member` 必須是指定 semantic view 中已發佈、且 static bearer 可見的 dimension。回應排除 null value、依相符 row count 排序，且絕不公開 raw／unpromoted payload key。
 
 ```json
 {
@@ -202,7 +201,7 @@ Survey page 上限 100，預設 `reported_at DESC, id DESC`；master-data page �
 
 ### `GET /analytics/charts/published`
 
-列出 active catalog 中、呼叫端可見的已發佈 chart。每個 chart 包含 ID、slug、title、type、semantic view、governed definition、visibility、lifecycle status、validation state 與 model-version metadata。Viewer 不會看到 draft、archived、invalid 或 admin-only chart。
+列出 active catalog 中、static bearer 可見的已發佈 chart。每個 chart 包含 ID、slug、title、type、semantic view、governed definition、visibility、lifecycle status、validation state 與 model-version metadata。Draft、archived 或 invalid chart 不會出現在此路徑。
 
 ### `POST /analytics/charts/{chart_id}/data`
 
@@ -214,25 +213,25 @@ Response 包含 `chart` 及與 `/analytics/query` 相同的 `schema`、flat `row
 
 只從 `survey_responses` 回傳 cursor-paginated response-level row。它用於檢視 aggregate 背後的 row，不是任意 raw-data access。
 
-`fields` 可取 1–50 個允許的 core／promoted field，`filters` 最多 20 個相容 filter，`limit` 為 1–250。可選 IANA `timezone` 套用本地 timestamp filter 並格式化回傳 timestamp；未提供時為 UTC。response 會連同 `{ "rows": [...], "next_cursor": 100, "has_more": true }` 回傳有效 `timezone`。只回傳目前角色可見的 promoted field；unpromoted payload key 與 raw JSON payload 永不回傳。容量保護可回傳 `429` 並帶 `Retry-After`；資料庫 timeout／不可用時為 `503`。
+`fields` 可取 1–50 個允許的 core／promoted field，`filters` 最多 20 個相容 filter，`limit` 為 1–250。可選 IANA `timezone` 套用本地 timestamp filter 並格式化回傳 timestamp；未提供時為 UTC。response 會連同 `{ "rows": [...], "next_cursor": 100, "has_more": true }` 回傳有效 `timezone`。只回傳 static bearer 可見的 promoted field；unpromoted payload key 與 raw JSON payload 永不回傳。容量保護可回傳 `429` 並帶 `Retry-After`；資料庫 timeout／不可用時為 `503`。
 
 ### `POST /analytics/exports`
 
 建立非同步 CSV 或 XLSX export。本文必須在 aggregate query、drilldown query、即時 record query 三者之中**恰選一個**。`export_format` 為 `csv` 或 `xlsx`。
 
-Export job 建立後狀態為 `queued`。系統在受理時記錄精確 role、model version、query 與 visibility rule；產生資料前會再次檢查 requester 目前帳號／角色。Export 上限 250,000 列，CSV/XLSX formula prefix 會跳脫，artifact 在 24 小時後到期。每位使用者與每個 profile 的 queue limit 會回傳 `429`。
+Export job 建立後狀態為 `queued`。系統在受理時記錄固定 static-bearer attribution、model version、query 與 visibility rule。Export 上限 250,000 列，CSV/XLSX formula prefix 會跳脫，artifact 在 24 小時後到期。每個 profile 的 queue limit 會回傳 `429`。
 
 ### `GET /analytics/exports/{job_id}`
 
-回傳 job owner 或 admin 可見的 export-job metadata。Status 為 `queued`、`processing`、`completed` 或 `failed`，並包含 timestamp、format、可用的 row count、expiry 與安全的 failure information。其他使用者收到 `404`，而非確認 job 是否存在。過期 job 仍會保留為歷史 metadata，但 download 回傳 `410`。
+回傳 static bearer 可見的 export-job metadata。Status 為 `queued`、`processing`、`completed` 或 `failed`，並包含 timestamp、format、可用的 row count、expiry 與安全的 failure information。過期 job 仍會保留為歷史 metadata，但 download 回傳 `410`。
 
 ### `GET /analytics/exports/{job_id}/download`
 
-將已完成 CSV/XLSX artifact 串流至 owner 或已授權 admin。Job 未完成時回傳 `409`、不可見時為 `404`、到期或已移除時為 `410`。File response 明確不可快取。
+將已完成 CSV/XLSX artifact 串流至持有 static bearer 的呼叫端。Job 未完成時回傳 `409`、不存在時為 `404`、到期或已移除時為 `410`。File response 明確不可快取。
 
-## Administrator Endpoint（管理員端點）
+## `/admin` 路徑
 
-本節所有路徑都需要已驗證 admin 且受 feature gate 控制。首次 rollout 刻意只公開**chart management**。Standard field 與 metric 為內建；candidate、field、metric、catalog-version administration 並非 public endpoint，藉此縮小 operational surface，同時保留受治理 chart definition 與 audit history。
+本節所有路徑只需要已驗證 static bearer，並受 feature gate 控制。首次 rollout 刻意只公開**chart management**。Standard field 與 metric 為內建；candidate、field、metric、catalog-version administration 並非 public endpoint，藉此縮小 operational surface，同時保留受治理 chart definition 與 audit history。
 
 ### 已移除的 candidate、field 與 metric administration
 
@@ -240,7 +239,7 @@ Export job 建立後狀態為 `queued`。系統在受理時記錄精確 role、m
 
 | Endpoint | 歷史行為 |
 | --- | --- |
-| `GET /admin/analytics/candidates` | 列出上傳發現的 header candidate，包含 inferred／conflicting type、sample value、occurrence metadata、source key 與 promotion state。因 raw header／sample 可能敏感，限 admin。 |
+| `GET /admin/analytics/candidates` | 列出上傳發現的 header candidate，包含 inferred／conflicting type、sample value、occurrence metadata、source key 與 promotion state。因 raw header／sample 可能敏感，未列為 public endpoint。 |
 | `GET /admin/analytics/fields`、`GET /admin/analytics/fields/{field_id}` | 列出或取得 local governed field，包含 draft／archived state 與 discovery metadata。 |
 | `POST`／`PUT`／`validate`／`publish`／`archive` 的 `/admin/analytics/fields/{field_id}` 路由 | 建立、修改、驗證、發佈或封存 raw-JSON field；修改後必須重新 validate／publish。若已發佈 metric 或 chart 仍參照 field，archive 會被拒絕。 |
 | `GET /admin/analytics/metrics`、`GET /admin/analytics/metrics/{metric_id}` | 列出或取得 metric record、source／weight reference、operation、confidence configuration、lifecycle 與 audit/version data。 |
@@ -257,15 +256,15 @@ Chart 本文含 `slug`、`title`、可選 `description`、`chart_type`、`semant
 | `GET /admin/analytics/charts`、`GET /admin/analytics/charts/{chart_id}` | 列出或取得所有 chart，包含 draft、archive、validation error、definition、visibility 及 version metadata。 |
 | `POST /admin/analytics/charts` | 建立 draft chart definition；不會觸發 visual rendering，前端消費 chart contract。 |
 | `PUT /admin/analytics/charts/{chart_id}` | 更新 definition，並使其回到 draft。 |
-| `POST /admin/analytics/charts/{chart_id}/publish` | validate、publish 並立即啟用新 catalog version。response 含 `model_version`，viewer 隨後可從 `GET /analytics/charts/published` 取得 chart。 |
-| `DELETE /admin/analytics/charts/{chart_id}` | 軟刪除 chart、記錄 audit event，並立即啟用不含該 chart 的 catalog version；viewer 將不可見。 |
+| `POST /admin/analytics/charts/{chart_id}/publish` | validate、publish 並立即啟用新 catalog version。response 含 `model_version`；持有相符 static bearer 的呼叫端隨後可從 `GET /analytics/charts/published` 取得 chart。 |
+| `DELETE /admin/analytics/charts/{chart_id}` | 軟刪除 chart、記錄 audit event，並立即啟用不含該 chart 的 catalog version；持有相符 static bearer 的呼叫端將不再取得該 chart。 |
 
 ### Catalog version（Catalog 版本）
 
 | Endpoint | 行為 |
 | --- | --- |
 | `GET /admin/analytics/catalog/versions` | 列出 model-version history：catalog version、status（`active`、`superseded` 等）、definition hash、creator、timestamp 與 validation error；清單不含 immutable snapshot。 |
-| `GET /admin/analytics/catalog/versions/{version_id}` | 回傳一個 version、其 immutable catalog snapshot 與 generated Cube catalog information，供 audit／debug；因可包含 local source key，限 admin。 |
+| `GET /admin/analytics/catalog/versions/{version_id}` | 回傳一個 version、其 immutable catalog snapshot 與 generated Cube catalog information，供 audit／debug；因可包含 local source key，未列為 public endpoint。 |
 | `POST /admin/analytics/catalog/publish` | 可選本文 `{ "description": "Quarterly metrics release" }`。重新驗證所有已發佈 field／metric／chart、檢查 catalog size 與 dependency constraint、編譯 chart rollup definition、建立 immutable version 並以 atomic 方式啟用。成功回傳 `201`；無效 definition 為 `422`，lifecycle／concurrency conflict 為 `409`。 |
 
 ## 內部 Cube Metadata Endpoint
@@ -288,10 +287,10 @@ Profile 必須符合 deployment profile、timestamp 必須新鮮，且 signature
 
 以下 dynamic field／metric flow 未在 chart-only rollout 啟用：
 
-1. Upload 發現 candidate；admin 透過 `GET /admin/analytics/candidates` 檢視。
-2. Admin 使用 `POST /admin/analytics/fields/{field_id}/promote` promotion 與設定 field。
-3. Admin 建立使用該 field 的 metric 或 chart，接著呼叫相關 `validate`、`publish` endpoint。
-4. Admin 呼叫 `POST /admin/analytics/catalog/publish`。
+1. Upload 發現 candidate；operator 透過 `GET /admin/analytics/candidates` 檢視。
+2. Operator 使用 `POST /admin/analytics/fields/{field_id}/promote` promotion 與設定 field。
+3. Operator 建立使用該 field 的 metric 或 chart，接著呼叫相關 `validate`、`publish` endpoint。
+4. Operator 呼叫 `POST /admin/analytics/catalog/publish`。
 5. Cube 經由 internal endpoint 取得新的 immutable catalog；使用者經由 `GET /analytics/catalog` 與 `GET /analytics/charts/published` 看見它。
 
 修改或 archive definition 不會改寫舊 catalog snapshot。已發佈的 chart／export 會維持與該操作記錄的 model version 綁定，因此 governance 與 audit history 可重現。

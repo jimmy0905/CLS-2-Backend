@@ -4,31 +4,31 @@ Perform this procedure once per deployment profile during a maintenance window.
 There is no dual-authentication mode.
 
 1. Back up the profile backend database and record the current application releases.
-2. Create `<profile>_frontend_auth` with the root repository's
-   `postgresql/create-frontend-auth-database.sql` script and a profile-specific,
+2. Create `<profile>_frontend` with the root repository's
+   `postgresql/create-frontend-database.sql` script and a profile-specific,
    least-privilege login.
-3. In the frontend repository, set `AUTH_PROFILE`,
-   `FRONTEND_AUTH_DATABASE_URL`, and `BACKEND_DATABASE_URL`, then run:
+3. In the frontend repository, configure the matching profile file with
+   `DATABASE_URL` and `BACKEND_DATABASE_URL`, then run:
 
    ```bash
-   npm run auth:admin -- migrate
-   npm run auth:admin -- import-legacy
+   npm run db:profile -- wtchk_cls migrate
+   npm run auth:profile -- wtchk_cls import-legacy
    ```
 
    The import is idempotent, preserves administrator UUIDs and Werkzeug hashes,
    verifies the imported count, and writes a SHA-256 count/checksum receipt to
    the backend database. A successful first login upgrades a Werkzeug hash to
    Argon2id.
-4. Generate a dedicated key pair:
+4. Generate two independent 256-bit values: one for Auth.js sessions and one
+   static API bearer token shared only by the matching frontend BFF and backend:
 
    ```bash
-   openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out frontend-api-jwt.pem
-   openssl pkey -in frontend-api-jwt.pem -pubout -out frontend-api-jwt.pub.pem
+   openssl rand -base64 32
    ```
 
-   Put the private PEM only in the matching frontend's
-   `BACKEND_JWT_PRIVATE_KEY`. Put the public PEM in the matching backend
-   `<PROFILE>_API_JWT_PUBLIC_KEY` variable.
+   Store one generated value as the frontend-only `<PROFILE>_AUTH_SECRET`.
+   Generate a second value and store that *same exact value* as
+   `<PROFILE>_BACKEND_API_TOKEN` in the frontend and backend profile files.
 5. Configure the matching frontend Compose profile and its frontend-only
    Auth.js/Entra variables. Set `AUTH_ORIGIN` to the external scheme and host,
    keep `AUTH_URL` unset, and register exactly
@@ -38,8 +38,9 @@ There is no dual-authentication mode.
 6. Pause traffic. Deploy the frontend and backend together. Alembic revision
    `0018_frontend_identity` verifies the import receipt before it snapshots
    historical actors and drops backend users/login records.
-7. Verify an Entra viewer, a local administrator, an admin account mutation,
-   one governed query/export, and a rejected cross-profile token.
+7. Verify one authenticated frontend session, one bearer-protected admin-path
+   mutation, one governed query/export, and rejection of a missing or wrong
+   bearer. The backend no longer evaluates actor headers or user roles.
 8. Start the observability overlay and emit one successful request plus one
    synthetic error. Confirm both appear in `CLS/ECLS Backend Operations`.
 9. Reopen traffic.

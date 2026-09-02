@@ -1,4 +1,7 @@
+import base64
+import binascii
 import os
+import re
 from pathlib import Path
 
 import dotenv
@@ -44,7 +47,7 @@ def parse_positive_int_env(env_name: str, default: int) -> int:
 
     try:
         value = int(raw_value)
-    except ValueError as error:
+    except (ValueError, binascii.Error) as error:
         raise ValueError(f"{env_name} must be a positive integer") from error
 
     if value < 1:
@@ -55,6 +58,35 @@ def parse_positive_int_env(env_name: str, default: int) -> int:
 def parse_csv_env(env_name: str, default: str = "") -> list[str]:
     raw_value = os.getenv(env_name, default)
     return [value.strip() for value in raw_value.split(",") if value.strip()]
+
+
+def parse_base64_32_byte_token_env(env_name: str) -> str:
+    """Read an opaque base64/base64url-encoded 256-bit bearer token."""
+
+    raw_value = os.getenv(env_name, "").strip()
+    if not raw_value:
+        return ""
+
+    normalized_value = raw_value.replace("-", "+").replace("_", "/")
+    if not re.fullmatch(r"[A-Za-z0-9+/]+={0,2}", normalized_value):
+        raise ValueError(f"{env_name} must be base64-encoded")
+
+    try:
+        decoded_value = base64.b64decode(
+            normalized_value + "=" * (-len(normalized_value) % 4), validate=True
+        )
+    except ValueError as error:
+        raise ValueError(f"{env_name} must be base64-encoded") from error
+
+    canonical_value = base64.b64encode(decoded_value).decode().rstrip("=")
+    if (
+        len(decoded_value) != 32
+        or canonical_value != normalized_value.rstrip("=")
+    ):
+        raise ValueError(f"{env_name} must encode exactly 32 bytes")
+    # Preserve the configured representation because this credential is sent as
+    # an opaque bearer value and must match byte-for-byte at the API boundary.
+    return raw_value
 
 
 DATABASE_USER = os.getenv("DATABASE_USER")
@@ -79,15 +111,9 @@ FASTAPI_REDOC_URL = os.getenv("FASTAPI_REDOC_URL") or None
 FASTAPI_ROOT_PATH = os.getenv("FASTAPI_ROOT_PATH", "")
 CORS_ORIGINS = parse_csv_env("CORS_ORIGINS", "*")
 
-# The frontend is the sole identity provider for the API. It signs short-lived
-# actor tokens with RS256; each backend profile receives only the matching
-# public key.
-API_JWT_PUBLIC_KEY = os.getenv("API_JWT_PUBLIC_KEY", "").replace("\\n", "\n").strip()
-API_JWT_ISSUER = os.getenv("API_JWT_ISSUER", f"clsense-frontend:{DEPLOYMENT_PROFILE}")
-API_JWT_AUDIENCE = os.getenv("API_JWT_AUDIENCE", f"clsense-api:{DEPLOYMENT_PROFILE}")
-API_JWT_CLOCK_SKEW_SECONDS = parse_positive_int_env(
-    "API_JWT_CLOCK_SKEW_SECONDS", default=30
-)
+# The frontend BFF and its matching backend profile share an opaque 256-bit
+# bearer credential. It is separate from the frontend's Auth.js session secret.
+API_BEARER_TOKEN = parse_base64_32_byte_token_env("API_BEARER_TOKEN")
 
 # Server logging is always written to stdout for container collection. Docker
 # profiles additionally provide a writable, persistent SERVER_LOG_FILE.

@@ -1,4 +1,4 @@
-"""Compatibility exports for frontend-issued bearer actor authentication."""
+"""Compatibility exports for static bearer authentication."""
 
 from core.security import (
     ActorContext,

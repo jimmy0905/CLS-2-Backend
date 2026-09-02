@@ -29,7 +29,7 @@ svruk_ecls
 
 將 [`.env.example`](.env.example) 複製為 `.env`，填入共用憑證與整合設定。每部署一個設定檔，請建立 `deploy/profile/<profile>.env`，並只從 [`deploy/profile.env.example`](deploy/profile.env.example) 複製相符的區塊。外部 `connex_network` 必須已包含 `postgres` 服務。舊有拼字錯誤的 `env.exmaple` 仍保留作為相容範本；新的部署請使用 `.env.example`。
 
-Compose 僅使用指定的 `--env-file` 值來插入明確允許的環境變數；它不會將任一檔案完整注入容器。因此，一個設定檔的前端 JWT 公鑰或分析回饋端點，絕不會存在於另一個設定檔的容器中。
+Compose 僅使用指定的 `--env-file` 值來插入明確允許的環境變數；它不會將任一檔案完整注入容器。因此，一個設定檔的 BFF/後端 API bearer token 或分析回饋端點，絕不會存在於另一個設定檔的容器中。
 
 下列非機密值是 [`docker-compose.yml`](docker-compose.yml) 中各服務專屬的設定，而非從 `.env` 載入。它們會依設定檔隔離：
 
@@ -39,11 +39,11 @@ Compose 僅使用指定的 `--env-file` 值來插入明確允許的環境變數�
 | `FASTAPI_ROOT_PATH` | 對應 Nginx API 路由，例如 `/wtchk/api` 或 `/ecls/wtchk/api`。 |
 | `IS_ECLS_ENABLED` | 選擇 CLS 或 ECLS 處理行為。 |
 | `DEPLOYMENT_PROFILE`、`LOG_SERVICE_NAME` | 讓日誌與診斷資訊可歸屬至單一部署。 |
-| `API_JWT_PUBLIC_KEY` | 每個服務只取得相符前端的 RS256 公鑰；私鑰只存在前端。 |
+| `API_BEARER_TOKEN` | 每個服務只取得相符 BFF 的 256-bit API bearer token；它與前端的 Auth.js session 密鑰不同。 |
 | `ANALYZE_FEEDBACK_API_URL` | 每個服務會從具命名空間且被忽略的設定檔環境檔取得自己的分析回饋端點。 |
 | `ANALYZE_FEEDBACK_IS_INCLUDE_CHANNEL`、`SURVEY_EXPORT_COLUMN_*` | 每個設定檔各有 Compose 值，初始為 `false`；如需啟用功能，請編輯該設定檔的服務區塊。 |
 
-前端 JWT 公鑰與分析回饋端點皆為設定檔專屬設定，只會儲存在被 Git 忽略的 `deploy/profile/<profile>.env`。例如，`wtchk_cls` 只會使用 `WTCHK_CLS_API_JWT_PUBLIC_KEY` 與 `WTCHK_CLS_ANALYZE_FEEDBACK_API_URL`。Microsoft Entra 的租用戶、用戶端 ID、用戶端密鑰與回呼只設定在相符的 Next.js 前端。
+BFF/後端 API bearer token 與分析回饋端點皆為設定檔專屬設定，只會儲存在被 Git 忽略的 `deploy/profile/<profile>.env`。例如，`wtchk_cls` 只會使用 `WTCHK_CLS_BACKEND_API_TOKEN` 與 `WTCHK_CLS_ANALYZE_FEEDBACK_API_URL`。Microsoft Entra 的租用戶、用戶端 ID、用戶端密鑰與回呼只設定在相符的 Next.js 前端。
 
 分析回饋是否包含渠道，以及所有問卷匯出欄位旗標，都是由版本控制的設定檔專屬設定，位於 `docker-compose.yml`。它們不再從 `.env` 讀取；請只修改目標設定檔的服務區塊。
 
@@ -73,7 +73,7 @@ docker compose \\
   up -d --build
 ```
 
-FastAPI 只接受相符前端簽發、有效期 60 秒的 RS256 Bearer token。簽發者為 `clsense-frontend:<profile>`，受眾為 `clsense-api:<profile>`；後端不再提供登入、續期、Entra 回呼或使用者管理端點。
+FastAPI 只會以常數時間比較 `Authorization: Bearer <API_BEARER_TOKEN>`，不再解碼 JWT，也不讀取使用者、角色或 `X-CLS-Actor-*` headers。持有相符 profile bearer 的呼叫端可存取所有公開 API 路徑，包括 `/admin/*`；analytics audit 與 export 會使用固定的 system attribution。後端不再提供登入、續期、Entra 回呼或使用者管理端點。
 
 ### 區域部署群組
 
@@ -159,4 +159,4 @@ alembic revision --autogenerate -m "描述結構變更"
 alembic upgrade head
 ```
 
-`DATABASE_BOOTSTRAP_SCHEMA=true` 可為空白的本機資料庫啟用 SQLAlchemy `create_all()` 初始化流程。管理員只存在每個設定檔的 Next.js frontend auth 資料庫。
+`DATABASE_BOOTSTRAP_SCHEMA=true` 可為空白的本機資料庫啟用 SQLAlchemy `create_all()` 初始化流程。管理員與 Entra 使用者只存在每個設定檔的 Next.js frontend 資料庫。
