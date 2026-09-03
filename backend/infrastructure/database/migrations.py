@@ -37,15 +37,21 @@ def run_database_migrations() -> bool:
     try:
         # The historical baseline revision represents databases that predate
         # Alembic and intentionally contains no create operations. Install the
-        # current model on a truly empty database, then stamp it at head. This
-        # also guarantees fresh installations never recreate backend identity
-        # tables that revision 0018 removes.
+        # current model and the SQL-only analytics objects on a truly empty
+        # database, then stamp it at head. This also guarantees fresh
+        # installations never recreate backend identity tables that revision
+        # 0018 removes.
         if not inspect_engine_tables():
             from infrastructure.database.registry import Base
+            from infrastructure.database.analytics_schema import (
+                repair_analytics_schema,
+            )
             from infrastructure.database.session import engine
 
             logger.info("Installing the current schema on a fresh database")
-            Base.metadata.create_all(bind=engine)
+            with engine.begin() as connection:
+                Base.metadata.create_all(bind=connection)
+                repair_analytics_schema(connection)
             command.stamp(alembic_config, "head")
             return True
         logger.info("Applying pending database migrations")

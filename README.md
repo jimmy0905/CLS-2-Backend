@@ -76,7 +76,9 @@ python -m infrastructure.database.migrate
 
 該一次性 job 會以 `DATABASE_AUTO_MIGRATE=true` 啟動；失敗時 application container 不會被
 替換。只可部署 backward-compatible expand／contract migrations，因 image rollback 不會
-downgrade PostgreSQL。
+downgrade PostgreSQL。Fresh database 會先建立 SQLAlchemy table schema，再安裝 Cube 所需的
+SQL-only analytics functions／views，最後 stamp 到 Alembic head；repair revision 亦會修復由舊
+fresh-install 路徑建立但缺少這些物件的 database。
 
 通用 analytics readonly role helper 是
 [`scripts/provision_analytics_readonly.sql`](scripts/provision_analytics_readonly.sql)。Regional

@@ -219,7 +219,7 @@ def _create_raw_json_helpers() -> None:
 
 
 def _create_reporting_views() -> None:
-    op.execute("DROP VIEW analytics_survey_facts")
+    op.execute("DROP VIEW IF EXISTS analytics_survey_facts")
     op.execute(
         """
         CREATE VIEW analytics_survey_facts AS
