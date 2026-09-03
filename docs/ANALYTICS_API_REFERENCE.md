@@ -104,7 +104,7 @@ Authorization: Bearer <profile-api-bearer>
 }
 ```
 
-Dimension 與 time value 會保留 `schema` 宣告的 key。未選 time dimension 時，`schema.time_dimension` 為 `null`；即使結果為空，`rows` 與 `warnings` 也必定存在。Weighted、filtered、variance、standard-deviation、percentile 與 confidence-interval measure 可保留在 governance metadata，但不透過簡化 query contract 公開。
+Dimension 與 time value 會保留 `schema` 宣告的 key。每個一般 dimension 的 additive `group_role` 依 query 順序為 `primary`、`secondary`、`additional`，讓 renderer 能保留兩個 group 的語意；後端不以此選擇 layout。未選 time dimension 時，`schema.time_dimension` 為 `null`；即使結果為空，`rows` 與 `warnings` 也必定存在。Weighted、filtered、variance、standard-deviation、percentile 與 confidence-interval measure 可保留在 governance metadata，但不透過簡化 query contract 公開。
 
 常見錯誤：`401`（缺少、無效、已刪除或錯誤 profile 的 token）、`404`（Analytics 停用或資源不存在）、`422`（無效的受治理輸入或遭拒的 semantic query）、`503`（Cube 或 Analytics 資料庫無法使用）。錯誤訊息刻意不洩漏 Cube／PostgreSQL 實作細節。
 

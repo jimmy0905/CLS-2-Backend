@@ -167,7 +167,7 @@ Catalog field 包含：
   "timezone": "Asia/Hong_Kong",
   "schema": {
     "dimensions": [
-      {"field": "store_format", "label": "Store Format", "type": "string", "key": "store_format"}
+      {"field": "store_format", "label": "Store Format", "type": "string", "key": "store_format", "group_role": "primary"}
     ],
     "time_dimension": null,
     "metric": {
@@ -189,4 +189,4 @@ Catalog field 包含：
 
 ## Renderer-neutral query
 
-`/analytics/query` 與 builder query 只接受 governed metric、dimension、filter、time、order 與 limit，並回傳 long-format rows。它們不接受 `chart_type`、`series_limit` 或 `fill_empty`，也不提供 layout、series truncation、`Other` bucket 或補零格線。前端 renderer 依 `schema.dimensions`、`schema.time_dimension`、`schema.metric` 與 rows 自行選圖及處理高 cardinality 資料。
+`/analytics/query` 與 builder query 只接受 governed metric、dimension、filter、time、order 與 limit，並回傳 long-format rows。它們不接受 `chart_type`、`series_limit` 或 `fill_empty`，也不提供 layout、series truncation、`Other` bucket 或補零格線。每個 `schema.dimensions` item 另有 additive `group_role`：第一個為 `primary`、第二個為 `secondary`、其後為 `additional`；它只保留 group 的語意順序，不決定圖表 layout。前端 renderer 依 `schema.dimensions`、`schema.time_dimension`、`schema.metric` 與 rows 自行選圖及處理高 cardinality 資料。

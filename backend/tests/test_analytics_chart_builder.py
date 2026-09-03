@@ -97,6 +97,12 @@ EXAMPLE_STORE_CLS_WEEKLY = {
     "breakdown": "store_name_english",
     "series": {"time": {"field": "reported_at", "interval": "week"}},
 }
+EXAMPLE_CLS_BY_DELIVERY_SERVICE_AND_CHANNEL = {
+    "measure": {"field": "cls"},
+    "aggregation": "average",
+    "breakdown": "delivery_service_name",
+    "series": {"dimension": "channel_name"},
+}
 
 
 def test_enum_dimensions_are_measurable_one_value_at_a_time(catalog) -> None:
@@ -254,6 +260,37 @@ def test_example_two_queries_stores_by_week(catalog) -> None:
             "dimension": "survey_responses.reported_at",
             "granularity": "week",
         }
+    ]
+
+
+def test_two_builder_dimensions_are_marked_primary_and_secondary(catalog) -> None:
+    semantic_view, query, warnings = _resolved(
+        EXAMPLE_CLS_BY_DELIVERY_SERVICE_AND_CHANNEL, catalog
+    )
+
+    assert semantic_view == "survey_responses"
+    assert warnings == []
+    assert query is not None
+    assert query.dimensions == ("delivery_service_name", "channel_name")
+    assert compile_cube_query(query, catalog, "viewer")["measures"] == [
+        "survey_responses.cls_average"
+    ]
+    schema = analytics._query_schema(query, catalog, "viewer")
+    assert schema["dimensions"] == [
+        {
+            "field": "delivery_service_name",
+            "label": "Delivery Service",
+            "type": "string",
+            "key": "delivery_service_name",
+            "group_role": "primary",
+        },
+        {
+            "field": "channel_name",
+            "label": "Channel",
+            "type": "string",
+            "key": "channel_name",
+            "group_role": "secondary",
+        },
     ]
 
 def test_a_series_is_either_a_dimension_or_a_time_interval() -> None:
@@ -428,6 +465,9 @@ def test_builder_query_runs_example_one_without_renderer_layout(
         {"keyword": "staff", "department": "Sales Ops", "value": 526},
         {"keyword": "staff", "department": "HR L&D", "value": 498},
     ]
+    assert [
+        dimension["group_role"] for dimension in body["schema"]["dimensions"]
+    ] == ["primary", "secondary"]
     assert "layout" not in body["schema"]
     assert cube.calls[0][0]["measures"] == [
         "survey_assignments.topic_sentiment_mixed_survey_count"

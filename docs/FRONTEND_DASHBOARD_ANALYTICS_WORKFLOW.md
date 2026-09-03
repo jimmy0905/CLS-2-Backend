@@ -167,7 +167,7 @@ Target 同樣需要以單位說明，避免使用者不小心變更問題：
 - `kpi`：讀取唯一 row 的 `value`。
 - `table`：依序顯示 `schema.dimensions`、可選 `schema.time_dimension`、`schema.metric`；metric cell 一律讀取 `value`。
 
-Query response 不含 renderer layout 或 series cap。前端依 `schema.dimensions`、`schema.time_dimension`、`schema.metric` 與完整 long-format `rows` 自行決定 axis、series、top-N 與缺格處理；不要把 `chart_type`、`series_limit` 或 `fill_empty` 傳至 query endpoints。
+Query response 不含 renderer layout 或 series cap。前端依 `schema.dimensions`、`schema.time_dimension`、`schema.metric` 與完整 long-format `rows` 自行決定 axis、series、top-N 與缺格處理；不要把 `chart_type`、`series_limit` 或 `fill_empty` 傳至 query endpoints。兩個非時間 group 會帶 `group_role: primary` 與 `secondary`；共用 renderer 在 returned `row_count` 小於或等於 build-time `NEXT_PUBLIC_ANALYTICS_DUAL_GROUP_GRAPH_MAX_ROWS`（預設 `20`）時，以 `primary-secondary` 合併 label 餵給既有二維 chart，超過時保留原始兩欄轉為 table。這是 frontend display policy，不會改寫 query。
 
 ## 兩個操作範例
 

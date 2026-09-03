@@ -59,8 +59,9 @@ cd backend
 uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Docs／OpenAPI URL 預設關閉；只在受控本機環境以 `FASTAPI_DOCS_URL`、
-`FASTAPI_OPENAPI_URL` 開啟。不要用 production credential 執行本機測試。
+Regional deployment 會以 `FASTAPI_DOCS_URL`、`FASTAPI_OPENAPI_URL` 與
+`FASTAPI_REDOC_URL` 在每個 profile 的 API base path 公開 Swagger UI、OpenAPI schema 及
+ReDoc。直接啟動 Backend 時這些 URL 仍預設關閉。不要用 production credential 執行本機測試。
 
 整套跨元件本機環境應使用 superproject 的
 [generated local bundle](../deployment/README.md#本機開發-bundle)，避免自行建立另一份 Compose。

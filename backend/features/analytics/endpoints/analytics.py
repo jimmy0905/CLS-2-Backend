@@ -2117,8 +2117,19 @@ def _query_schema(
             "label": catalog.field(slug, query.semantic_view).label,
             "type": catalog.field(slug, query.semantic_view).data_type.value,
             "key": slug,
+            # Preserve the semantic axis order for renderers without adding
+            # renderer-specific layout to the query contract. A third
+            # dimension remains explicit so table-only result shapes do not
+            # need to infer or discard it.
+            "group_role": (
+                "primary"
+                if index == 0
+                else "secondary"
+                if index == 1
+                else "additional"
+            ),
         }
-        for slug in query.dimensions
+        for index, slug in enumerate(query.dimensions)
     ]
     time_dimension = None
     if query.time_dimension:

@@ -1136,6 +1136,7 @@ def test_query_compiles_catalog_members_and_returns_chart_ready_rows(monkeypatch
                 "label": "Store",
                 "type": "string",
                 "key": "store_name",
+                "group_role": "primary",
             }
         ],
         "time_dimension": None,
