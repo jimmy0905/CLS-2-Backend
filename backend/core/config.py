@@ -124,9 +124,11 @@ SERVER_LOG_RETENTION_DAYS = parse_positive_int_env(
     "SERVER_LOG_RETENTION_DAYS", default=30
 )
 
-# Retention applies only to operational/audit records. Rotated application logs
-# use SERVER_LOG_RETENTION_DAYS so their lifecycle is independently configurable.
-DATA_RETENTION_DAYS = parse_positive_int_env("DATA_RETENTION_DAYS", default=30)
+# This retention applies only to completed/failed upload tasks and their errors.
+# Survey/business data and rotated logs have separate lifecycles.
+UPLOAD_TASK_RETENTION_DAYS = parse_positive_int_env(
+    "UPLOAD_TASK_RETENTION_DAYS", default=30
+)
 RETENTION_CHECK_INTERVAL_SECONDS = parse_positive_int_env(
     "RETENTION_CHECK_INTERVAL_SECONDS", default=86_400
 )

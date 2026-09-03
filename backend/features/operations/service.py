@@ -7,9 +7,9 @@ from sqlalchemy.orm import Session
 from core.config import (
     ANALYTICS_EXPORT_DIR,
     ANALYTICS_GOVERNANCE_RETENTION_DAYS,
-    DATA_RETENTION_DAYS,
     DEPLOYMENT_PROFILE,
     RETENTION_CHECK_INTERVAL_SECONDS,
+    UPLOAD_TASK_RETENTION_DAYS,
 )
 from core.logging import logger, purge_rotated_log_files
 from core.time import utc_now
@@ -22,14 +22,15 @@ from infrastructure.database.dbo.UploadTaskError import UploadTaskError
 from infrastructure.database.session import SessionLocal
 
 
-def retention_cutoff(
-    retention_days: int = DATA_RETENTION_DAYS, now: datetime | None = None
+def upload_task_retention_cutoff(
+    retention_days: int = UPLOAD_TASK_RETENTION_DAYS,
+    now: datetime | None = None,
 ) -> datetime:
     return (now or utc_now()) - timedelta(days=retention_days)
 
 
-def purge_operational_records(cutoff: datetime) -> dict[str, int]:
-    """Delete expired operational records while preserving all survey/business data."""
+def purge_expired_upload_tasks(cutoff: datetime) -> dict[str, int]:
+    """Delete expired upload-task records while preserving survey/business data."""
     db = SessionLocal()
     try:
         expired_upload_task_ids = select(UploadTask.id).where(
@@ -111,8 +112,8 @@ def purge_analytics_records(now: datetime) -> dict[str, int]:
 
 def run_retention() -> dict[str, int]:
     now = utc_now()
-    cutoff = retention_cutoff(now=now)
-    deleted = purge_operational_records(cutoff)
+    cutoff = upload_task_retention_cutoff(now=now)
+    deleted = purge_expired_upload_tasks(cutoff)
     deleted["rotated_log_files"] = purge_rotated_log_files(now=now)
     deleted.update(purge_analytics_records(now))
     logger.info(
