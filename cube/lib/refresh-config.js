@@ -12,4 +12,21 @@ function scheduledRefreshTimer(environment = process.env) {
   return Number(raw);
 }
 
-module.exports = { scheduledRefreshTimer };
+function preAggregationExternalRefresh(environment = process.env) {
+  // A refresh worker must always be able to build pre-aggregations.
+  if (environment.CUBEJS_REFRESH_WORKER === 'true') return false;
+
+  const raw = environment.ANALYTICS_API_PRE_AGGREGATION_FALLBACK || 'false';
+  if (raw !== 'true' && raw !== 'false') {
+    throw new Error(
+      'ANALYTICS_API_PRE_AGGREGATION_FALLBACK must be true or false',
+    );
+  }
+
+  // externalRefresh=true makes an API node consume only partitions built by
+  // the dedicated refresh worker. Local development opts into an on-demand
+  // fallback so a catalog/schema change cannot strand queries indefinitely.
+  return raw !== 'true';
+}
+
+module.exports = { preAggregationExternalRefresh, scheduledRefreshTimer };

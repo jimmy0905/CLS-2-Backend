@@ -4,7 +4,10 @@ const {
   contextToApiScopes,
   enforceSecurityContext,
 } = require('./lib/catalog-repository');
-const { scheduledRefreshTimer } = require('./lib/refresh-config');
+const {
+  preAggregationExternalRefresh,
+  scheduledRefreshTimer,
+} = require('./lib/refresh-config');
 const {
   checkAuth,
   driverFactory,
@@ -31,6 +34,11 @@ module.exports = {
   schemaVersion: catalogVersion,
   queryRewrite: enforceSecurityContext,
   contextToApiScopes,
+  orchestratorOptions: {
+    preAggregationsOptions: {
+      externalRefresh: preAggregationExternalRefresh(),
+    },
+  },
   scheduledRefreshTimer: scheduledRefreshTimer(),
   scheduledRefreshContexts: async () => refreshContexts(),
 };

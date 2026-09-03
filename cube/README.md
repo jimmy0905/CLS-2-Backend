@@ -36,6 +36,10 @@ global singleton cache。不同 profile 的 cache hit、driver、JWT 或 pre-agg
 [`lib/refresh-config.js`](lib/refresh-config.js) 只產生 generator 注入的 profile contexts；不得
 從 catalog 自動 refresh 同區所有未選 profiles。
 
+Production 的 `cube-api` 只讀由 `cube-refresh` 建立的 pre-aggregation。Local Compose 另開啟
+API on-demand fallback：catalog 或 schema 變更令舊 partition 失效時，第一個 query 可自行建立
+缺少的 partition；此設定不得帶到 production。
+
 ## Model 與 image
 
 - [`cube.js`](cube.js) 組合 registry、catalog repository 與 refresh config。
