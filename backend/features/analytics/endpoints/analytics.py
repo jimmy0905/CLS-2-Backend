@@ -144,7 +144,8 @@ _ENDPOINT_DESCRIPTIONS = {
     "sentiment fields, and use EXISTS predicates for assignment filters so each "
     "survey remains one row.",
     "viewer_charts": "List published charts visible to the current role in the active "
-    "catalog. Draft, archived, invalid, and more-restricted charts are omitted.",
+    "catalog. Draft, archived, invalid, and more-restricted charts are omitted. Each "
+    "chart includes its immutable overview-dashboard grid placement.",
     "viewer_chart_data": "Run a published chart by ID. Its defined members stay fixed; "
     "callers may only override safe filters, time settings, ordering, and limit. "
     "The response is shaped for the declared chart type.",
@@ -206,6 +207,9 @@ _ENDPOINT_DESCRIPTIONS = {
     "the next catalog version so it is visible to chart consumers.",
     "admin_chart_archive": "Soft-delete a chart and immediately activate the next "
     "catalog version so it is no longer visible. Audit history is retained.",
+    "admin_dashboard_layout_publish": "Validate and atomically publish the complete "
+    "12-column overview-dashboard layout. The caller must identify the active model "
+    "version it edited so concurrent chart or layout changes cannot be overwritten.",
     "admin_versions": "List immutable catalog-version history without embedding each "
     "potentially large snapshot.",
     "admin_version_get": "Return one catalog version, including its immutable snapshot and "
@@ -221,6 +225,9 @@ _CI_OPERATIONS = {
     Aggregation.WEIGHTED_PROPORTION_CONFIDENCE_INTERVAL,
 }
 _MAX_CUBE_CATALOG_BYTES = 2 * 1024 * 1024
+_DASHBOARD_COLUMNS = 12
+_DASHBOARD_MAX_ROWS = 10_000
+_DASHBOARD_MAX_ITEM_HEIGHT = 12
 _DRILLDOWN_SEMAPHORE = threading.BoundedSemaphore(
     config.ANALYTICS_DRILLDOWN_CONCURRENCY
 )
@@ -1563,6 +1570,52 @@ class ChartInput(_StrictInput):
     @classmethod
     def _slug(cls, value: str) -> str:
         return validate_identifier(value)
+
+
+class DashboardLayoutItemInput(_StrictInput):
+    chart_id: int = Field(gt=0)
+    x: int = Field(ge=0, lt=_DASHBOARD_COLUMNS)
+    y: int = Field(ge=0, le=_DASHBOARD_MAX_ROWS)
+    w: int = Field(ge=1, le=_DASHBOARD_COLUMNS)
+    h: int = Field(ge=1, le=_DASHBOARD_MAX_ITEM_HEIGHT)
+
+
+class DashboardLayoutPublicationInput(_StrictInput):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "dashboard": "overview",
+                    "expected_model_version": 24,
+                    "items": [
+                        {"chart_id": 41, "x": 0, "y": 0, "w": 3, "h": 2},
+                        {"chart_id": 42, "x": 0, "y": 2, "w": 12, "h": 5},
+                    ],
+                }
+            ]
+        },
+    )
+
+    dashboard: Literal["overview"] = "overview"
+    expected_model_version: int = Field(gt=0)
+    items: tuple[DashboardLayoutItemInput, ...] = Field(max_length=500)
+
+
+class DashboardLayoutItemOutput(_StrictOutput):
+    chart_id: int
+    x: int
+    y: int
+    w: int
+    h: int
+
+
+class DashboardLayoutPublicationOutput(_StrictOutput):
+    dashboard: Literal["overview"]
+    columns: Literal[12]
+    items: tuple[DashboardLayoutItemOutput, ...]
+    changed: bool
+    model_version: int
 
 
 class ChartDataInput(_StrictInput):
@@ -2980,6 +3033,170 @@ def _query_combinations_response(
     )
 
 
+def _dashboard_item_minimum(chart: dict[str, Any]) -> tuple[int, int]:
+    chart_type = chart.get("chart_type")
+    if chart_type == "kpi":
+        return 3, 2
+    if chart_type == "table":
+        return 6, 3
+    return 4, 3
+
+
+def _dashboard_items_overlap(left: dict[str, int], right: dict[str, int]) -> bool:
+    return not (
+        left["x"] + left["w"] <= right["x"]
+        or right["x"] + right["w"] <= left["x"]
+        or left["y"] + left["h"] <= right["y"]
+        or right["y"] + right["h"] <= left["y"]
+    )
+
+
+def _dashboard_item_dict(item: DashboardLayoutItemInput | dict[str, Any]) -> dict[str, int]:
+    values = item.model_dump(mode="json") if isinstance(item, DashboardLayoutItemInput) else item
+    return {
+        "chart_id": int(values["chart_id"]),
+        "x": int(values["x"]),
+        "y": int(values["y"]),
+        "w": int(values["w"]),
+        "h": int(values["h"]),
+    }
+
+
+def _validate_dashboard_layout(
+    charts: list[dict[str, Any]],
+    items: tuple[DashboardLayoutItemInput, ...] | list[dict[str, Any]],
+) -> list[dict[str, int]]:
+    charts_by_id = {int(chart["id"]): chart for chart in charts}
+    normalized = [_dashboard_item_dict(item) for item in items]
+    item_ids = [item["chart_id"] for item in normalized]
+    expected_ids = set(charts_by_id)
+    actual_ids = set(item_ids)
+    if len(item_ids) != len(actual_ids):
+        raise AnalyticsValidationError("Dashboard layout contains duplicate chart IDs")
+    if actual_ids != expected_ids:
+        missing = sorted(expected_ids - actual_ids)
+        unknown = sorted(actual_ids - expected_ids)
+        details = []
+        if missing:
+            details.append(f"missing chart IDs {missing}")
+        if unknown:
+            details.append(f"unknown chart IDs {unknown}")
+        raise AnalyticsValidationError(f"Dashboard layout must contain every published chart exactly once: {', '.join(details)}")
+
+    for item in normalized:
+        chart = charts_by_id[item["chart_id"]]
+        min_width, min_height = _dashboard_item_minimum(chart)
+        if item["x"] < 0 or item["y"] < 0:
+            raise AnalyticsValidationError("Dashboard positions must not be negative")
+        if item["w"] < min_width or item["h"] < min_height:
+            raise AnalyticsValidationError(
+                f"Chart {item['chart_id']} requires at least {min_width} columns by {min_height} rows"
+            )
+        if item["w"] > _DASHBOARD_COLUMNS or item["x"] + item["w"] > _DASHBOARD_COLUMNS:
+            raise AnalyticsValidationError(f"Chart {item['chart_id']} extends beyond the 12-column dashboard")
+        if item["h"] > _DASHBOARD_MAX_ITEM_HEIGHT or item["y"] > _DASHBOARD_MAX_ROWS:
+            raise AnalyticsValidationError(f"Chart {item['chart_id']} exceeds dashboard layout limits")
+
+    for index, item in enumerate(normalized):
+        for other in normalized[index + 1 :]:
+            if _dashboard_items_overlap(item, other):
+                raise AnalyticsValidationError(
+                    f"Dashboard charts {item['chart_id']} and {other['chart_id']} overlap"
+                )
+    return sorted(normalized, key=lambda item: (item["y"], item["x"], item["chart_id"]))
+
+
+def _default_dashboard_layout(charts: list[dict[str, Any]]) -> list[dict[str, int]]:
+    items: list[dict[str, int]] = []
+    kpis = [chart for chart in charts if chart.get("chart_type") == "kpi"]
+    visualizations = [chart for chart in charts if chart.get("chart_type") != "kpi"]
+    for index, chart in enumerate(kpis):
+        items.append(
+            {
+                "chart_id": int(chart["id"]),
+                "x": (index % 4) * 3,
+                "y": (index // 4) * 2,
+                "w": 3,
+                "h": 2,
+            }
+        )
+    cursor_y = math.ceil(len(kpis) / 4) * 2
+    primary_index = next(
+        (
+            index
+            for index, chart in enumerate(visualizations)
+            if chart.get("chart_type") in {"line", "area"}
+        ),
+        None,
+    )
+    if primary_index is not None:
+        primary = visualizations.pop(primary_index)
+        items.append(
+            {"chart_id": int(primary["id"]), "x": 0, "y": cursor_y, "w": 12, "h": 3}
+        )
+        cursor_y += 3
+    for index, chart in enumerate(visualizations):
+        items.append(
+            {
+                "chart_id": int(chart["id"]),
+                "x": (index % 2) * 6,
+                "y": cursor_y + (index // 2) * 3,
+                "w": 6,
+                "h": 3,
+            }
+        )
+    return sorted(items, key=lambda item: (item["y"], item["x"], item["chart_id"]))
+
+
+def _dashboard_layout_from_snapshot(
+    version: AnalyticsModelVersion | None,
+    charts: list[dict[str, Any]],
+) -> list[dict[str, int]]:
+    if not charts:
+        return []
+    snapshot = version.catalog_snapshot if version is not None else {}
+    stored_layout = snapshot.get("dashboard_layout", {}) if isinstance(snapshot, dict) else {}
+    stored_items = stored_layout.get("items", []) if isinstance(stored_layout, dict) else []
+    if not isinstance(stored_items, list) or not stored_items:
+        return _default_dashboard_layout(charts)
+    try:
+        return _validate_dashboard_layout(charts, stored_items)
+    except (AnalyticsValidationError, KeyError, TypeError, ValueError):
+        pass
+
+    charts_by_id = {int(chart["id"]): chart for chart in charts}
+    retained: list[dict[str, int]] = []
+    seen: set[int] = set()
+    for candidate in stored_items:
+        try:
+            item = _dashboard_item_dict(candidate)
+            chart = charts_by_id[item["chart_id"]]
+            min_width, min_height = _dashboard_item_minimum(chart)
+            valid = (
+                item["chart_id"] not in seen
+                and item["x"] >= 0
+                and item["y"] >= 0
+                and item["w"] >= min_width
+                and item["h"] >= min_height
+                and item["x"] + item["w"] <= _DASHBOARD_COLUMNS
+                and item["h"] <= _DASHBOARD_MAX_ITEM_HEIGHT
+                and item["y"] <= _DASHBOARD_MAX_ROWS
+                and not any(_dashboard_items_overlap(item, current) for current in retained)
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+        if valid:
+            retained.append(item)
+            seen.add(item["chart_id"])
+
+    missing_charts = [chart for chart in charts if int(chart["id"]) not in seen]
+    if missing_charts:
+        append_y = max((item["y"] + item["h"] for item in retained), default=0)
+        for item in _default_dashboard_layout(missing_charts):
+            retained.append({**item, "y": item["y"] + append_y})
+    return sorted(retained, key=lambda item: (item["y"], item["x"], item["chart_id"]))
+
+
 def _snapshot_charts(version: AnalyticsModelVersion | None, role: str) -> list[dict[str, Any]]:
     if version is None:
         return []
@@ -2987,6 +3204,15 @@ def _snapshot_charts(version: AnalyticsModelVersion | None, role: str) -> list[d
     charts = snapshot.get("charts", [])
     if not isinstance(charts, list):
         return []
+    published_charts = [
+        chart
+        for chart in charts
+        if isinstance(chart, dict) and chart.get("status") == "published"
+    ]
+    layout_by_chart = {
+        item["chart_id"]: {key: item[key] for key in ("x", "y", "w", "h")}
+        for item in _dashboard_layout_from_snapshot(version, published_charts)
+    }
     result: list[dict[str, Any]] = []
     for chart in charts:
         if (
@@ -3004,6 +3230,7 @@ def _snapshot_charts(version: AnalyticsModelVersion | None, role: str) -> list[d
             if key != "published_model_version_id"
         }
         item["model_version"] = version.catalog_version
+        item["layout"] = layout_by_chart.get(chart.get("id"))
         result.append(item)
     return result
 
@@ -4599,13 +4826,13 @@ async def get_catalog_version(
     ).to_dict(include_snapshot=True)
 
 
-@admin_router.post(
-    "/catalog/publish", status_code=201, summary="Activate a catalog version", description=_ENDPOINT_DESCRIPTIONS["admin_catalog_publish"]
-)
-async def publish_catalog_version(
+async def _publish_catalog_version(
     payload: CatalogPublicationInput,
-    db: Session = Depends(get_db),
-    current_user: ActorContext = Depends(require_admin),
+    db: Session,
+    current_user: ActorContext,
+    *,
+    dashboard_layout_override: list[dict[str, int]] | None = None,
+    extra_audit: tuple[str, str, str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     if _PROFILE.fullmatch(config.DEPLOYMENT_PROFILE) is None:
         raise HTTPException(status_code=422, detail="Invalid analytics deployment profile")
@@ -4660,7 +4887,20 @@ async def publish_catalog_version(
         _validate_cube_catalog_size(cube_catalog)
     except AnalyticsValidationError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
-    snapshot = {"cubeCatalog": cube_catalog, "charts": chart_snapshot}
+    dashboard_layout = (
+        dashboard_layout_override
+        if dashboard_layout_override is not None
+        else _dashboard_layout_from_snapshot(_active_model_version(db), chart_snapshot)
+    )
+    snapshot = {
+        "cubeCatalog": cube_catalog,
+        "charts": chart_snapshot,
+        "dashboard_layout": {
+            "dashboard": "overview",
+            "columns": _DASHBOARD_COLUMNS,
+            "items": dashboard_layout,
+        },
+    }
     definition_hash = hashlib.sha256(
         json.dumps(snapshot, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
@@ -4707,6 +4947,16 @@ async def publish_catalog_version(
                 "description": payload.description,
             },
         )
+        if extra_audit is not None:
+            action, resource_type, resource_id, details = extra_audit
+            _audit(
+                db,
+                current_user,
+                action,
+                resource_type,
+                resource_id,
+                details,
+            )
         db.commit()
     except IntegrityError as error:
         db.rollback()
@@ -4715,6 +4965,78 @@ async def publish_catalog_version(
         ) from error
     db.refresh(version)
     return version.to_dict(include_snapshot=True)
+
+
+@admin_router.post(
+    "/catalog/publish", status_code=201, summary="Activate a catalog version", description=_ENDPOINT_DESCRIPTIONS["admin_catalog_publish"]
+)
+async def publish_catalog_version(
+    payload: CatalogPublicationInput,
+    db: Session = Depends(get_db),
+    current_user: ActorContext = Depends(require_admin),
+) -> dict[str, Any]:
+    return await _publish_catalog_version(payload, db, current_user)
+
+
+@admin_chart_router.post(
+    "/dashboard-layout/publish",
+    summary="Publish the overview dashboard layout",
+    description=_ENDPOINT_DESCRIPTIONS["admin_dashboard_layout_publish"],
+    response_model=DashboardLayoutPublicationOutput,
+)
+async def publish_dashboard_layout(
+    payload: DashboardLayoutPublicationInput,
+    db: Session = Depends(get_db),
+    current_user: ActorContext = Depends(require_admin),
+) -> dict[str, Any]:
+    active_version = _active_model_version(db)
+    if active_version is None:
+        raise HTTPException(status_code=409, detail="No active analytics model is available")
+    _, _, chart_records = _current_published_records(db)
+    chart_snapshot = [chart.to_dict() for chart in chart_records]
+    try:
+        normalized = _validate_dashboard_layout(chart_snapshot, payload.items)
+    except (AnalyticsValidationError, KeyError, TypeError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    active_layout = _dashboard_layout_from_snapshot(active_version, chart_snapshot)
+    if normalized == active_layout:
+        return {
+            "dashboard": payload.dashboard,
+            "columns": _DASHBOARD_COLUMNS,
+            "items": normalized,
+            "changed": False,
+            "model_version": active_version.catalog_version,
+        }
+    if active_version.catalog_version != payload.expected_model_version:
+        raise HTTPException(
+            status_code=409,
+            detail="The analytics catalog changed while this layout was being edited; reload and try again",
+        )
+
+    version = await _publish_catalog_version(
+        CatalogPublicationInput(description="Publish overview dashboard layout"),
+        db,
+        current_user,
+        dashboard_layout_override=normalized,
+        extra_audit=(
+            "dashboard_layout.published",
+            "dashboard_layout",
+            payload.dashboard,
+            {
+                "dashboard": payload.dashboard,
+                "item_count": len(normalized),
+                "previous_model_version": payload.expected_model_version,
+            },
+        ),
+    )
+    return {
+        "dashboard": payload.dashboard,
+        "columns": _DASHBOARD_COLUMNS,
+        "items": normalized,
+        "changed": True,
+        "model_version": version["catalog_version"],
+    }
 
 
 @viewer_router.post(

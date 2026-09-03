@@ -30,6 +30,11 @@
     "path": "/admin/analytics/charts/{chart_id}/publish"
   },
   {
+    "method": "POST",
+    "operation_id": "publish_dashboard_layout_admin_analytics_dashboard_layout_publish_post",
+    "path": "/admin/analytics/dashboard-layout/publish"
+  },
+  {
     "method": "GET",
     "operation_id": "get_builder_measures_analytics_builder_measures_get",
     "path": "/analytics/builder/measures"

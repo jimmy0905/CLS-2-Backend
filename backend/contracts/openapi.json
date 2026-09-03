@@ -1797,6 +1797,174 @@
         "title": "DailySentimentDistributionResponse",
         "type": "object"
       },
+      "DashboardLayoutItemInput": {
+        "additionalProperties": false,
+        "properties": {
+          "chart_id": {
+            "exclusiveMinimum": 0.0,
+            "title": "Chart Id",
+            "type": "integer"
+          },
+          "h": {
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "H",
+            "type": "integer"
+          },
+          "w": {
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "W",
+            "type": "integer"
+          },
+          "x": {
+            "exclusiveMaximum": 12.0,
+            "minimum": 0.0,
+            "title": "X",
+            "type": "integer"
+          },
+          "y": {
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Y",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "chart_id",
+          "x",
+          "y",
+          "w",
+          "h"
+        ],
+        "title": "DashboardLayoutItemInput",
+        "type": "object"
+      },
+      "DashboardLayoutItemOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "chart_id": {
+            "title": "Chart Id",
+            "type": "integer"
+          },
+          "h": {
+            "title": "H",
+            "type": "integer"
+          },
+          "w": {
+            "title": "W",
+            "type": "integer"
+          },
+          "x": {
+            "title": "X",
+            "type": "integer"
+          },
+          "y": {
+            "title": "Y",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "chart_id",
+          "x",
+          "y",
+          "w",
+          "h"
+        ],
+        "title": "DashboardLayoutItemOutput",
+        "type": "object"
+      },
+      "DashboardLayoutPublicationInput": {
+        "additionalProperties": false,
+        "examples": [
+          {
+            "dashboard": "overview",
+            "expected_model_version": 24,
+            "items": [
+              {
+                "chart_id": 41,
+                "h": 2,
+                "w": 3,
+                "x": 0,
+                "y": 0
+              },
+              {
+                "chart_id": 42,
+                "h": 5,
+                "w": 12,
+                "x": 0,
+                "y": 2
+              }
+            ]
+          }
+        ],
+        "properties": {
+          "dashboard": {
+            "const": "overview",
+            "default": "overview",
+            "title": "Dashboard",
+            "type": "string"
+          },
+          "expected_model_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Expected Model Version",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardLayoutItemInput"
+            },
+            "maxItems": 500,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_model_version",
+          "items"
+        ],
+        "title": "DashboardLayoutPublicationInput",
+        "type": "object"
+      },
+      "DashboardLayoutPublicationOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "changed": {
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "columns": {
+            "const": 12,
+            "title": "Columns",
+            "type": "integer"
+          },
+          "dashboard": {
+            "const": "overview",
+            "title": "Dashboard",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardLayoutItemOutput"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "model_version": {
+            "title": "Model Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dashboard",
+          "columns",
+          "items",
+          "changed",
+          "model_version"
+        ],
+        "title": "DashboardLayoutPublicationOutput",
+        "type": "object"
+      },
       "DataCoverageResponse": {
         "properties": {
           "first_data_reported_date": {
@@ -5607,6 +5775,53 @@
         ]
       }
     },
+    "/admin/analytics/dashboard-layout/publish": {
+      "post": {
+        "description": "Validate and atomically publish the complete 12-column overview-dashboard layout. The caller must identify the active model version it edited so concurrent chart or layout changes cannot be overwritten.",
+        "operationId": "publish_dashboard_layout_admin_analytics_dashboard_layout_publish_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardLayoutPublicationInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardLayoutPublicationOutput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "StaticBearer": []
+          }
+        ],
+        "summary": "Publish the overview dashboard layout",
+        "tags": [
+          "admin analytics"
+        ]
+      }
+    },
     "/analytics/builder/measures": {
       "get": {
         "description": "List everything analytics can measure, flattened across row grains and with enum dimensions expanded into one target per value. Each entry reports its available aggregations and whether it survives crossing two assignment families, so a caller can start from the question rather than the row grain.",
@@ -5824,7 +6039,7 @@
     },
     "/analytics/charts/published": {
       "get": {
-        "description": "List published charts visible to the current role in the active catalog. Draft, archived, invalid, and more-restricted charts are omitted.",
+        "description": "List published charts visible to the current role in the active catalog. Draft, archived, invalid, and more-restricted charts are omitted. Each chart includes its immutable overview-dashboard grid placement.",
         "operationId": "get_published_charts_analytics_charts_published_get",
         "responses": {
           "200": {

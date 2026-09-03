@@ -279,8 +279,197 @@ def test_published_chart_response_uses_active_snapshot_version() -> None:
     )
 
     assert analytics._snapshot_charts(version, "viewer") == [
-        {"id": 2, "status": "published", "visibility": "viewer", "model_version": 7}
+        {
+            "id": 2,
+            "status": "published",
+            "visibility": "viewer",
+            "model_version": 7,
+            "layout": {"x": 0, "y": 0, "w": 6, "h": 3},
+        }
     ]
+
+
+def _dashboard_charts() -> list[dict]:
+    return [
+        {"id": 1, "chart_type": "kpi", "status": "published", "visibility": "viewer"},
+        {"id": 2, "chart_type": "line", "status": "published", "visibility": "viewer"},
+        {"id": 3, "chart_type": "table", "status": "published", "visibility": "viewer"},
+    ]
+
+
+def test_default_dashboard_layout_matches_current_dashboard_shape() -> None:
+    layout = analytics._default_dashboard_layout(_dashboard_charts())
+
+    assert layout == [
+        {"chart_id": 1, "x": 0, "y": 0, "w": 3, "h": 2},
+        {"chart_id": 2, "x": 0, "y": 2, "w": 12, "h": 3},
+        {"chart_id": 3, "x": 0, "y": 5, "w": 6, "h": 3},
+    ]
+
+
+def test_dashboard_layout_inherits_positions_and_appends_new_charts() -> None:
+    version = SimpleNamespace(
+        catalog_snapshot={
+            "dashboard_layout": {
+                "items": [
+                    {"chart_id": 1, "x": 0, "y": 0, "w": 3, "h": 2},
+                    {"chart_id": 2, "x": 0, "y": 2, "w": 12, "h": 3},
+                ]
+            }
+        }
+    )
+
+    layout = analytics._dashboard_layout_from_snapshot(version, _dashboard_charts())
+
+    assert layout[:2] == version.catalog_snapshot["dashboard_layout"]["items"]
+    assert layout[2] == {"chart_id": 3, "x": 0, "y": 5, "w": 6, "h": 3}
+
+
+def test_dashboard_layout_removes_archived_charts() -> None:
+    version = SimpleNamespace(
+        catalog_snapshot={
+            "dashboard_layout": {
+                "items": [
+                    {"chart_id": 1, "x": 0, "y": 0, "w": 3, "h": 2},
+                    {"chart_id": 2, "x": 0, "y": 2, "w": 12, "h": 3},
+                ]
+            }
+        }
+    )
+
+    layout = analytics._dashboard_layout_from_snapshot(version, [_dashboard_charts()[0]])
+
+    assert layout == [{"chart_id": 1, "x": 0, "y": 0, "w": 3, "h": 2}]
+
+
+@pytest.mark.parametrize(
+    ("items", "message"),
+    [
+        (
+            [
+                {"chart_id": 1, "x": 0, "y": 0, "w": 3, "h": 2},
+                {"chart_id": 1, "x": 3, "y": 0, "w": 3, "h": 2},
+                {"chart_id": 3, "x": 0, "y": 7, "w": 6, "h": 5},
+            ],
+            "duplicate",
+        ),
+        (
+            [
+                {"chart_id": 1, "x": 0, "y": 0, "w": 3, "h": 2},
+                {"chart_id": 2, "x": 0, "y": 2, "w": 12, "h": 5},
+            ],
+            "missing chart IDs",
+        ),
+        (
+            [
+                {"chart_id": 1, "x": 0, "y": 0, "w": 3, "h": 2},
+                {"chart_id": 2, "x": 2, "y": 0, "w": 10, "h": 5},
+                {"chart_id": 3, "x": 0, "y": 5, "w": 6, "h": 3},
+            ],
+            "overlap",
+        ),
+        (
+            [
+                {"chart_id": 1, "x": 0, "y": 0, "w": 3, "h": 2},
+                {"chart_id": 2, "x": 9, "y": 2, "w": 4, "h": 3},
+                {"chart_id": 3, "x": 0, "y": 5, "w": 6, "h": 3},
+            ],
+            "beyond",
+        ),
+        (
+            [
+                {"chart_id": 1, "x": 0, "y": 0, "w": 2, "h": 2},
+                {"chart_id": 2, "x": 0, "y": 2, "w": 12, "h": 5},
+                {"chart_id": 3, "x": 0, "y": 7, "w": 6, "h": 5},
+            ],
+            "at least 3 columns by 2 rows",
+        ),
+        (
+            [
+                {"chart_id": 1, "x": 0, "y": 0, "w": 3, "h": 2},
+                {"chart_id": 2, "x": 0, "y": 2, "w": 12, "h": 13},
+                {"chart_id": 3, "x": 0, "y": 15, "w": 6, "h": 3},
+            ],
+            "limits",
+        ),
+    ],
+)
+def test_dashboard_layout_validation_errors(items: list[dict], message: str) -> None:
+    with pytest.raises(AnalyticsValidationError, match=message):
+        analytics._validate_dashboard_layout(_dashboard_charts(), items)
+
+
+def test_dashboard_layout_publish_is_atomic_and_audited(monkeypatch) -> None:
+    charts = _dashboard_charts()
+    records = [SimpleNamespace(to_dict=lambda chart=chart: chart) for chart in charts]
+    active = SimpleNamespace(
+        catalog_version=7,
+        catalog_snapshot={"dashboard_layout": {"items": analytics._default_dashboard_layout(charts)}},
+    )
+    captured: dict = {}
+
+    async def publish(payload, db, actor, **kwargs):
+        captured.update(kwargs)
+        return {"catalog_version": 8}
+
+    monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
+    monkeypatch.setattr(analytics, "_active_model_version", lambda db: active)
+    monkeypatch.setattr(analytics, "_current_published_records", lambda db: ([], [], records))
+    monkeypatch.setattr(analytics, "_publish_catalog_version", publish)
+    payload = [
+        {"chart_id": 1, "x": 0, "y": 0, "w": 3, "h": 2},
+        {"chart_id": 2, "x": 0, "y": 2, "w": 6, "h": 5},
+        {"chart_id": 3, "x": 6, "y": 2, "w": 6, "h": 5},
+    ]
+
+    response = _client(FakeDb(), role="admin").post(
+        "/admin/analytics/dashboard-layout/publish",
+        json={"dashboard": "overview", "expected_model_version": 7, "items": payload},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "dashboard": "overview",
+        "columns": 12,
+        "items": payload,
+        "changed": True,
+        "model_version": 8,
+    }
+    assert captured["dashboard_layout_override"] == payload
+    assert captured["extra_audit"][0] == "dashboard_layout.published"
+
+
+def test_dashboard_layout_publish_rejects_stale_version_but_idempotent_retry_succeeds(monkeypatch) -> None:
+    charts = _dashboard_charts()
+    records = [SimpleNamespace(to_dict=lambda chart=chart: chart) for chart in charts]
+    current = analytics._default_dashboard_layout(charts)
+    active = SimpleNamespace(catalog_version=8, catalog_snapshot={"dashboard_layout": {"items": current}})
+    monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
+    monkeypatch.setattr(analytics, "_active_model_version", lambda db: active)
+    monkeypatch.setattr(analytics, "_current_published_records", lambda db: ([], [], records))
+    client = _client(FakeDb(), role="admin")
+
+    stale = client.post(
+        "/admin/analytics/dashboard-layout/publish",
+        json={
+            "dashboard": "overview",
+            "expected_model_version": 7,
+            "items": [
+                {"chart_id": 1, "x": 0, "y": 0, "w": 3, "h": 2},
+                {"chart_id": 2, "x": 0, "y": 2, "w": 6, "h": 5},
+                {"chart_id": 3, "x": 6, "y": 2, "w": 6, "h": 5},
+            ],
+        },
+    )
+    retry = client.post(
+        "/admin/analytics/dashboard-layout/publish",
+        json={"dashboard": "overview", "expected_model_version": 7, "items": current},
+    )
+
+    assert stale.status_code == 409
+    assert retry.status_code == 200
+    assert retry.json()["changed"] is False
+    assert retry.json()["model_version"] == 8
 
 
 def _client(db: FakeDb, role: str = "user") -> TestClient:
@@ -318,6 +507,7 @@ def test_openapi_describes_every_analytics_endpoint() -> None:
     for name in (
         "AnalyticsCatalogResponse",
         "CatalogCombinationsOutput",
+        "DashboardLayoutPublicationOutput",
         "SemanticViewCombinationOutput",
         "QueryCapabilitiesResponse",
     ):
@@ -345,6 +535,8 @@ def test_openapi_describes_every_analytics_endpoint() -> None:
     assert "/admin/analytics/charts" in schema["paths"]
     assert "/admin/analytics/charts/{chart_id}" in schema["paths"]
     assert "delete" in schema["paths"]["/admin/analytics/charts/{chart_id}"]
+    assert "/admin/analytics/dashboard-layout/publish" in schema["paths"]
+    assert "post" in schema["paths"]["/admin/analytics/dashboard-layout/publish"]
     assert "/admin/analytics/charts/{chart_id}/validate" not in schema["paths"]
     assert "/admin/analytics/fields" not in schema["paths"]
     assert "/admin/analytics/metrics" not in schema["paths"]
@@ -1010,6 +1202,7 @@ def test_frontend_dashboard_analytics_discovery_and_chart_flow(monkeypatch) -> N
     assert charts_response.status_code == 200
     published_chart = charts_response.json()[0]
     assert published_chart["model_version"] == 7
+    assert published_chart["layout"] == {"x": 0, "y": 0, "w": 6, "h": 3}
 
     options_response = client.post(
         "/analytics/filter-options",

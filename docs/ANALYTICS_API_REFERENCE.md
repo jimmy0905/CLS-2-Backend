@@ -253,7 +253,7 @@ Survey page 上限 100，預設 `reported_at DESC, id DESC`；master-data page �
 
 ### `GET /analytics/charts/published`
 
-列出 active catalog 中、static bearer 可見的已發佈 chart。每個 chart 包含 ID、slug、title、type、semantic view、governed definition、visibility、lifecycle status、validation state 與 model-version metadata。Draft、archived 或 invalid chart 不會出現在此路徑。
+列出 active catalog 中、static bearer 可見的已發佈 chart。每個 chart 包含 ID、slug、title、type、semantic view、governed definition、visibility、lifecycle status、validation state、model-version metadata，以及 12 欄 overview dashboard 的 `layout: { x, y, w, h }`。舊 snapshot 未包含 layout 時，伺服器會按 KPI、主要折線／面積圖及其餘圖表產生與既有 dashboard 接近的確定性預設排列，不會改寫歷史 snapshot。Draft、archived 或 invalid chart 不會出現在此路徑。
 
 ### `POST /analytics/charts/{chart_id}/data`
 
@@ -310,6 +310,9 @@ Chart 本文含 `slug`、`title`、可選 `description`、`chart_type`、`semant
 | `PUT /admin/analytics/charts/{chart_id}` | 更新 definition，並使其回到 draft。 |
 | `POST /admin/analytics/charts/{chart_id}/publish` | validate、publish 並立即啟用新 catalog version。response 含 `model_version`；持有相符 static bearer 的呼叫端隨後可從 `GET /analytics/charts/published` 取得 chart。 |
 | `DELETE /admin/analytics/charts/{chart_id}` | 軟刪除 chart、記錄 audit event，並立即啟用不含該 chart 的 catalog version；持有相符 static bearer 的呼叫端將不再取得該 chart。 |
+| `POST /admin/analytics/dashboard-layout/publish` | 以 `{ dashboard: "overview", expected_model_version, items }` 原子發佈完整 12 欄 layout。所有現行 published chart 必須剛好一次、不可重疊或越界；KPI 最少 `3×2`、一般圖表 `4×3`、table `6×3`，高度最多 12 rows。版本落後回傳 `409` 並讓 client 保留 draft；相同 layout 重試為 `changed: false` 的 idempotent no-op。成功建立及啟用完整新 snapshot，並記錄 `dashboard_layout.published` audit event。 |
+
+Dashboard layout 保存在 immutable `AnalyticsModelVersion.catalog_snapshot.dashboard_layout`，不新增資料表、欄位、backfill 或雙寫。Chart publish 會保留現有項目並把新 chart 按類型附加到底部；archive 會從下一個 snapshot 移除該 chart。這個 additive snapshot contract 讓 Backend 可先部署：舊 Frontend 忽略 `layout`，新 Backend 則能為舊 snapshot 即時計算 fallback。
 
 ### Catalog version（非公開的歷史 lifecycle）
 

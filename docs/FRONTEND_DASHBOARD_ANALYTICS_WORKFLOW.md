@@ -56,9 +56,10 @@ flowchart TD
 | `POST /analytics/query-capabilities` | 驗證已選 target／method，回傳允許的 dimension、filter member／operator、time dimension 與 result type。用它建立其餘 selector。 |
 | `GET /analytics/query-combinations?semantic_view=...` | 已經 active-catalog 驗證、可直接執行的有限 query template 集合。引導式探索保留其 dimension、metric／aggregation、time dimension 及 grain，只修改 `allowed_overrides` 中列出的欄位。 |
 | `GET /analytics/catalog/availability?semantic_view=...` | 各 catalog field 在 view 中是否至少有一個非 null 值。只顯示 `available: true` 的 field；availability rate 小於 1 並不代表不可使用。 |
-| `GET /analytics/charts/published` | 呼叫端可見的受治理 Dashboard card。保存 `id`（data URL 使用）與 `slug`（穩定前端查找）。 |
+| `GET /analytics/charts/published` | 呼叫端可見的受治理 Dashboard card。保存 `id`（data URL 使用）、`slug`（穩定前端查找）及 `{x,y,w,h}` overview layout；舊 snapshot 由 Backend 補上確定性 fallback。 |
 | `POST /analytics/filter-options` | 只為 catalog 的 `select`／`search` field 取回 non-null option。`select` 只顯示第一頁；`search` 必須先輸入 `minimum_search_length`。`input` field 不可呼叫此 endpoint，直接輸入 exact value。 |
 | `POST /analytics/charts/{chart_id}/data` | 預先定義 Dashboard card 的優先路徑。dimension 與單一 metric／aggregation 維持受治理；前端只能覆寫 filter、time range／granularity、timezone、order 及 limit。 |
+| `POST /admin/analytics/dashboard-layout/publish` | Admin 傳送完整 12 欄 draft 及 `expected_model_version`；成功後新 immutable snapshot 原子生效，相同重試不建立新版本。 |
 | `POST /analytics/query` | 傳送目標優先 query 的 metric、aggregation、dimension、filter 與可選 time control。不必傳 `semantic_view`；回應會列出伺服器解析出的 grain。 |
 
 Catalog membership 與 data availability 不相同：field 可以在 catalog 發佈，卻對目前 BU 回傳 `available: false`。Assignment filter 必須留在相符 grain：`topic` 對 `survey_topics`、`department` 對 `survey_departments`、`keyword` 對 `survey_keywords`。response、store 與 channel field 也可出現在 assignment view，但其 metric 會依該 assignment view 的 row grain 計算。
