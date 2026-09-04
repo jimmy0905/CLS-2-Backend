@@ -310,7 +310,7 @@ Chart 本文含 `slug`、`title`、可選 `description`、`chart_type`、`semant
 | `PUT /admin/analytics/charts/{chart_id}` | 更新 definition，並使其回到 draft。 |
 | `POST /admin/analytics/charts/{chart_id}/publish` | validate、publish 並立即啟用新 catalog version。response 含 `model_version`；持有相符 static bearer 的呼叫端隨後可從 `GET /analytics/charts/published` 取得 chart。 |
 | `DELETE /admin/analytics/charts/{chart_id}` | 軟刪除 chart、記錄 audit event，並立即啟用不含該 chart 的 catalog version；持有相符 static bearer 的呼叫端將不再取得該 chart。 |
-| `POST /admin/analytics/dashboard-layout/publish` | 以 `{ dashboard: "overview", expected_model_version, items }` 原子發佈完整 12 欄 layout。所有現行 published chart 必須剛好一次、不可重疊或越界；KPI 最少 `3×2`、一般圖表 `4×3`、table `6×3`，高度最多 12 rows。版本落後回傳 `409` 並讓 client 保留 draft；相同 layout 重試為 `changed: false` 的 idempotent no-op。成功建立及啟用完整新 snapshot，並記錄 `dashboard_layout.published` audit event。 |
+| `POST /admin/analytics/dashboard-layout/publish` | 以 `{ dashboard: "overview", expected_model_version, items }` 原子發佈完整 12 欄 layout。items 必須包含 `expected_model_version` 對應 active snapshot 內每個 published chart 剛好一次、不可重疊或越界；KPI 最少 `3×2`、一般圖表 `4×3`、table `6×3`，高度最多 12 rows。版本落後回傳 `409` 並讓 client 保留 draft；相同 layout 重試為 `changed: false` 的 idempotent no-op。成功會複製完整 immutable snapshot、只更新 layout 及 catalog version，並記錄 `dashboard_layout.published` audit event。 |
 
 Dashboard layout 保存在 immutable `AnalyticsModelVersion.catalog_snapshot.dashboard_layout`，不新增資料表、欄位、backfill 或雙寫。Chart publish 會保留現有項目並把新 chart 按類型附加到底部；archive 會從下一個 snapshot 移除該 chart。這個 additive snapshot contract 讓 Backend 可先部署：舊 Frontend 忽略 `layout`，新 Backend 則能為舊 snapshot 即時計算 fallback。
 

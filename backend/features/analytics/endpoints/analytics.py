@@ -6,6 +6,7 @@ published catalog slugs; raw Cube members and SQL are never accepted.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import datetime, timedelta, time as datetime_time
 import hashlib
 import json
@@ -3197,6 +3198,35 @@ def _dashboard_layout_from_snapshot(
     return sorted(retained, key=lambda item: (item["y"], item["x"], item["chart_id"]))
 
 
+def _clone_snapshot_with_dashboard_layout(
+    version: AnalyticsModelVersion,
+    catalog_version: int,
+    items: list[dict[str, int]],
+) -> dict[str, Any]:
+    """Create a layout-only catalog revision from the immutable active snapshot."""
+    source = version.catalog_snapshot or {}
+    if not isinstance(source, dict):
+        raise AnalyticsValidationError("Active analytics catalog snapshot is invalid")
+    snapshot = deepcopy(source)
+    cube_catalog = snapshot.get("cubeCatalog")
+    charts = snapshot.get("charts")
+    if not isinstance(cube_catalog, dict) or not isinstance(charts, list):
+        raise AnalyticsValidationError("Active analytics catalog snapshot is invalid")
+    published_charts = [
+        chart
+        for chart in charts
+        if isinstance(chart, dict) and chart.get("status") == "published"
+    ]
+    normalized = _validate_dashboard_layout(published_charts, items)
+    cube_catalog["catalogVersion"] = catalog_version
+    snapshot["dashboard_layout"] = {
+        "dashboard": "overview",
+        "columns": _DASHBOARD_COLUMNS,
+        "items": normalized,
+    }
+    return snapshot
+
+
 def _snapshot_charts(version: AnalyticsModelVersion | None, role: str) -> list[dict[str, Any]]:
     if version is None:
         return []
@@ -4832,21 +4862,39 @@ async def _publish_catalog_version(
     current_user: ActorContext,
     *,
     dashboard_layout_override: list[dict[str, int]] | None = None,
+    source_version: AnalyticsModelVersion | None = None,
     extra_audit: tuple[str, str, str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     if _PROFILE.fullmatch(config.DEPLOYMENT_PROFILE) is None:
         raise HTTPException(status_code=422, detail="Invalid analytics deployment profile")
-    fields, metrics, charts = _current_published_records(db)
+    if source_version is not None:
+        current_active = _active_model_version(db)
+        if (
+            current_active is None
+            or current_active.catalog_version != source_version.catalog_version
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="The analytics catalog changed while this layout was being edited; reload and try again",
+            )
+        if dashboard_layout_override is None:
+            raise ValueError("A layout-only publication requires a dashboard layout")
+        fields: list[AnalyticsField] = []
+        metrics: list[AnalyticsMetric] = []
+        charts: list[AnalyticsChart] = []
+    else:
+        fields, metrics, charts = _current_published_records(db)
     errors: list[dict[str, Any]] = []
-    try:
-        for field in fields:
-            _validate_field_record(field)
-        catalog = _catalog_from_records(fields, metrics)
-        for metric in metrics:
-            _validate_metric_record(metric, fields, catalog)
-    except (AnalyticsValidationError, ValueError) as error:
-        errors.append({"resource": "catalog", "error": str(error)})
-        catalog = None
+    catalog = None
+    if source_version is None:
+        try:
+            for field in fields:
+                _validate_field_record(field)
+            catalog = _catalog_from_records(fields, metrics)
+            for metric in metrics:
+                _validate_metric_record(metric, fields, catalog)
+        except (AnalyticsValidationError, ValueError) as error:
+            errors.append({"resource": "catalog", "error": str(error)})
 
     if catalog is not None:
         for chart in charts:
@@ -4878,29 +4926,40 @@ async def _publish_catalog_version(
 
     current_max = db.query(func.max(AnalyticsModelVersion.catalog_version)).scalar()
     next_version = _next_catalog_version(current_max)
-    cube_catalog = _cube_catalog_payload(fields, metrics, next_version)
-    chart_snapshot = [chart.to_dict() for chart in charts]
-    cube_catalog["rollups"] = _chart_rollups(
-        chart_snapshot, cube_catalog["metrics"]
-    )
+    if source_version is not None:
+        try:
+            snapshot = _clone_snapshot_with_dashboard_layout(
+                source_version,
+                next_version,
+                dashboard_layout_override or [],
+            )
+        except AnalyticsValidationError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        cube_catalog = snapshot["cubeCatalog"]
+    else:
+        cube_catalog = _cube_catalog_payload(fields, metrics, next_version)
+        chart_snapshot = [chart.to_dict() for chart in charts]
+        cube_catalog["rollups"] = _chart_rollups(
+            chart_snapshot, cube_catalog["metrics"]
+        )
+        dashboard_layout = (
+            dashboard_layout_override
+            if dashboard_layout_override is not None
+            else _dashboard_layout_from_snapshot(_active_model_version(db), chart_snapshot)
+        )
+        snapshot = {
+            "cubeCatalog": cube_catalog,
+            "charts": chart_snapshot,
+            "dashboard_layout": {
+                "dashboard": "overview",
+                "columns": _DASHBOARD_COLUMNS,
+                "items": dashboard_layout,
+            },
+        }
     try:
         _validate_cube_catalog_size(cube_catalog)
     except AnalyticsValidationError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
-    dashboard_layout = (
-        dashboard_layout_override
-        if dashboard_layout_override is not None
-        else _dashboard_layout_from_snapshot(_active_model_version(db), chart_snapshot)
-    )
-    snapshot = {
-        "cubeCatalog": cube_catalog,
-        "charts": chart_snapshot,
-        "dashboard_layout": {
-            "dashboard": "overview",
-            "columns": _DASHBOARD_COLUMNS,
-            "items": dashboard_layout,
-        },
-    }
     definition_hash = hashlib.sha256(
         json.dumps(snapshot, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
@@ -4992,11 +5051,15 @@ async def publish_dashboard_layout(
     active_version = _active_model_version(db)
     if active_version is None:
         raise HTTPException(status_code=409, detail="No active analytics model is available")
-    _, _, chart_records = _current_published_records(db)
-    chart_snapshot = [chart.to_dict() for chart in chart_records]
+    chart_snapshot = _snapshot_charts(active_version, "admin")
     try:
         normalized = _validate_dashboard_layout(chart_snapshot, payload.items)
     except (AnalyticsValidationError, KeyError, TypeError, ValueError) as error:
+        if active_version.catalog_version != payload.expected_model_version:
+            raise HTTPException(
+                status_code=409,
+                detail="The analytics catalog changed while this layout was being edited; reload and try again",
+            ) from error
         raise HTTPException(status_code=422, detail=str(error)) from error
 
     active_layout = _dashboard_layout_from_snapshot(active_version, chart_snapshot)
@@ -5019,6 +5082,7 @@ async def publish_dashboard_layout(
         db,
         current_user,
         dashboard_layout_override=normalized,
+        source_version=active_version,
         extra_audit=(
             "dashboard_layout.published",
             "dashboard_layout",

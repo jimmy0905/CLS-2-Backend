@@ -325,6 +325,38 @@ def test_dashboard_layout_inherits_positions_and_appends_new_charts() -> None:
     assert layout[2] == {"chart_id": 3, "x": 0, "y": 5, "w": 6, "h": 3}
 
 
+def test_dashboard_layout_snapshot_clone_preserves_published_chart_set() -> None:
+    charts = _dashboard_charts()
+    source_snapshot = {
+        "cubeCatalog": {
+            "profile": "wtchk_cls",
+            "catalogVersion": 7,
+            "fields": [{"slug": "store"}],
+            "metrics": [{"slug": "survey_count"}],
+            "rollups": [{"slug": "chart_1"}],
+        },
+        "charts": charts,
+        "dashboard_layout": {"items": analytics._default_dashboard_layout(charts)},
+    }
+    version = SimpleNamespace(catalog_snapshot=source_snapshot)
+    changed = [
+        {"chart_id": 1, "x": 0, "y": 0, "w": 3, "h": 2},
+        {"chart_id": 2, "x": 0, "y": 2, "w": 6, "h": 5},
+        {"chart_id": 3, "x": 6, "y": 2, "w": 6, "h": 5},
+    ]
+
+    cloned = analytics._clone_snapshot_with_dashboard_layout(version, 8, changed)
+
+    assert cloned["charts"] == charts
+    assert cloned["cubeCatalog"] == {
+        **source_snapshot["cubeCatalog"],
+        "catalogVersion": 8,
+    }
+    assert cloned["dashboard_layout"]["items"] == changed
+    assert source_snapshot["cubeCatalog"]["catalogVersion"] == 7
+    assert source_snapshot["dashboard_layout"]["items"] != changed
+
+
 def test_dashboard_layout_removes_archived_charts() -> None:
     version = SimpleNamespace(
         catalog_snapshot={
@@ -401,10 +433,12 @@ def test_dashboard_layout_validation_errors(items: list[dict], message: str) -> 
 
 def test_dashboard_layout_publish_is_atomic_and_audited(monkeypatch) -> None:
     charts = _dashboard_charts()
-    records = [SimpleNamespace(to_dict=lambda chart=chart: chart) for chart in charts]
     active = SimpleNamespace(
         catalog_version=7,
-        catalog_snapshot={"dashboard_layout": {"items": analytics._default_dashboard_layout(charts)}},
+        catalog_snapshot={
+            "charts": charts,
+            "dashboard_layout": {"items": analytics._default_dashboard_layout(charts)},
+        },
     )
     captured: dict = {}
 
@@ -414,7 +448,11 @@ def test_dashboard_layout_publish_is_atomic_and_audited(monkeypatch) -> None:
 
     monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
     monkeypatch.setattr(analytics, "_active_model_version", lambda db: active)
-    monkeypatch.setattr(analytics, "_current_published_records", lambda db: ([], [], records))
+    monkeypatch.setattr(
+        analytics,
+        "_current_published_records",
+        lambda db: pytest.fail("layout validation must not read mutable chart records"),
+    )
     monkeypatch.setattr(analytics, "_publish_catalog_version", publish)
     payload = [
         {"chart_id": 1, "x": 0, "y": 0, "w": 3, "h": 2},
@@ -436,17 +474,19 @@ def test_dashboard_layout_publish_is_atomic_and_audited(monkeypatch) -> None:
         "model_version": 8,
     }
     assert captured["dashboard_layout_override"] == payload
+    assert captured["source_version"] is active
     assert captured["extra_audit"][0] == "dashboard_layout.published"
 
 
 def test_dashboard_layout_publish_rejects_stale_version_but_idempotent_retry_succeeds(monkeypatch) -> None:
     charts = _dashboard_charts()
-    records = [SimpleNamespace(to_dict=lambda chart=chart: chart) for chart in charts]
     current = analytics._default_dashboard_layout(charts)
-    active = SimpleNamespace(catalog_version=8, catalog_snapshot={"dashboard_layout": {"items": current}})
+    active = SimpleNamespace(
+        catalog_version=8,
+        catalog_snapshot={"charts": charts, "dashboard_layout": {"items": current}},
+    )
     monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
     monkeypatch.setattr(analytics, "_active_model_version", lambda db: active)
-    monkeypatch.setattr(analytics, "_current_published_records", lambda db: ([], [], records))
     client = _client(FakeDb(), role="admin")
 
     stale = client.post(
