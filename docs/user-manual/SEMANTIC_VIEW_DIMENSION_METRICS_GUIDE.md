@@ -766,7 +766,7 @@ reported_at, channel_name
 `semantic_view` 完全不會出現在畫面上。
 
 ```text
-1. 選要測量什麼    GET  /analytics/builder/measures
+1. 載入可衡量項目  POST /analytics/builder/options  {}
 2. 選主分組        POST /analytics/builder/options
 3. 選第二分組或時間間隔  POST /analytics/builder/options
 4. 選聚合方式      POST /analytics/builder/options

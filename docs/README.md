@@ -2,7 +2,7 @@
 
 > 文件狀態：現行導覽
 >
-> 最後核對：2026-09-03
+> 最後核對：2026-09-06
 
 本索引是 Backend 詳細文件的入口。文件狀態用來區分可依賴的契約、正在進行的 migration
 及只供稽核的歷史紀錄。若本文與 router／tests 不一致，以程式碼為執行事實，並在同一變更
@@ -16,6 +16,7 @@
 | [Goal-first Analytics 查詢契約](ANALYTICS_GOAL_FIRST_CONTRACT.md) | metric target、aggregation、semantic view grain 與 query discovery |
 | [Semantic View、Dimension 與 Metric 使用手冊](user-manual/SEMANTIC_VIEW_DIMENSION_METRICS_GUIDE.md) | 使用者選擇流程、完整組合與範例 |
 | [Frontend Dashboard Analytics 工作流程](FRONTEND_DASHBOARD_ANALYTICS_WORKFLOW.md) | Frontend discovery、availability、filter、chart loading 與 cache 行為 |
+| [Discovery API 收斂分析](ANALYTICS_DISCOVERY_API_ANALYSIS.md) | static metadata、selection resolver、live discovery 的責任邊界與後續移除建議 |
 
 閱讀順序：先了解 goal-first 心智模型，再查看 API reference；需要 query builder 或產品範例
 時才進入 user manual。不要在多份文件各自維護 endpoint 清單，API reference 是唯一 owner。
@@ -24,21 +25,19 @@
 
 | 文件 | 用途 |
 | --- | --- |
-| [Analytics 儀表板遷移驗證](ANALYTICS_DASHBOARD_TEST_REQUEST.md) | profile 上線前的 E2E、legacy comparison 及證據要求 |
+| [Analytics 儀表板驗證](ANALYTICS_DASHBOARD_TEST_REQUEST.md) | profile 上線前的 Analytics-only live E2E 及證據要求 |
 
 自動化 runner 預設停用 live request，須明確設定 `ANALYTICS_E2E=1`。測試資料、token 及
-comparison manifest 都不可提交。
+測試 token 都不可提交。
 
-## 遷移中
+## 已完成遷移
 
 | 文件 | 目前狀態 |
 | --- | --- |
-| [Analytics 讀取遷移與舊功能移除](ANALYTICS_READ_MIGRATION_PLAN.md) | 新 Analytics／record query 已存在；`/dashboard/*` routers 尚未移除 |
-| [Dashboard → Analytics query book](DASHBOARD_ANALYTICS_MIGRATION.md) | 遷移及等效性測試使用；新 client 應直接使用 `/analytics` |
+| [Analytics 讀取遷移與舊功能移除](ANALYTICS_READ_MIGRATION_PLAN.md) | 2026-09-06 完成 hard removal；舊讀取路徑回傳 `404` |
+| [Dashboard → Analytics query book](DASHBOARD_ANALYTICS_MIGRATION.md) | 歷史遷移及 query 對照；現行 client 只使用 `/analytics` |
 
-移除 legacy routes 的 gate 是：所有 production profiles 啟用 Analytics、Frontend 無 legacy
-呼叫、query book 等效性通過，且 contract snapshot 更新。未滿足時不得只依計畫文字刪除
-router。
+Legacy traffic gate 已確認通過；route／OpenAPI snapshots 是已移除狀態的 contract。
 
 ## 歷史與稽核
 

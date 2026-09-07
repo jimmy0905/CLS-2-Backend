@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from features.master_data.dto import (
-    ChannelResponse,
     CreateChannelRequest,
     UpdateChannelRequest,
 )
@@ -15,11 +14,6 @@ router = APIRouter(
     tags=["channels"],
     dependencies=[Depends(get_db), Depends(get_current_actor)],
 )
-
-
-@router.get("/")
-async def get_channels(db: Session = Depends(get_db)):
-    return channel_service(db).list()
 
 
 @router.post("/")
@@ -48,8 +42,3 @@ async def delete_channel(
     _: object = Depends(require_admin),
 ):
     return {"message": channel_service(db).delete(channel_id)}
-
-
-@router.get("/{channel_id}")
-async def get_channel(channel_id: int, db: Session = Depends(get_db)):
-    return channel_service(db).get(channel_id)

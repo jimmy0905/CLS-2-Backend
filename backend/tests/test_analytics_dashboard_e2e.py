@@ -9,25 +9,8 @@ Run the live suite explicitly so the normal unit-test run stays hermetic::
         backend/tests/test_analytics_dashboard_e2e.py
 
 The profile's static API bearer token is supplied with
-``ANALYTICS_E2E_API_TOKEN``. For legacy comparisons, provide
-``ANALYTICS_E2E_COMPARISON_MANIFEST`` pointing to a JSON file containing a
-list of cases.  Each case has this shape::
-
-    {
-      "name": "store distribution",
-      "legacy": {"method": "GET", "path": "/dashboard/store-distribution"},
-      "chart_slug": "dashboard_store_distribution",
-      "chart_payload": {"timezone": "Asia/Hong_Kong"},
-      "legacy_rows_path": "data",
-      "row_key_map": {
-        "store_key": "store_key",
-        "topic_sentiment_negative_count": "negative_count"
-      }
-    }
-
-``row_key_map`` maps a new chart row key to the equivalent legacy row key.
-Rows are compared as sorted tuples, so ordering differences are reported as
-calculation differences rather than producing a false failure.
+``ANALYTICS_E2E_API_TOKEN``. The removed legacy read routes are intentionally
+outside this live Analytics-only suite.
 """
 
 from __future__ import annotations
@@ -36,7 +19,6 @@ from dataclasses import dataclass, field
 import json
 import logging
 import os
-from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -217,29 +199,6 @@ def _assert_status(
         f"{response.status_code}, expected {expected}: {body}"
     )
     return _json(response)
-
-
-def _dotted_get(value: Any, path: str) -> Any:
-    for part in path.split("."):
-        if isinstance(value, dict):
-            value = value.get(part)
-        else:
-            return None
-    return value
-
-
-def _normalised_rows(
-    payload: Any,
-    rows_path: str,
-    row_key_map: dict[str, str],
-) -> list[tuple[Any, ...]]:
-    rows = _dotted_get(payload, rows_path)
-    assert isinstance(rows, list), f"Expected list at {rows_path!r}, got {rows!r}"
-    result = []
-    for row in rows:
-        assert isinstance(row, dict), f"Expected object row, got {row!r}"
-        result.append(tuple(row.get(legacy_key) for legacy_key in row_key_map.values()))
-    return sorted(result, key=repr)
 
 
 @pytest.fixture(scope="session")
@@ -528,51 +487,3 @@ def test_static_bearer_has_chart_management_access(
     response = e2e_client.get(e2e_config.url("admin/analytics/charts"))
     _log_http_result(response, label="admin/analytics/charts")
     assert response.status_code == 200, response.text[:1_000]
-
-
-def test_legacy_comparison_manifest(
-    e2e_client: httpx.Client,
-    e2e_config: E2EConfig,
-    published_charts: dict[str, dict[str, Any]],
-) -> None:
-    manifest_name = os.getenv("ANALYTICS_E2E_COMPARISON_MANIFEST")
-    if not manifest_name:
-        pytest.skip("Set ANALYTICS_E2E_COMPARISON_MANIFEST to run legacy comparisons")
-
-    manifest_path = Path(manifest_name)
-    cases = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert isinstance(cases, list) and cases, "Comparison manifest must be a non-empty list"
-    legacy_base_url = os.getenv("ANALYTICS_E2E_LEGACY_BASE_URL", e2e_config.base_url).rstrip("/")
-    for case in cases:
-        assert isinstance(case, dict)
-        name = case.get("name", case.get("chart_slug", "unnamed case"))
-        chart = published_charts[case["chart_slug"]]
-        legacy = case["legacy"]
-        method = str(legacy.get("method", "GET")).upper()
-        legacy_url = f"{legacy_base_url}/{str(legacy['path']).lstrip('/')}"
-        if method == "GET":
-            legacy_response = e2e_client.get(legacy_url, params=legacy.get("params"))
-        elif method == "POST":
-            legacy_response = e2e_client.post(legacy_url, json=legacy.get("json"))
-        else:
-            pytest.fail(f"{name}: unsupported legacy method {method}")
-        legacy_payload = _assert_status(legacy_response, label=f"legacy/{name}")
-        new_payload = _chart_data(
-            e2e_client,
-            e2e_config,
-            chart,
-            overrides=case.get("chart_payload") or {},
-        )
-        row_key_map = case["row_key_map"]
-        assert isinstance(row_key_map, dict) and row_key_map
-        old_rows = _normalised_rows(
-            legacy_payload,
-            case.get("legacy_rows_path", "data"),
-            row_key_map,
-        )
-        new_rows = _normalised_rows(
-            new_payload,
-            "rows",
-            {new_key: new_key for new_key in row_key_map},
-        )
-        assert new_rows == old_rows, f"{name}: legacy and governed rows differ"

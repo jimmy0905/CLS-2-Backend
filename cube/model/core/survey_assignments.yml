@@ -348,5 +348,7 @@ cubes:
         scheduled_refresh: true
         refresh_key:
           every: __PRE_AGGREGATION_REFRESH_EVERY__
+          incremental: true
+          update_window: __PRE_AGGREGATION_UPDATE_WINDOW__
 
       # __LOCAL_PREAGGREGATIONS__

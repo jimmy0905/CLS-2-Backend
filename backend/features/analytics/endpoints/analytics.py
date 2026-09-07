@@ -21,7 +21,7 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, Header, HTTPException, Response, status
 from fastapi.responses import FileResponse
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
-from sqlalchemy import func, or_, text as sql_text
+from sqlalchemy import func, text as sql_text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -59,19 +59,26 @@ from features.analytics.model.semantic import (
     validate_metric,
     validate_query,
 )
-from features.analytics.repository.drilldown import (
-    DrilldownSpec,
-    build_drilldown_statement,
-    execute_drilldown,
+from features.analytics.repository.records import (
+    DEFAULT_PROJECTED_RECORD_FIELDS,
+    build_projected_record_statement,
+    build_record_query,
+    execute_projected_records,
+    query_records,
 )
-from features.analytics.repository.records import build_record_query, query_records
 from features.analytics.service.exports import build_export_path, execute_export_job
 from features.analytics.service.results import (
     augment_cube_query_with_supports,
     format_query_result,
 )
 from infrastructure.integrations.analytics_metadata_auth import verify_metadata_signature
-from infrastructure.integrations.cube import CubeClient, CubeQueryError, CubeUnavailableError
+from infrastructure.integrations.cube import (
+    CubeClient,
+    CubePreAggregationNotReadyError,
+    CubeQueryError,
+    CubeQueryPendingError,
+    CubeUnavailableError,
+)
 from infrastructure.database.dbo.AnalyticsAuditLog import AnalyticsAuditLog
 from infrastructure.database.dbo.AnalyticsChart import AnalyticsChart
 from infrastructure.database.dbo.AnalyticsExportJob import AnalyticsExportJob
@@ -130,31 +137,24 @@ _ENDPOINT_DESCRIPTIONS = {
     "viewer_query_capabilities": "Resolve one logical metric target and aggregation "
     "against the active catalog, then return the exact dimensions, filters, typed operators, "
     "and granular time fields that the same caller may use in an aggregate query.",
-    "viewer_builder_measures": "List everything analytics can measure, flattened across "
-    "row grains and with enum dimensions expanded into one target per value. Each entry "
-    "reports its available aggregations and whether it survives crossing two assignment "
-    "families, so a caller can start from the question rather than the row grain.",
     "viewer_builder_options": "Report what remains selectable for a partial analytics "
     "builder selection, in any order. The response resolves the narrowest row grain that "
     "can answer the selection, lists the still-valid breakdowns, series, time fields and "
     "intervals, and returns the executable query once the selection is complete.",
     "viewer_builder_query": "Run a complete analytics builder selection. The server chooses "
     "the narrowest row grain that answers it and returns governed long-format rows.",
-    "viewer_records_query": "Return role-authorized, paginated records from the live database. "
-    "Survey records exclude soft-deleted rows, preserve the legacy and canonical "
-    "sentiment fields, and use EXISTS predicates for assignment filters so each "
-    "survey remains one row.",
+    "viewer_records_query": "Return role-authorized records from the live database. Full mode "
+    "preserves nested page-based survey and master-data responses; projected mode returns "
+    "cursor-paginated flat survey fields from the governed catalog. Survey filters use "
+    "EXISTS predicates for assignments so each survey remains one row.",
     "viewer_charts": "List published charts visible to the current role in the active "
     "catalog. Draft, archived, invalid, and more-restricted charts are omitted. Each "
     "chart includes its immutable overview-dashboard grid placement.",
     "viewer_chart_data": "Run a published chart by ID. Its defined members stay fixed; "
     "callers may only override safe filters, time settings, ordering, and limit. "
     "The response is shaped for the declared chart type.",
-    "viewer_drilldown": "Return cursor-paginated survey-response rows for a governed "
-    "drilldown. Only visible core and promoted fields may be selected; unpromoted "
-    "raw payload keys are never returned.",
     "viewer_export_create": "Queue an asynchronous CSV or XLSX export for exactly one "
-    "governed aggregate query or drilldown. Visibility is revalidated while the job "
+    "governed aggregate or record query. Visibility is revalidated while the job "
     "runs and files expire after 24 hours.",
     "viewer_export_get": "Return export-job status for its owner or an administrator. "
     "Unauthorized callers receive not found rather than information about the job.",
@@ -163,38 +163,6 @@ _ENDPOINT_DESCRIPTIONS = {
     "internal_catalog": "Private Cube metadata endpoint. It requires a fresh, "
     "profile-bound HMAC signature and remains available during shadow compilation "
     "even while user analytics is feature-disabled.",
-    "admin_candidates": "List upload-discovered raw-column candidates, including type "
-    "inference, bounded samples, conflicts, and promotion state. Admin-only because "
-    "candidate metadata can contain sensitive source keys.",
-    "admin_fields_list": "List all local governed field records, including candidates, "
-    "drafts, published records, archival state, and discovery metadata.",
-    "admin_field_get": "Return one local governed field record by numeric ID.",
-    "admin_field_create": "Create a draft raw-JSON field with a safe slug, typed source "
-    "key, semantic view, and visibility. The field must later be published and a "
-    "catalog version activated before users can query it.",
-    "admin_field_update": "Update a non-archived field. A change returns the field to "
-    "draft so it must be revalidated and republished before a future activation.",
-    "admin_field_promote": "Promote an upload-discovered candidate by selecting its "
-    "governed data type, visibility, and optional display metadata.",
-    "admin_field_validate": "Validate a field without activating it. The response reports "
-    "a boolean and safe validation errors.",
-    "admin_field_publish": "Mark a promoted, valid field published and audit the action. "
-    "It becomes visible only after catalog publication succeeds.",
-    "admin_field_archive": "Archive a field instead of deleting it. Archiving is rejected "
-    "while any published metric or chart references the field.",
-    "admin_metrics_list": "List every governed metric, including source/weight references, "
-    "operation, confidence configuration, visibility, and lifecycle state.",
-    "admin_metric_get": "Return one governed metric by numeric ID.",
-    "admin_metric_create": "Create a draft metric over a promoted field or fixed governed "
-    "core member. Only declarative metric parameters are accepted; executable SQL or "
-    "expressions are rejected.",
-    "admin_metric_update": "Update a non-archived metric and reset it to draft, requiring "
-    "fresh validation and publication.",
-    "admin_metric_validate": "Validate metric source types, operation, weighting, visibility "
-    "dependencies, confidence level, and semantic-view compatibility.",
-    "admin_metric_publish": "Mark a valid metric published and audit it. Catalog activation "
-    "is a separate operation.",
-    "admin_metric_archive": "Archive a metric unless it is referenced by a published chart.",
     "admin_charts_list": "List all chart definitions, including drafts, archived charts, "
     "validation errors, visibility, and model-version metadata.",
     "admin_chart_get": "Return one chart definition by numeric ID.",
@@ -202,8 +170,6 @@ _ENDPOINT_DESCRIPTIONS = {
     "members and rendering shape; it does not render a chart server-side.",
     "admin_chart_update": "Update a non-archived chart and reset it to draft so it must "
     "be validated and republished.",
-    "admin_chart_validate": "Validate chart member visibility, filters, time settings, and "
-    "type-specific shape requirements without activating it.",
     "admin_chart_publish": "Validate and publish a chart, then immediately activate "
     "the next catalog version so it is visible to chart consumers.",
     "admin_chart_archive": "Soft-delete a chart and immediately activate the next "
@@ -211,13 +177,6 @@ _ENDPOINT_DESCRIPTIONS = {
     "admin_dashboard_layout_publish": "Validate and atomically publish the complete "
     "12-column overview-dashboard layout. The caller must identify the active model "
     "version it edited so concurrent chart or layout changes cannot be overwritten.",
-    "admin_versions": "List immutable catalog-version history without embedding each "
-    "potentially large snapshot.",
-    "admin_version_get": "Return one catalog version, including its immutable snapshot and "
-    "generated Cube metadata. Admin-only because it can contain local source keys.",
-    "admin_catalog_publish": "Revalidate all currently published definitions, create an "
-    "immutable catalog snapshot, and atomically activate the next catalog version. "
-    "Invalid definitions prevent activation.",
 }
 _CI_OPERATIONS = {
     Aggregation.MEAN_CONFIDENCE_INTERVAL,
@@ -229,7 +188,7 @@ _MAX_CUBE_CATALOG_BYTES = 2 * 1024 * 1024
 _DASHBOARD_COLUMNS = 12
 _DASHBOARD_MAX_ROWS = 10_000
 _DASHBOARD_MAX_ITEM_HEIGHT = 12
-_DRILLDOWN_SEMAPHORE = threading.BoundedSemaphore(
+_PROJECTED_RECORDS_SEMAPHORE = threading.BoundedSemaphore(
     config.ANALYTICS_DRILLDOWN_CONCURRENCY
 )
 _FIELD_AVAILABILITY_CACHE_TTL = timedelta(minutes=15)
@@ -1246,12 +1205,6 @@ class BuilderMeasureOutput(_StrictOutput):
     supports_cross_assignment: bool
 
 
-class BuilderMeasuresResponse(_StrictOutput):
-    model_version: int
-    count: int
-    measures: tuple[BuilderMeasureOutput, ...]
-
-
 class BuilderDimensionOutput(_StrictOutput):
     slug: str
     label: str
@@ -1273,167 +1226,6 @@ class BuilderOptionsResponse(_StrictOutput):
     available_intervals: tuple[str, ...]
     query: QuerySpec | None
     warnings: tuple[str, ...]
-
-
-class FieldInput(_StrictInput):
-    model_config = ConfigDict(
-        extra="forbid",
-        json_schema_extra={
-            "examples": [
-                {
-                    "slug": "overall_score",
-                    "label": "Overall score",
-                    "description": "Imported survey score from the monthly upload",
-                    "data_type": "number",
-                    "source_key": "Overall Score",
-                    "semantic_view": "survey_responses",
-                    "visibility": "viewer",
-                }
-            ]
-        },
-    )
-
-    slug: str
-    label: str = Field(min_length=1, max_length=120)
-    description: str | None = Field(default=None, max_length=1_000)
-    data_type: FieldType
-    source_kind: Literal["raw_json"] = "raw_json"
-    source_key: str = Field(min_length=1, max_length=128)
-    semantic_view: Literal["survey_responses"] = Field(
-        default="survey_responses",
-        description="Imported raw fields are projected from one survey response into all assignment views.",
-    )
-    visibility: Visibility = Visibility.VIEWER
-    definition: dict[str, Any] = Field(default_factory=dict)
-
-    @field_validator("slug")
-    @classmethod
-    def _slug(cls, value: str) -> str:
-        return validate_identifier(value)
-
-    @field_validator("label", "source_key")
-    @classmethod
-    def _strip(cls, value: str) -> str:
-        value = value.strip()
-        if not value or "\x00" in value:
-            raise ValueError("value must not be blank or contain NUL")
-        return value
-
-    @field_validator("definition")
-    @classmethod
-    def _no_executable_definition(cls, value: dict[str, Any]) -> dict[str, Any]:
-        if value:
-            raise ValueError("Imported fields do not accept executable definitions")
-        return value
-
-
-class CandidatePromotionInput(_StrictInput):
-    model_config = ConfigDict(
-        extra="forbid",
-        json_schema_extra={
-            "examples": [
-                {
-                    "data_type": "number",
-                    "visibility": "viewer",
-                    "label": "Overall score",
-                    "description": "Normalized imported score",
-                }
-            ]
-        },
-    )
-
-    data_type: FieldType
-    visibility: Visibility = Visibility.VIEWER
-    label: str | None = Field(default=None, min_length=1, max_length=120)
-    description: str | None = Field(default=None, max_length=1_000)
-
-
-class MetricInput(_StrictInput):
-    model_config = ConfigDict(
-        extra="forbid",
-        json_schema_extra={
-            "examples": [
-                {
-                    "slug": "negative_response_rate",
-                    "label": "Negative response rate",
-                    "semantic_view": "survey_responses",
-                    "source_member": "topic_sentiment",
-                    "operation": "filtered_rate",
-                    "definition": {
-                        "filter": {"operator": "equals", "value": "NEGATIVE"}
-                    },
-                    "visibility": "viewer",
-                },
-                {
-                    "slug": "overall_score_weighted_average",
-                    "label": "Weighted overall score",
-                    "field_id": 42,
-                    "weight_member": "cls",
-                    "operation": "weighted_average",
-                    "visibility": "admin",
-                },
-            ]
-        },
-    )
-
-    slug: str
-    label: str = Field(min_length=1, max_length=120)
-    description: str | None = Field(default=None, max_length=1_000)
-    semantic_view: SemanticView = Field(
-        default="survey_responses",
-        description=(
-            "Metric row grain. survey_responses is one survey; assignment views "
-            "are one topic, department, or keyword assignment and expose assignment "
-            "sentiment as assignment sentiment plus surveys.topic_sentiment as "
-            "the canonical response sentiment."
-        ),
-    )
-    field_id: int | None = None
-    source_member: str | None = None
-    operation: Aggregation
-    weight_field_id: int | None = None
-    weight_member: str | None = None
-    confidence_level: float | None = Field(default=None, ge=0.8, le=0.999)
-    definition: dict[str, Any] = Field(default_factory=dict)
-    visibility: Visibility = Visibility.VIEWER
-
-    @field_validator("slug")
-    @classmethod
-    def _slug(cls, value: str) -> str:
-        return validate_identifier(value)
-
-    @field_validator("source_member", "weight_member")
-    @classmethod
-    def _member(cls, value: str | None) -> str | None:
-        return validate_identifier(value) if value is not None else None
-
-    @field_validator("label")
-    @classmethod
-    def _label(cls, value: str) -> str:
-        return value.strip()
-
-    @field_validator("definition")
-    @classmethod
-    def _declarative_definition(cls, value: dict[str, Any]) -> dict[str, Any]:
-        encoded = json.dumps(value, allow_nan=False)
-        if len(encoded) > 16_384:
-            raise ValueError("Metric parameters are too large")
-        forbidden = {"sql", "query", "expression", "javascript", "code"}
-        if any(str(key).lower() in forbidden for key in value):
-            raise ValueError("Metric definitions cannot contain executable expressions")
-        return value
-
-    @model_validator(mode="after")
-    def _confidence_contract(self) -> "MetricInput":
-        if self.field_id is not None and self.source_member is not None:
-            raise ValueError("Metric source uses either field_id or source_member")
-        if self.weight_field_id is not None and self.weight_member is not None:
-            raise ValueError("Metric weight uses either weight_field_id or weight_member")
-        if self.operation in _CI_OPERATIONS and self.confidence_level is None:
-            raise ValueError("Confidence-interval metrics require confidence_level")
-        if self.operation not in _CI_OPERATIONS and self.confidence_level is not None:
-            raise ValueError("confidence_level is limited to confidence-interval metrics")
-        return self
 
 
 class ChartDefinitionInput(_StrictInput):
@@ -1765,6 +1557,8 @@ class RecordQueryInput(_StrictInput):
             "examples": [
                 {
                     "resource": "surveys",
+                    "representation": "projected",
+                    "fields": ["survey_id", "reported_at", "comment"],
                     "filters": [
                         {
                             "member": "topic_sentiment",
@@ -1772,12 +1566,8 @@ class RecordQueryInput(_StrictInput):
                             "value": "NEGATIVE",
                         }
                     ],
-                    "order": [
-                        {"member": "reported_at", "direction": "desc"},
-                        {"member": "id", "direction": "desc"},
-                    ],
-                    "page": 1,
-                    "size": 100,
+                    "cursor": 100,
+                    "size": 250,
                     "timezone": "Asia/Hong_Kong",
                 }
             ]
@@ -1792,11 +1582,29 @@ class RecordQueryInput(_StrictInput):
         "delivery_services",
         "topics",
     ]
+    representation: Literal["full", "projected"] = "full"
+    fields: tuple[str, ...] | None = Field(default=None, max_length=50)
     filters: tuple[RecordFilterInput, ...] = Field(default=(), max_length=20)
     order: tuple[RecordOrderInput, ...] = Field(default=(), max_length=3)
     page: int = Field(default=1, ge=1)
     size: int = Field(default=100, ge=1, le=1_000)
+    cursor: int | None = Field(default=None, ge=0)
     timezone: str | None = None
+
+    @field_validator("fields")
+    @classmethod
+    def _safe_unique_fields(
+        cls, values: tuple[str, ...] | None
+    ) -> tuple[str, ...] | None:
+        if values is None:
+            return None
+        if not values:
+            raise ValueError("Projected records require at least one field")
+        for value in values:
+            validate_identifier(value)
+        if len(set(values)) != len(values):
+            raise ValueError("Projected record fields must be unique")
+        return values
 
     @field_validator("timezone")
     @classmethod
@@ -1806,10 +1614,24 @@ class RecordQueryInput(_StrictInput):
         return value
 
     @model_validator(mode="after")
-    def _unique_order_members(self) -> "RecordQueryInput":
+    def _representation_contract(self) -> "RecordQueryInput":
         members = [item.member for item in self.order]
         if len(members) != len(set(members)):
             raise ValueError("Record order fields must not be duplicated")
+        if self.representation == "full":
+            if self.fields is not None or self.cursor is not None:
+                raise ValueError("Full record queries do not accept fields or cursor")
+            if self.resource == "surveys" and self.size > 100:
+                raise ValueError("Full survey record pages are capped at 100 rows")
+            return self
+        if self.resource != "surveys":
+            raise ValueError("Projected records only support the surveys resource")
+        if self.page != 1:
+            raise ValueError("Projected record queries do not accept page greater than 1")
+        if self.order:
+            raise ValueError("Projected record queries use fixed id ascending order")
+        if self.size > 250:
+            raise ValueError("Projected survey record pages are capped at 250 rows")
         return self
 
 
@@ -1829,14 +1651,12 @@ class ExportInput(_StrictInput):
                 },
                 {
                     "export_format": "csv",
-                    "drilldown": {"fields": ["survey_id", "comment"], "limit": 100},
-                },
-                {
-                    "export_format": "csv",
                     "record_query": {
                         "resource": "surveys",
+                        "representation": "projected",
+                        "fields": ["survey_id", "comment"],
                         "filters": [],
-                        "size": 100,
+                        "size": 250,
                     },
                 },
             ]
@@ -1845,19 +1665,16 @@ class ExportInput(_StrictInput):
 
     export_format: Literal["csv", "xlsx"]
     query: QuerySpec | None = None
-    drilldown: DrilldownSpec | None = None
     record_query: RecordQueryInput | None = None
 
     @model_validator(mode="after")
     def _one_request_kind(self) -> "ExportInput":
         request_kinds = sum(
             value is not None
-            for value in (self.query, self.drilldown, self.record_query)
+            for value in (self.query, self.record_query)
         )
         if request_kinds != 1:
-            raise ValueError(
-                "Export requires exactly one query, drilldown, or record_query"
-            )
+            raise ValueError("Export requires exactly one query or record_query")
         return self
 
 
@@ -2012,12 +1829,6 @@ def _raw_field_sources_from_version(
             FieldType(field.get("dataType")),
         )
     return result
-
-
-def _raw_field_sources(
-    db: Session, role: str
-) -> dict[str, tuple[str, FieldType]]:
-    return _raw_field_sources_from_version(_active_model_version(db), role)
 
 
 def _availability_expression(
@@ -2366,6 +2177,34 @@ async def _execute_query(
                 "code": "analytics_catalog_changed",
                 "message": "Analytics catalog changed; retry the query",
             },
+        ) from error
+    except CubeQueryPendingError as error:
+        query_log.status = "failed"
+        query_log.error_message = "Cube query exceeded the long-poll retry deadline"
+        query_log.completed_at = utc_now()
+        query_log.duration_ms = round((time.monotonic() - started) * 1_000)
+        db.commit()
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "analytics_query_pending",
+                "message": "The analytics query is still processing; retry shortly",
+            },
+            headers={"Retry-After": "2"},
+        ) from error
+    except CubePreAggregationNotReadyError as error:
+        query_log.status = "failed"
+        query_log.error_message = "Cube pre-aggregations are still preparing"
+        query_log.completed_at = utc_now()
+        query_log.duration_ms = round((time.monotonic() - started) * 1_000)
+        db.commit()
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "analytics_warming",
+                "message": "Analytics data is preparing; retry shortly",
+            },
+            headers={"Retry-After": "2"},
         ) from error
     except CubeQueryError as error:
         query_log.status = "failed"
@@ -3779,18 +3618,6 @@ viewer_router = APIRouter(
     tags=["analytics"],
     dependencies=[Depends(_analytics_enabled), Depends(_analytics_no_store)],
 )
-admin_router = APIRouter(
-    prefix="/admin/analytics",
-    tags=["admin analytics"],
-    dependencies=[
-        Depends(_analytics_enabled),
-        Depends(_analytics_no_store),
-        Depends(require_admin),
-    ],
-)
-# The first rollout exposes only chart authoring. Field/metric/catalog lifecycle
-# handlers remain private implementation support for existing catalog records;
-# they are deliberately not included in the public application router.
 admin_chart_router = APIRouter(
     prefix="/admin/analytics",
     tags=["admin analytics"],
@@ -3881,30 +3708,6 @@ async def get_query_capabilities(
         )
     except (AnalyticsValidationError, ValueError, KeyError, StopIteration) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
-
-
-@viewer_router.get(
-    "/builder/measures",
-    summary="List measurable chart targets",
-    description=_ENDPOINT_DESCRIPTIONS["viewer_builder_measures"],
-    response_model=BuilderMeasuresResponse,
-)
-async def get_builder_measures(
-    db: Session = Depends(get_db),
-    current_user: ActorContext = Depends(get_current_actor),
-) -> BuilderMeasuresResponse:
-    role = _role(current_user)
-    try:
-        version = _active_model_version(db)
-        catalog = _catalog_from_version(version, role)
-        measures = _builder_measures(catalog, role)
-    except (AnalyticsValidationError, ValueError) as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
-    return BuilderMeasuresResponse(
-        model_version=version.catalog_version if version else 0,
-        count=len(measures),
-        measures=measures,
-    )
 
 
 @viewer_router.post(
@@ -4136,23 +3939,68 @@ async def query_analytics_records(
     db: Session = Depends(get_db),
     current_user: ActorContext = Depends(get_current_actor),
 ) -> dict[str, Any]:
-    max_size = 100 if payload.resource == "surveys" else 1_000
-    if payload.size > max_size:
+    if payload.representation == "full":
+        try:
+            return query_records(
+                db,
+                payload.resource,
+                tuple(payload.filters),
+                tuple(payload.order),
+                payload.page,
+                payload.size,
+                payload.timezone,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except SQLAlchemyError as error:
+            db.rollback()
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "analytics_records_unavailable",
+                    "message": "Analytics records are temporarily unavailable",
+                },
+            ) from error
+
+    if not _PROJECTED_RECORDS_SEMAPHORE.acquire(blocking=False):
         raise HTTPException(
-            status_code=422,
-            detail=f"Record pages for {payload.resource} are capped at {max_size} rows",
+            status_code=429,
+            detail={
+                "code": "analytics_records_capacity",
+                "message": "Too many projected record queries are already running",
+            },
+            headers={"Retry-After": "2"},
         )
+    role = _role(current_user)
+    fields = payload.fields or DEFAULT_PROJECTED_RECORD_FIELDS
+    query_id = str(uuid.uuid4())
+    started = time.monotonic()
+    version = None
     try:
-        return query_records(
+        version = _active_model_version(db)
+        catalog = _catalog_from_version(version, role)
+        result = execute_projected_records(
             db,
-            payload.resource,
-            tuple(payload.filters),
-            tuple(payload.order),
-            payload.page,
-            payload.size,
-            payload.timezone,
+            fields=fields,
+            filters=tuple(payload.filters),
+            cursor=payload.cursor,
+            size=payload.size,
+            timezone_name=payload.timezone,
+            catalog=catalog,
+            role=role,
+            raw_fields=_raw_field_sources_from_version(version, role),
         )
-    except ValueError as error:
+        if _version_id(_active_model_version(db)) != _version_id(version):
+            raise _AnalyticsCatalogChangedError
+    except _AnalyticsCatalogChangedError as error:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "analytics_catalog_changed",
+                "message": "Analytics catalog changed; retry the record query",
+            },
+        ) from error
+    except (AnalyticsValidationError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except SQLAlchemyError as error:
         db.rollback()
@@ -4163,6 +4011,49 @@ async def query_analytics_records(
                 "message": "Analytics records are temporarily unavailable",
             },
         ) from error
+    finally:
+        _PROJECTED_RECORDS_SEMAPHORE.release()
+
+    completed_at = utc_now()
+    db.add(
+        AnalyticsQueryLog(
+            id=query_id,
+            **_actor_snapshot(current_user, "requested_by"),
+            model_version_id=version.id if version else None,
+            semantic_view="survey_responses",
+            request={
+                "kind": "records_projected",
+                **payload.model_dump(mode="json"),
+                "fields": list(fields),
+            },
+            status="completed",
+            row_count=len(result["items"]),
+            duration_ms=round((time.monotonic() - started) * 1_000),
+            created_at=completed_at,
+            completed_at=completed_at,
+        )
+    )
+    _audit(
+        db,
+        current_user,
+        "records.projected.executed",
+        "query",
+        query_id,
+        {"row_count": len(result["items"])},
+    )
+    db.commit()
+    return {
+        "resource": "surveys",
+        "representation": "projected",
+        "items": result["items"],
+        "size": payload.size,
+        "cursor": payload.cursor,
+        "next_cursor": result["next_cursor"],
+        "has_more": result["has_more"],
+        "query_id": query_id,
+        "model_version": version.catalog_version if version else 0,
+        "timezone": payload.timezone or "UTC",
+    }
 
 
 @viewer_router.get(
@@ -4280,23 +4171,6 @@ def _record_or_404(db: Session, model: Any, record_id: int, label: str) -> Any:
     return record
 
 
-def _chart_dimension_dependencies(definition: dict[str, Any]) -> set[str]:
-    result = {
-        str(member) for member in definition.get("dimensions", []) if isinstance(member, str)
-    }
-    time_dimension = definition.get("time_dimension")
-    if isinstance(time_dimension, str):
-        result.add(time_dimension)
-    metric = definition.get("metric")
-    if isinstance(metric, str):
-        result.add(metric)
-    for key in ("filters", "order"):
-        for item in definition.get(key, []) or []:
-            if isinstance(item, dict) and isinstance(item.get("member"), str):
-                result.add(item["member"])
-    return result
-
-
 def _ensure_unique_slug(
     db: Session, model: Any, slug: str, excluding_id: int | None = None
 ) -> None:
@@ -4305,354 +4179,6 @@ def _ensure_unique_slug(
         query = query.filter(model.id != excluding_id)
     if query.first() is not None:
         raise HTTPException(status_code=409, detail="Slug already exists")
-
-
-@admin_router.get(
-    "/candidates", summary="List discovered field candidates", description=_ENDPOINT_DESCRIPTIONS["admin_candidates"]
-)
-async def list_candidates(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
-    records = (
-        db.query(AnalyticsField)
-        .filter(AnalyticsField.status == "candidate")
-        .order_by(AnalyticsField.updated_at.desc())
-        .all()
-    )
-    return [record.to_dict() for record in records]
-
-
-@admin_router.get(
-    "/fields", summary="List governed fields", description=_ENDPOINT_DESCRIPTIONS["admin_fields_list"]
-)
-async def list_fields(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
-    return [
-        record.to_dict()
-        for record in db.query(AnalyticsField)
-        .order_by(AnalyticsField.updated_at.desc())
-        .all()
-    ]
-
-
-@admin_router.get(
-    "/fields/{field_id}", summary="Get governed field", description=_ENDPOINT_DESCRIPTIONS["admin_field_get"]
-)
-async def get_field(field_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
-    return _record_or_404(db, AnalyticsField, field_id, "Field").to_dict()
-
-
-@admin_router.post(
-    "/fields", status_code=201, summary="Create governed field", description=_ENDPOINT_DESCRIPTIONS["admin_field_create"]
-)
-async def create_field(
-    payload: FieldInput,
-    db: Session = Depends(get_db),
-    current_user: ActorContext = Depends(require_admin),
-) -> dict[str, Any]:
-    _ensure_unique_slug(db, AnalyticsField, payload.slug)
-    field = AnalyticsField(
-        **payload.model_dump(mode="json"),
-        status="draft",
-        is_promoted=True,
-        promoted_at=utc_now(),
-        **_actor_snapshot(current_user, "created_by"),
-    )
-    try:
-        _validate_field_record(field)
-    except (AnalyticsValidationError, ValueError) as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
-    db.add(field)
-    db.flush()
-    _audit(db, current_user, "field.created", "field", field.id, {"slug": field.slug})
-    db.commit()
-    db.refresh(field)
-    return field.to_dict()
-
-
-@admin_router.put(
-    "/fields/{field_id}", summary="Update governed field", description=_ENDPOINT_DESCRIPTIONS["admin_field_update"]
-)
-async def update_field(
-    field_id: int,
-    payload: FieldInput,
-    db: Session = Depends(get_db),
-    current_user: ActorContext = Depends(require_admin),
-) -> dict[str, Any]:
-    field = _record_or_404(db, AnalyticsField, field_id, "Field")
-    if field.status == "archived":
-        raise HTTPException(status_code=409, detail="Archived fields cannot be changed")
-    _ensure_unique_slug(db, AnalyticsField, payload.slug, field_id)
-    for key, value in payload.model_dump(mode="json").items():
-        setattr(field, key, value)
-    field.status = "draft"
-    field.published_at = None
-    _validate_field_record(field)
-    _audit(db, current_user, "field.updated", "field", field.id)
-    db.commit()
-    db.refresh(field)
-    return field.to_dict()
-
-
-@admin_router.post(
-    "/fields/{field_id}/promote", summary="Promote field candidate", description=_ENDPOINT_DESCRIPTIONS["admin_field_promote"]
-)
-async def promote_candidate(
-    field_id: int,
-    payload: CandidatePromotionInput,
-    db: Session = Depends(get_db),
-    current_user: ActorContext = Depends(require_admin),
-) -> dict[str, Any]:
-    field = _record_or_404(db, AnalyticsField, field_id, "Field")
-    if field.status == "archived":
-        raise HTTPException(status_code=409, detail="Archived fields cannot be promoted")
-    field.data_type = payload.data_type.value
-    field.visibility = payload.visibility.value
-    if payload.label:
-        field.label = payload.label.strip()
-    if payload.description is not None:
-        field.description = payload.description
-    field.is_promoted = True
-    field.promoted_at = utc_now()
-    field.status = "draft"
-    if field.created_by_subject is None:
-        for key, value in _actor_snapshot(current_user, "created_by").items():
-            setattr(field, key, value)
-    _validate_field_record(field)
-    _audit(db, current_user, "field.promoted", "field", field.id)
-    db.commit()
-    db.refresh(field)
-    return field.to_dict()
-
-
-@admin_router.post(
-    "/fields/{field_id}/validate", summary="Validate governed field", description=_ENDPOINT_DESCRIPTIONS["admin_field_validate"]
-)
-async def validate_field(
-    field_id: int, db: Session = Depends(get_db)
-) -> dict[str, Any]:
-    field = _record_or_404(db, AnalyticsField, field_id, "Field")
-    try:
-        _validate_field_record(field)
-    except (AnalyticsValidationError, ValueError) as error:
-        return {"valid": False, "errors": [str(error)]}
-    return {"valid": True, "errors": []}
-
-
-@admin_router.post(
-    "/fields/{field_id}/publish", summary="Publish governed field", description=_ENDPOINT_DESCRIPTIONS["admin_field_publish"]
-)
-async def publish_field(
-    field_id: int,
-    db: Session = Depends(get_db),
-    current_user: ActorContext = Depends(require_admin),
-) -> dict[str, Any]:
-    field = _record_or_404(db, AnalyticsField, field_id, "Field")
-    if not field.is_promoted:
-        raise HTTPException(status_code=422, detail="Field must be promoted first")
-    try:
-        _validate_field_record(field)
-    except (AnalyticsValidationError, ValueError) as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
-    field.status = "published"
-    field.published_at = utc_now()
-    _audit(db, current_user, "field.published", "field", field.id)
-    db.commit()
-    db.refresh(field)
-    return field.to_dict()
-
-
-@admin_router.post(
-    "/fields/{field_id}/archive", summary="Archive governed field", description=_ENDPOINT_DESCRIPTIONS["admin_field_archive"]
-)
-async def archive_field(
-    field_id: int,
-    db: Session = Depends(get_db),
-    current_user: ActorContext = Depends(require_admin),
-) -> dict[str, Any]:
-    field = _record_or_404(db, AnalyticsField, field_id, "Field")
-    dependency = (
-        db.query(AnalyticsMetric)
-        .filter(
-            AnalyticsMetric.status == "published",
-            or_(
-                AnalyticsMetric.field_id == field.id,
-                AnalyticsMetric.weight_field_id == field.id,
-            ),
-        )
-        .first()
-    )
-    published_charts = (
-        db.query(AnalyticsChart)
-        .filter(AnalyticsChart.status == "published")
-        .all()
-    )
-    directly_referenced = any(
-        field.slug in _chart_dimension_dependencies(chart.definition or {})
-        for chart in published_charts
-    )
-    if dependency is not None or directly_referenced:
-        raise HTTPException(
-            status_code=409, detail="Field is referenced by a published definition"
-        )
-    field.status = "archived"
-    field.archived_at = utc_now()
-    field.is_promoted = False
-    _audit(db, current_user, "field.archived", "field", field.id)
-    db.commit()
-    db.refresh(field)
-    return field.to_dict()
-
-
-@admin_router.get(
-    "/metrics", summary="List governed metrics", description=_ENDPOINT_DESCRIPTIONS["admin_metrics_list"]
-)
-async def list_metrics(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
-    return [
-        record.to_dict()
-        for record in db.query(AnalyticsMetric)
-        .order_by(AnalyticsMetric.updated_at.desc())
-        .all()
-    ]
-
-
-@admin_router.get(
-    "/metrics/{metric_id}", summary="Get governed metric", description=_ENDPOINT_DESCRIPTIONS["admin_metric_get"]
-)
-async def get_metric(metric_id: int, db: Session = Depends(get_db)) -> dict[str, Any]:
-    return _record_or_404(db, AnalyticsMetric, metric_id, "Metric").to_dict()
-
-
-def _assign_metric(metric: AnalyticsMetric, payload: MetricInput) -> None:
-    for key, value in payload.model_dump(mode="json").items():
-        setattr(metric, key, value)
-
-
-@admin_router.post(
-    "/metrics", status_code=201, summary="Create governed metric", description=_ENDPOINT_DESCRIPTIONS["admin_metric_create"]
-)
-async def create_metric(
-    payload: MetricInput,
-    db: Session = Depends(get_db),
-    current_user: ActorContext = Depends(require_admin),
-) -> dict[str, Any]:
-    _ensure_unique_slug(db, AnalyticsMetric, payload.slug)
-    metric = AnalyticsMetric(
-        **_actor_snapshot(current_user, "created_by"), status="draft"
-    )
-    _assign_metric(metric, payload)
-    db.add(metric)
-    db.flush()
-    _audit(db, current_user, "metric.created", "metric", metric.id, {"slug": metric.slug})
-    db.commit()
-    db.refresh(metric)
-    return metric.to_dict()
-
-
-@admin_router.put(
-    "/metrics/{metric_id}", summary="Update governed metric", description=_ENDPOINT_DESCRIPTIONS["admin_metric_update"]
-)
-async def update_metric(
-    metric_id: int,
-    payload: MetricInput,
-    db: Session = Depends(get_db),
-    current_user: ActorContext = Depends(require_admin),
-) -> dict[str, Any]:
-    metric = _record_or_404(db, AnalyticsMetric, metric_id, "Metric")
-    if metric.status == "archived":
-        raise HTTPException(status_code=409, detail="Archived metrics cannot be changed")
-    _ensure_unique_slug(db, AnalyticsMetric, payload.slug, metric_id)
-    _assign_metric(metric, payload)
-    metric.status = "draft"
-    metric.published_at = None
-    metric.published_model_version_id = None
-    _audit(db, current_user, "metric.updated", "metric", metric.id)
-    db.commit()
-    db.refresh(metric)
-    return metric.to_dict()
-
-
-def _validate_metric_for_admin(db: Session, metric: AnalyticsMetric) -> None:
-    fields = (
-        db.query(AnalyticsField)
-        .filter(
-            AnalyticsField.status == "published",
-            AnalyticsField.is_promoted.is_(True),
-            AnalyticsField.archived_at.is_(None),
-        )
-        .all()
-    )
-    catalog = _catalog_from_records(fields, [metric])
-    _validate_metric_record(metric, fields, catalog)
-
-
-@admin_router.post(
-    "/metrics/{metric_id}/validate", summary="Validate governed metric", description=_ENDPOINT_DESCRIPTIONS["admin_metric_validate"]
-)
-async def validate_metric_endpoint(
-    metric_id: int, db: Session = Depends(get_db)
-) -> dict[str, Any]:
-    metric = _record_or_404(db, AnalyticsMetric, metric_id, "Metric")
-    try:
-        _validate_metric_for_admin(db, metric)
-    except (AnalyticsValidationError, ValueError) as error:
-        return {"valid": False, "errors": [str(error)]}
-    return {"valid": True, "errors": []}
-
-
-@admin_router.post(
-    "/metrics/{metric_id}/publish", summary="Publish governed metric", description=_ENDPOINT_DESCRIPTIONS["admin_metric_publish"]
-)
-async def publish_metric(
-    metric_id: int,
-    db: Session = Depends(get_db),
-    current_user: ActorContext = Depends(require_admin),
-) -> dict[str, Any]:
-    metric = _record_or_404(db, AnalyticsMetric, metric_id, "Metric")
-    try:
-        _validate_metric_for_admin(db, metric)
-    except (AnalyticsValidationError, ValueError) as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
-    metric.status = "published"
-    metric.published_at = utc_now()
-    _audit(db, current_user, "metric.published", "metric", metric.id)
-    db.commit()
-    db.refresh(metric)
-    return metric.to_dict()
-
-
-@admin_router.post(
-    "/metrics/{metric_id}/archive", summary="Archive governed metric", description=_ENDPOINT_DESCRIPTIONS["admin_metric_archive"]
-)
-async def archive_metric(
-    metric_id: int,
-    db: Session = Depends(get_db),
-    current_user: ActorContext = Depends(require_admin),
-) -> dict[str, Any]:
-    metric = _record_or_404(db, AnalyticsMetric, metric_id, "Metric")
-    charts = (
-        db.query(AnalyticsChart)
-        .filter(AnalyticsChart.status == "published")
-        .all()
-    )
-    source = (
-        db.query(AnalyticsField).filter(AnalyticsField.id == metric.field_id).first()
-        if metric.field_id is not None
-        else None
-    )
-    source_slug = source.slug if source is not None else metric.source_member
-    if any(
-        chart.semantic_view == metric.semantic_view
-        and (chart.definition or {}).get("metric") == source_slug
-        and (chart.definition or {}).get("aggregation") == metric.operation
-        for chart in charts
-    ):
-        raise HTTPException(
-            status_code=409, detail="Metric is referenced by a published chart"
-        )
-    metric.status = "archived"
-    metric.archived_at = utc_now()
-    _audit(db, current_user, "metric.archived", "metric", metric.id)
-    db.commit()
-    db.refresh(metric)
-    return metric.to_dict()
 
 
 @admin_chart_router.get(
@@ -4733,26 +4259,6 @@ def _validate_chart_for_admin(db: Session, chart: AnalyticsChart) -> None:
     _validate_chart_record(chart, catalog)
 
 
-@admin_router.post(
-    "/charts/{chart_id}/validate", summary="Validate chart definition", description=_ENDPOINT_DESCRIPTIONS["admin_chart_validate"]
-)
-async def validate_chart_endpoint(
-    chart_id: int, db: Session = Depends(get_db)
-) -> dict[str, Any]:
-    chart = _record_or_404(db, AnalyticsChart, chart_id, "Chart")
-    try:
-        _validate_chart_for_admin(db, chart)
-    except (AnalyticsValidationError, ValueError) as error:
-        chart.validation_errors = [str(error)]
-        chart.validated_at = utc_now()
-        db.commit()
-        return {"valid": False, "errors": chart.validation_errors}
-    chart.validation_errors = []
-    chart.validated_at = utc_now()
-    db.commit()
-    return {"valid": True, "errors": []}
-
-
 @admin_chart_router.post(
     "/charts/{chart_id}/publish", summary="Publish chart definition", description=_ENDPOINT_DESCRIPTIONS["admin_chart_publish"]
 )
@@ -4791,7 +4297,7 @@ async def publish_chart(
     # simplified rollout. Activation is therefore part of publication rather
     # than a second, easy-to-miss administrative action.
     try:
-        version = await publish_catalog_version(
+        version = await _publish_catalog_version(
             CatalogPublicationInput(description=f"Publish chart {chart.slug}"),
             db,
             current_user,
@@ -4824,36 +4330,13 @@ async def delete_chart(
     _audit(db, current_user, "chart.archived", "chart", chart.id)
     # Exclude the chart from the catalog snapshot being activated below.
     db.flush()
-    version = await publish_catalog_version(
+    version = await _publish_catalog_version(
         CatalogPublicationInput(description=f"Delete chart {chart.slug}"),
         db,
         current_user,
     )
     db.refresh(chart)
     return {**chart.to_dict(), "model_version": version["catalog_version"]}
-
-
-@admin_router.get(
-    "/catalog/versions", summary="List catalog versions", description=_ENDPOINT_DESCRIPTIONS["admin_versions"]
-)
-async def list_catalog_versions(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
-    versions = (
-        db.query(AnalyticsModelVersion)
-        .order_by(AnalyticsModelVersion.catalog_version.desc())
-        .all()
-    )
-    return [version.to_dict() for version in versions]
-
-
-@admin_router.get(
-    "/catalog/versions/{version_id}", summary="Get catalog version", description=_ENDPOINT_DESCRIPTIONS["admin_version_get"]
-)
-async def get_catalog_version(
-    version_id: int, db: Session = Depends(get_db)
-) -> dict[str, Any]:
-    return _record_or_404(
-        db, AnalyticsModelVersion, version_id, "Catalog version"
-    ).to_dict(include_snapshot=True)
 
 
 async def _publish_catalog_version(
@@ -5026,17 +4509,6 @@ async def _publish_catalog_version(
     return version.to_dict(include_snapshot=True)
 
 
-@admin_router.post(
-    "/catalog/publish", status_code=201, summary="Activate a catalog version", description=_ENDPOINT_DESCRIPTIONS["admin_catalog_publish"]
-)
-async def publish_catalog_version(
-    payload: CatalogPublicationInput,
-    db: Session = Depends(get_db),
-    current_user: ActorContext = Depends(require_admin),
-) -> dict[str, Any]:
-    return await _publish_catalog_version(payload, db, current_user)
-
-
 @admin_chart_router.post(
     "/dashboard-layout/publish",
     summary="Publish the overview dashboard layout",
@@ -5104,91 +4576,6 @@ async def publish_dashboard_layout(
 
 
 @viewer_router.post(
-    "/drilldown", summary="Drill down to survey responses", description=_ENDPOINT_DESCRIPTIONS["viewer_drilldown"]
-)
-def drilldown_analytics(
-    payload: DrilldownSpec,
-    db: Session = Depends(get_db),
-    current_user: ActorContext = Depends(get_current_actor),
-) -> dict[str, Any]:
-    if not _DRILLDOWN_SEMAPHORE.acquire(blocking=False):
-        raise HTTPException(
-            status_code=429,
-            detail={
-                "code": "analytics_drilldown_capacity",
-                "message": "Too many analytics drilldowns are already running",
-            },
-            headers={"Retry-After": "2"},
-        )
-    role = _role(current_user)
-    query_id = str(uuid.uuid4())
-    started = time.monotonic()
-    version = _active_model_version(db)
-    try:
-        catalog = _catalog_from_version(version, role)
-        result = execute_drilldown(
-            db,
-            payload,
-            catalog,
-            role=role,
-            raw_fields=_raw_field_sources_from_version(version, role),
-        )
-        if _version_id(_active_model_version(db)) != _version_id(version):
-            raise _AnalyticsCatalogChangedError
-    except _AnalyticsCatalogChangedError as error:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "analytics_catalog_changed",
-                "message": "Analytics catalog changed; retry the drilldown",
-            },
-        ) from error
-    except (AnalyticsValidationError, ValueError) as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
-    except SQLAlchemyError as error:
-        db.rollback()
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "code": "analytics_drilldown_unavailable",
-                "message": "Analytics drilldown is temporarily unavailable",
-            },
-        ) from error
-    finally:
-        _DRILLDOWN_SEMAPHORE.release()
-
-    db.add(
-        AnalyticsQueryLog(
-            id=query_id,
-            **_actor_snapshot(current_user, "requested_by"),
-            model_version_id=version.id if version else None,
-            semantic_view=payload.semantic_view,
-            request={"kind": "drilldown", **payload.model_dump(mode="json")},
-            status="completed",
-            row_count=len(result["rows"]),
-            duration_ms=round((time.monotonic() - started) * 1_000),
-            created_at=utc_now(),
-            completed_at=utc_now(),
-        )
-    )
-    _audit(
-        db,
-        current_user,
-        "drilldown.executed",
-        "query",
-        query_id,
-        {"row_count": len(result["rows"])},
-    )
-    db.commit()
-    return {
-        "query_id": query_id,
-        "model_version": version.catalog_version if version else 0,
-        "timezone": payload.timezone or "UTC",
-        **result,
-    }
-
-
-@viewer_router.post(
     "/exports", status_code=201, summary="Queue analytics export", description=_ENDPOINT_DESCRIPTIONS["viewer_export_create"]
 )
 async def create_analytics_export(
@@ -5251,25 +4638,30 @@ async def create_analytics_export(
                 "cube_query": cube_query,
             }
         else:
-            if payload.drilldown is not None:
-                semantic_view = payload.drilldown.semantic_view
-                build_drilldown_statement(
-                    payload.drilldown,
-                    catalog,
+            assert payload.record_query is not None
+            semantic_view = (
+                "survey_responses"
+                if payload.record_query.resource == "surveys"
+                else payload.record_query.resource
+            )
+            # Validate all allowlists, operators, typed values, catalog
+            # visibility, and projection sources at admission time. The worker
+            # repeats validation against the pinned role before reading data.
+            if payload.record_query.representation == "projected":
+                build_projected_record_statement(
+                    fields=(
+                        payload.record_query.fields
+                        or DEFAULT_PROJECTED_RECORD_FIELDS
+                    ),
+                    filters=tuple(payload.record_query.filters),
+                    cursor=payload.record_query.cursor,
+                    size=payload.record_query.size,
+                    timezone_name=payload.record_query.timezone,
+                    catalog=catalog,
                     role=role,
                     raw_fields=_raw_field_sources_from_version(version, role),
                 )
-                request_payload = {
-                    "mode": "drilldown",
-                    "role": role,
-                    "drilldown": payload.drilldown.model_dump(mode="json"),
-                }
             else:
-                assert payload.record_query is not None
-                semantic_view = payload.record_query.resource
-                # Validate all allowlists, operators, and typed values at
-                # admission time. The worker repeats this validation before
-                # reading the live database.
                 build_record_query(
                     db,
                     payload.record_query.resource,
@@ -5277,11 +4669,11 @@ async def create_analytics_export(
                     tuple(payload.record_query.order),
                     payload.record_query.timezone,
                 )
-                request_payload = {
-                    "mode": "record_query",
-                    "role": role,
-                    "record_query": payload.record_query.model_dump(mode="json"),
-                }
+            request_payload = {
+                "mode": "record_query",
+                "role": role,
+                "record_query": payload.record_query.model_dump(mode="json"),
+            }
     except (AnalyticsValidationError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 

@@ -2,16 +2,23 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import date, datetime, time, timezone
-import math
 from typing import Any, Callable, Literal
 
-from sqlalchemy import and_, exists, func, select
+from sqlalchemy import Select, and_, exists, func, select, text
 from sqlalchemy.orm import Session, selectinload
 
-from core.time import resolve_timezone
-from features.analytics.model.semantic import FieldType
+import core.config as config
+from core.time import as_timezone, resolve_timezone
+from features.analytics.model.semantic import (
+    CatalogField,
+    FieldType,
+    FilterSpec,
+    SemanticCatalog,
+    validate_query_fields,
+)
 from infrastructure.database.dbo.Channel import Channel
 from infrastructure.database.dbo.Department import Department
 from infrastructure.database.dbo.DeliveryService import DeliveryService
@@ -32,6 +39,16 @@ RecordResource = Literal[
     "delivery_services",
     "topics",
 ]
+
+DEFAULT_PROJECTED_RECORD_FIELDS = (
+    "id",
+    "survey_id",
+    "reported_at",
+    "store_key",
+    "store_name",
+    "topic_sentiment",
+    "comment",
+)
 
 
 @dataclass(frozen=True)
@@ -249,6 +266,15 @@ def _coerce_scalar(
         if not isinstance(value, bool):
             raise ValueError("record filter value must be a boolean")
         return value
+    if field.data_type is FieldType.TIME:
+        if isinstance(value, time):
+            return value
+        if isinstance(value, str):
+            try:
+                return time.fromisoformat(value)
+            except ValueError as error:
+                raise ValueError("record filter value must be an ISO time") from error
+        raise ValueError("record filter value must be an ISO time")
     if field.is_datetime:
         if isinstance(value, date) and not isinstance(value, datetime):
             parsed = datetime.combine(value, time.min)
@@ -447,10 +473,201 @@ def query_records(
     items = [serialize_record(resource, record, timezone_name) for record in records]
     return {
         "resource": resource,
+        "representation": "full",
         "items": items,
         "page": page,
         "size": size,
         "total": total,
         "has_more": page * size < total,
         "timezone": timezone_name or "UTC",
+    }
+
+
+_PROJECTED_CORE_EXPRESSIONS = {
+    slug: field.expression for slug, field in _SURVEY_FIELDS.items()
+}
+
+
+def _raw_expression(source_key: str, field_type: FieldType):
+    helper = {
+        FieldType.STRING: func.analytics_raw_value,
+        FieldType.NUMBER: func.analytics_raw_number,
+        FieldType.BOOLEAN: func.analytics_raw_boolean,
+        # Candidate inference uses "date" for both ISO dates and datetimes.
+        # Preserve timestamps so projected records agree with Cube time grains.
+        FieldType.DATE: func.analytics_raw_timestamp,
+        FieldType.TIME: func.analytics_raw_time,
+    }[field_type]
+    return helper(Survey.raw_row_data, source_key)
+
+
+def _projected_expression(
+    field: CatalogField,
+    raw_fields: dict[str, tuple[str, FieldType]],
+):
+    if field.slug in _PROJECTED_CORE_EXPRESSIONS:
+        return _PROJECTED_CORE_EXPRESSIONS[field.slug]
+    raw_definition = raw_fields.get(field.slug)
+    if raw_definition is None:
+        raise ValueError(f"Projected record field {field.slug} has no governed source")
+    return _raw_expression(raw_definition[0], FieldType(raw_definition[1]))
+
+
+def _catalog_filter(item: Any) -> FilterSpec:
+    """Convert the record filter aliases into the catalog filter contract."""
+
+    value = item.value
+    values = item.values
+    if item.operator in {"in", "not_in", "between"} and values is None:
+        if isinstance(value, (list, tuple)):
+            values = tuple(value)
+            value = None
+    return FilterSpec(
+        member=item.member,
+        operator=item.operator,
+        value=value,
+        values=values,
+    )
+
+
+def build_projected_record_statement(
+    *,
+    fields: tuple[str, ...],
+    filters: tuple[Any, ...],
+    cursor: int | None,
+    size: int,
+    timezone_name: str | None,
+    catalog: SemanticCatalog,
+    role: str,
+    raw_fields: dict[str, tuple[str, FieldType]],
+) -> Select:
+    """Build a role-scoped flat survey projection with stable cursor ordering."""
+
+    resolve_timezone(timezone_name)
+    selected_fields: dict[str, CatalogField] = {}
+    for slug in fields:
+        validate_query_fields(
+            semantic_view="survey_responses",
+            dimensions=[slug],
+            filters=[],
+            catalog=catalog,
+            role=role,
+        )
+        selected_fields[slug] = catalog.field(slug, "survey_responses")
+
+    catalog_filters = tuple(
+        _catalog_filter(item)
+        for item in filters
+        if item.member not in _ASSIGNMENT_FIELDS
+    )
+    if catalog_filters:
+        validate_query_fields(
+            semantic_view="survey_responses",
+            dimensions=[],
+            filters=catalog_filters,
+            catalog=catalog,
+            role=role,
+        )
+
+    selected = [
+        _projected_expression(field, raw_fields).label(slug)
+        for slug, field in selected_fields.items()
+    ]
+    if "id" not in selected_fields:
+        selected.append(Survey.id.label("__cursor_id"))
+    statement = (
+        select(*selected)
+        .select_from(Survey)
+        .join(Store, Store.store_key == Survey.store_key)
+        .outerjoin(Channel, Channel.id == Survey.channel_id)
+        .outerjoin(DeliveryService, DeliveryService.id == Survey.delivery_service_id)
+        .where(Survey.is_deleted.is_not(True))
+    )
+    conditions = []
+    for item in filters:
+        if item.member in _ASSIGNMENT_FIELDS:
+            conditions.append(_assignment_condition(item, timezone_name))
+            continue
+        catalog_field = catalog.field(item.member, "survey_responses")
+        expression = _projected_expression(catalog_field, raw_fields)
+        filter_item = _catalog_filter(item)
+        record_field = RecordField(
+            expression,
+            catalog_field.data_type,
+            is_datetime=(
+                catalog_field.data_type is FieldType.DATE
+                and (
+                    catalog_field.slug in {"reported_at", "created_at", "updated_at"}
+                    or catalog_field.slug not in _PROJECTED_CORE_EXPRESSIONS
+                )
+            ),
+        )
+        operator, value = _filter_parts(filter_item, record_field, timezone_name)
+        conditions.append(_condition(expression, operator, value))
+    if conditions:
+        statement = statement.where(and_(*conditions))
+    if cursor is not None:
+        statement = statement.where(Survey.id > cursor)
+    return statement.order_by(Survey.id.asc()).limit(size + 1)
+
+
+def _json_value(value: Any, timezone_name: str | None = None) -> Any:
+    if hasattr(value, "value"):
+        return value.value
+    if isinstance(value, (date, datetime, time)):
+        if isinstance(value, datetime):
+            value = as_timezone(value, timezone_name)
+        return value.isoformat()
+    return value
+
+
+def execute_projected_records(
+    db: Any,
+    *,
+    fields: tuple[str, ...],
+    filters: tuple[Any, ...],
+    cursor: int | None,
+    size: int,
+    timezone_name: str | None,
+    catalog: SemanticCatalog,
+    role: str,
+    raw_fields: dict[str, tuple[str, FieldType]],
+) -> dict[str, Any]:
+    """Execute one bounded projected-record page with the legacy DB guardrails."""
+
+    if hasattr(db, "get_bind") and db.get_bind().dialect.name == "postgresql":
+        db.execute(
+            text("SELECT set_config('statement_timeout', :timeout, true)"),
+            {"timeout": f"{config.ANALYTICS_DRILLDOWN_STATEMENT_TIMEOUT_MS}ms"},
+        )
+    result = db.execute(
+        build_projected_record_statement(
+            fields=fields,
+            filters=filters,
+            cursor=cursor,
+            size=size,
+            timezone_name=timezone_name,
+            catalog=catalog,
+            role=role,
+            raw_fields=raw_fields,
+        )
+    ).mappings().all()
+    has_more = len(result) > size
+    page = result[:size]
+    items = [
+        {
+            key: _json_value(value, timezone_name)
+            for key, value in dict(row).items()
+            if key != "__cursor_id"
+        }
+        for row in page
+    ]
+    next_cursor = None
+    if has_more and page:
+        last = dict(page[-1])
+        next_cursor = int(last.get("id") or last.get("__cursor_id"))
+    return {
+        "items": items,
+        "next_cursor": next_cursor,
+        "has_more": has_more,
     }

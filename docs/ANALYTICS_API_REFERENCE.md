@@ -4,11 +4,13 @@
 >
 > 導覽：[Backend 文件索引](README.md)
 >
-> 最後核對：2026-09-03
+> 最後核對：2026-09-06
 
 > 公開 aggregate API 採用目標優先模式。實作 query builder 前，請先閱讀[目標優先的 Analytics 查詢契約](ANALYTICS_GOAL_FIRST_CONTRACT.md)，其中定義邏輯 metric target、`/analytics/query-capabilities` 與現行 response schema。
 
-本文件說明受治理的 Cube Analytics API。它只涵蓋 Analytics route；既有 `/dashboard/*`、survey、upload 與 authentication route 不受影響。
+本文件說明受治理的 Cube Analytics API。舊 `/dashboard/*`、survey GET／download，以及
+channel／delivery-service／topic GET 已移除並回傳 `404`；survey 與主資料寫入、store／department
+讀取及 upload／authentication route 不在本文的 Analytics contract 內。
 
 目前 dashboard card 的端點逐一替代方案及可直接送出的本文，請參閱[儀表板 Analytics 遷移指南](DASHBOARD_ANALYTICS_MIGRATION.md)。前端呼叫順序、availability、filter discovery 及 chart loading loop，請參閱[前端儀表板 Analytics 工作流程](FRONTEND_DASHBOARD_ANALYTICS_WORKFLOW.md)。如需含十份虛構問卷範例的中文 Semantic View、Dimension、Metric 手冊，請參閱[Semantic View、Dimension 與 Metric 使用手冊](user-manual/SEMANTIC_VIEW_DIMENSION_METRICS_GUIDE.md)。
 
@@ -46,7 +48,7 @@ Authorization: Bearer <profile-api-bearer>
 | `survey_keywords` | 一個 keyword assignment | 同上 | `sentiment` = `survey_keywords.sentiment` | 依／篩選 `keyword`；使用 `keyword_assignment/count` 或 `survey/count`。 |
 | `survey_assignments` | 一個 `(response, keyword, department, topic)` 組合 | 同上 | `keyword_sentiment`、`department_sentiment`、`topic_assignment_sentiment` | 交叉兩個 assignment family，例如 keyword × department；只提供計數。 |
 
-在 `survey_responses` 中一律使用 `topic_sentiment`；`sentiment` 不是有效 public member。在 assignment view 中，`topic_sentiment` 仍表示 response-level 值，`sentiment` 則只表示該 assignment row。既有 response-level metric、chart、saved query、drilldown 或 frontend selector 若使用 `sentiment`，應改為 `topic_sentiment` 後再 validate／publish 新 catalog version。
+在 `survey_responses` 中一律使用 `topic_sentiment`；`sentiment` 不是有效 public member。在 assignment view 中，`topic_sentiment` 仍表示 response-level 值，`sentiment` 則只表示該 assignment row。既有 response-level metric、chart、saved query 或 frontend selector 若使用 `sentiment`，應改為 `topic_sentiment` 後再 validate／publish 新 catalog version。
 
 不得在同一 query 結合 `survey_topics`、`survey_departments` 與 `survey_keywords`。一份 response 可有多個 assignment，join 會乘大 row 數並使 count／average 模糊。確實需要兩個 assignment family 時使用 `survey_assignments`：它明確產生組合列，並以 distinct response count 回答。由於 `cls/sum` 與 `cls/average` 會受組合數加權，它們在此 grain 刻意不存在；單一 family 應使用其專屬 grain。
 
@@ -106,7 +108,7 @@ Authorization: Bearer <profile-api-bearer>
 
 Dimension 與 time value 會保留 `schema` 宣告的 key。每個一般 dimension 的 additive `group_role` 依 query 順序為 `primary`、`secondary`、`additional`，讓 renderer 能保留兩個 group 的語意；後端不以此選擇 layout。未選 time dimension 時，`schema.time_dimension` 為 `null`；即使結果為空，`rows` 與 `warnings` 也必定存在。Weighted、filtered、variance、standard-deviation、percentile 與 confidence-interval measure 可保留在 governance metadata，但不透過簡化 query contract 公開。
 
-常見錯誤：`401`（缺少、無效、已刪除或錯誤 profile 的 token）、`404`（Analytics 停用或資源不存在）、`422`（無效的受治理輸入或遭拒的 semantic query）、`503`（Cube 或 Analytics 資料庫無法使用）。錯誤訊息刻意不洩漏 Cube／PostgreSQL 實作細節。
+常見錯誤：`401`（缺少、無效、已刪除或錯誤 profile 的 token）、`404`（Analytics 停用或資源不存在）、`422`（不可重試的受治理輸入或遭拒的 semantic query）、`503`（Cube／Analytics 資料庫無法使用，或 pre-aggregation 尚在準備）。錯誤訊息刻意不洩漏 Cube／PostgreSQL 實作細節。
 
 ## Static-bearer Endpoint
 
@@ -143,18 +145,12 @@ GET /analytics/query-combinations?semantic_view=survey_responses
 
 `responding_stores_by_region` 類 template 使用 `survey_responses` 的 `store/count`，計算至少有一筆相符 response 的相異門市。response date range 表示「期間內有回應的門市」；零筆相符 response 的門市無法出現在 response-grain view。需要完整門市主檔時，使用受治理 `stores` record resource。
 
-### `GET /analytics/builder/measures`
-
-回傳目前 catalog 對 caller 可見的所有可衡量欄位，並跨 semantic grains 合併。Enum
-dimension 會展開成可單獨衡量的 value，例如 `topic_sentiment:NEGATIVE`；每項包含
-`field`、`enum_value`、可用 `aggregations`、可能的 `semantic_views`、`result_type` 及
-`supports_cross_assignment`。
-
-Chart builder 可從此 endpoint 開始，讓使用者先回答「量測什麼」，而不必先理解內部
-semantic view。Response 同時包含 `model_version` 與 `count`；後續 options／query 的版本
-若不同，client 應重新 bootstrap。
-
 ### `POST /analytics/builder/options`
+
+這是 chart builder 唯一的 bootstrap 與 selection resolver。第一次送 `{}`，從
+`available_measures` 取得跨 semantic grains 合併、含 enum-expanded target 的 measure catalog；
+每項包含 `field`、`enum_value`、`aggregations`、`semantic_views`、`result_type` 及
+`supports_cross_assignment`。`GET /analytics/builder/measures` 已移除並回傳 `404`。
 
 接受部分或完整 builder selection，回傳在目前選擇下仍合法的 measure、aggregation、主要
 breakdown、第二 series dimension、time field 及 interval。所有欄位皆可省略，因此第一次
@@ -241,15 +237,50 @@ filters、grain safety 或 Cube security。無法解析的組合回傳 `422`。
 }
 ```
 
-送至私有 Cube 前，伺服器會驗證 visibility、member type、limit、filter operator、推導 grain，以及 `(metric, aggregation)` 是否恰好解析至一個 active governed measure。缺少 `metric`／`aggregation`、傳送已移除 `metrics` array、超過三個 dimension、不相容 aggregation 或未發佈／ambiguous pair 均為 `422`；`503` 表示 Cube 無法服務。
+送至私有 Cube 前，伺服器會驗證 visibility、member type、limit、filter operator、推導 grain，以及 `(metric, aggregation)` 是否恰好解析至一個 active governed measure。缺少 `metric`／`aggregation`、傳送已移除 `metrics` array、超過三個 dimension、不相容 aggregation 或未發佈／ambiguous pair 均為不可重試的 `422`。
+
+Cube 的 `Continue wait` 會在同一 30 秒 query deadline 內由 Backend 重送完全相同的 Cube query，最多十次。deadline 耗盡回傳 `503`、`Retry-After: 2` 及 `detail.code = "analytics_query_pending"`；所需 pre-aggregation partition 尚未建好時回傳同樣 header 及 `detail.code = "analytics_warming"`。這兩個狀態都是暫態服務狀態，不是 query rejection；client 應停止額外自動重試並提供手動 Retry。Database／transport unavailable 仍為 `503`，真正 unknown member 等 Cube rejection 才是 `422`。
 
 ### `POST /analytics/records/query`
 
-直接對即時 application database 執行受治理 record query。支援 `surveys`、`stores`、`departments`、`channels`、`delivery_services`、`topics`。Filter 與 order 只接受具型別、resource-specific 的 allowlisted field。使用 `member` 表示欄位名（`field` 是可接受 input alias）；scalar operator 使用 `value`，`in`、`not_in`、`between` 使用 `values`。
+直接對即時 application database 執行受治理 record query。`representation` 為 `full` 或
+`projected`，省略時為 `full`。Filter 使用 `member` 表示欄位名（`field` 是可接受 input
+alias）；scalar operator 使用 `value`，`in`、`not_in`、`between` 使用 `values`。
 
-Survey result 排除軟刪除列，並保留既有 nested store、channel、delivery-service、department、topic、keyword object。Survey response 同時包含舊 `sentiment` 與 canonical `topic_sentiment`。Survey 的 topic、department、keyword filter 使用 `EXISTS` predicate，不會因 assignment match 重複 survey row。
+`full` 支援 `surveys`、`stores`、`departments`、`channels`、`delivery_services`、`topics`，
+並保留既有 page／order／total 語意。它拒絕 `fields` 及 `cursor`。Survey page 上限 100，
+預設 `reported_at DESC, id DESC`；master-data page 上限 1,000，預設 primary key 遞增。
+Survey result 排除軟刪除列，保留 nested store、channel、delivery-service、department、topic、
+keyword object，以及舊 `sentiment` 與 canonical `topic_sentiment`。Response 額外帶有
+`"representation": "full"`。
 
-Survey page 上限 100，預設 `reported_at DESC, id DESC`；master-data page 上限 1,000，預設 primary key 遞增。Master-data query 會回傳未被 survey 引用的 value，可供 dashboard selector 零填補。
+`projected` 只接受 `resource: "surveys"`，回傳受治理的 flat row，取代已移除的 drilldown
+route：
+
+```json
+{
+  "resource": "surveys",
+  "representation": "projected",
+  "fields": ["survey_id", "reported_at", "comment"],
+  "filters": [],
+  "cursor": 100,
+  "size": 250,
+  "timezone": "Asia/Hong_Kong"
+}
+```
+
+`fields` 省略時使用 `id`、`survey_id`、`reported_at`、`store_key`、`store_name`、
+`topic_sentiment`、`comment`；可明確選 1–50 個不可重複的 core 或 caller 可見 promoted
+field。它永不公開 unpromoted raw payload。`size` 上限 250，以 `id ASC` 固定排序並使用
+`cursor`；`page > 1` 或自訂 `order` 會回傳 `422`。Response 包含 `representation`、
+flat `items`、輸入 `cursor`、`next_cursor`、`has_more`、`query_id`、`model_version`
+及有效 `timezone`。
+
+兩種 representation 的 survey topic、department、keyword filter 均使用 `EXISTS` predicate，
+不會因 assignment match 重複 survey row；projected 亦支援 role-visible promoted-field filter。
+Projected capacity 回傳 `429`／`analytics_records_capacity`；database timeout／unavailable
+回傳 `503`／`analytics_records_unavailable`。Master-data full query 會回傳未被 survey
+引用的 value，可供 dashboard selector 零填補。
 
 ### `GET /analytics/charts/published`
 
@@ -261,15 +292,12 @@ Survey page 上限 100，預設 `reported_at DESC, id DESC`；master-data page �
 
 Response 包含 `chart` 及與 `/analytics/query` 相同的 `schema`、flat `rows`、`row_count`、`warnings`、freshness field。後端不按 `chart_type` 截斷 series、加入 `Other` 或補零；renderer 使用完整 governed rows 自行呈現。不存在或不可見的 chart 回傳 `404`。
 
-### `POST /analytics/drilldown`
-
-只從 `survey_responses` 回傳 cursor-paginated response-level row。它用於檢視 aggregate 背後的 row，不是任意 raw-data access。
-
-`fields` 可取 1–50 個允許的 core／promoted field，`filters` 最多 20 個相容 filter，`limit` 為 1–250。可選 IANA `timezone` 套用本地 timestamp filter 並格式化回傳 timestamp；未提供時為 UTC。response 會連同 `{ "rows": [...], "next_cursor": 100, "has_more": true }` 回傳有效 `timezone`。只回傳 static bearer 可見的 promoted field；unpromoted payload key 與 raw JSON payload 永不回傳。容量保護可回傳 `429` 並帶 `Retry-After`；資料庫 timeout／不可用時為 `503`。
-
 ### `POST /analytics/exports`
 
-建立非同步 CSV 或 XLSX export。本文必須在 aggregate query、drilldown query、即時 record query 三者之中**恰選一個**。`export_format` 為 `csv` 或 `xlsx`。
+建立非同步 CSV 或 XLSX export。本文必須在 aggregate `query` 或即時 `record_query` 之中
+**恰選一個**；舊 `drilldown` key 會因 `extra=forbid` 回傳 `422`。Projected export 使用
+`record_query.representation = "projected"`，輸出所選 flat fields。`export_format` 為 `csv` 或
+`xlsx`。
 
 Export job 建立後狀態為 `queued`。系統在受理時記錄固定 static-bearer attribution、model version、query 與 visibility rule。Export 上限 250,000 列，CSV/XLSX formula prefix 會跳脫，artifact 在 24 小時後到期。每個 profile 的 queue limit 會回傳 `429`。
 
@@ -283,11 +311,14 @@ Export job 建立後狀態為 `queued`。系統在受理時記錄固定 static-b
 
 ## `/admin` 路徑
 
-本節所有路徑只需要已驗證 static bearer，並受 feature gate 控制。首次 rollout 刻意只公開**chart management**。Standard field 與 metric 為內建；candidate、field、metric、catalog-version administration 並非 public endpoint，藉此縮小 operational surface，同時保留受治理 chart definition 與 audit history。
+本節所有路徑只需要已驗證 static bearer，並受 feature gate 控制。HTTP surface 只公開
+**chart management**。Standard field 與 metric 為內建；candidate、field、metric、catalog-version
+administration 沒有 HTTP surface，同時保留受治理 chart definition 與 audit history。
 
 ### 已移除的 candidate、field 與 metric administration
 
-這些 endpoint 僅保留為 private implementation handler，未掛載至 public API；對 caller 回傳 `404`。下列資訊僅保留遷移脈絡，請使用 built-in catalog 的 chart definition。
+這些舊 handler 已從 implementation 刪除，所有下列路徑對 caller 回傳 `404`。下列資訊只保留
+歷史辨識用途；built-in field／metric lifecycle 不提供 HTTP administration。
 
 | Endpoint | 歷史行為 |
 | --- | --- |
@@ -314,10 +345,9 @@ Chart 本文含 `slug`、`title`、可選 `description`、`chart_type`、`semant
 
 Dashboard layout 保存在 immutable `AnalyticsModelVersion.catalog_snapshot.dashboard_layout`，不新增資料表、欄位、backfill 或雙寫。Chart publish 會保留現有項目並把新 chart 按類型附加到底部；archive 會從下一個 snapshot 移除該 chart。這個 additive snapshot contract 讓 Backend 可先部署：舊 Frontend 忽略 `layout`，新 Backend 則能為舊 snapshot 即時計算 fallback。
 
-### Catalog version（非公開的歷史 lifecycle）
+### Catalog version（沒有 HTTP lifecycle）
 
-下列 handler 仍保留在 implementation 供遷移脈絡，但目前掛載的 public router 不包含它們；
-外部 caller 會得到 `404`。不得因本表描述其舊行為而把它加入 Frontend BFF allow-list。
+下列舊 handler 已刪除，外部 caller 會得到 `404`，亦不得加入 Frontend BFF allow-list。
 
 | Endpoint | 行為 |
 | --- | --- |
@@ -341,14 +371,9 @@ X-Analytics-Signature: <HMAC-SHA256 of "<timestamp>:<profile>">
 
 Profile 必須符合 deployment profile、timestamp 必須新鮮，且 signature 使用該 BU 的 metadata secret。Response 包含 Cube 編譯所需的 catalog version、field／metric definition 與已核准的 local rollup。無效 signature／timestamp 為 `401`；錯誤 profile 為 `403`。此 response 亦明確為 `Cache-Control: no-store, private`。
 
-## 歷史生命週期範例
+## Catalog lifecycle boundary
 
-以下 dynamic field／metric flow 未在 chart-only rollout 啟用：
-
-1. Upload 發現 candidate；operator 透過 `GET /admin/analytics/candidates` 檢視。
-2. Operator 使用 `POST /admin/analytics/fields/{field_id}/promote` promotion 與設定 field。
-3. Operator 建立使用該 field 的 metric 或 chart，接著呼叫相關 `validate`、`publish` endpoint。
-4. Operator 呼叫 `POST /admin/analytics/catalog/publish`。
-5. Cube 經由 internal endpoint 取得新的 immutable catalog；使用者經由 `GET /analytics/catalog` 與 `GET /analytics/charts/published` 看見它。
-
-修改或 archive definition 不會改寫舊 catalog snapshot。已發佈的 chart／export 會維持與該操作記錄的 model version 綁定，因此 governance 與 audit history 可重現。
+Field／metric construction、validation 與 rollup generation 是 chart publication 的內部步驟，
+沒有獨立 HTTP administration。Chart publish／delete 直接建立下一個 immutable catalog version；
+舊 snapshot、query／audit row 及完成的 export artifact 不會被改寫，因此 governance history 仍可
+重現。

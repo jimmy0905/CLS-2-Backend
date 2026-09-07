@@ -639,10 +639,12 @@ test('responding store count is accepted as a fixed response-view measure', () =
   assert.equal(validateCatalog(withRespondingStores, profile).rollups.length, 1);
 });
 
-test('pre-aggregation refresh interval is injected into core and chart rollups', () => {
+test('pre-aggregation refresh policy is injected into core and timed chart rollups', () => {
   const core = [
     '    refresh_key:',
     '      every: __PRE_AGGREGATION_REFRESH_EVERY__',
+    '      incremental: true',
+    '      update_window: __PRE_AGGREGATION_UPDATE_WINDOW__',
     '      # __LOCAL_DIMENSIONS__',
     '      # __LOCAL_MEASURES__',
     '      # __LOCAL_PREAGGREGATIONS__',
@@ -653,17 +655,26 @@ test('pre-aggregation refresh interval is injected into core and chart rollups',
       semanticView: 'survey_responses',
       measures: ['survey_count'],
       dimensions: ['store_key'],
-      timeDimension: null,
-      granularity: null,
-      partitionGranularity: null,
+      timeDimension: 'reported_at',
+      granularity: 'day',
+      partitionGranularity: 'month',
       nonAdditive: false,
     }],
   }), profile);
 
-  const compiled = injectCatalog(core, localCatalog, 'survey_responses', '5 minute');
+  const compiled = injectCatalog(
+    core,
+    localCatalog,
+    'survey_responses',
+    '5 minute',
+    '30 day',
+  );
 
   assert.doesNotMatch(compiled, /__PRE_AGGREGATION_REFRESH_EVERY__/);
+  assert.doesNotMatch(compiled, /__PRE_AGGREGATION_UPDATE_WINDOW__/);
   assert.equal((compiled.match(/every: 5 minute/g) || []).length, 2);
+  assert.equal((compiled.match(/incremental: true/g) || []).length, 2);
+  assert.equal((compiled.match(/update_window: 30 day/g) || []).length, 2);
 });
 
 test('pre-aggregation refresh interval rejects unsafe Cube schema content', () => {
@@ -681,6 +692,10 @@ test('pre-aggregation refresh interval rejects unsafe Cube schema content', () =
   assert.throws(
     () => compileRollup(rollup, [], '15 minute\n      sql: SELECT pg_sleep(10)'),
     /Invalid pre-aggregation refresh interval/,
+  );
+  assert.throws(
+    () => compileRollup(rollup, [], '15 minute', '90 day\n      sql: SELECT 1'),
+    /Invalid pre-aggregation update window/,
   );
 });
 
@@ -718,6 +733,7 @@ test('untimed rollups omit partition granularity', () => {
   });
 
   assert.doesNotMatch(compiled, /time_dimension|granularity/);
+  assert.doesNotMatch(compiled, /incremental|update_window/);
   assert.match(compiled, /scheduled_refresh: true/);
 });
 

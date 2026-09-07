@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 
 from features.master_data.dto import (
     CreateDeliveryServiceRequest,
-    DeliveryServiceResponse,
     UpdateDeliveryServiceRequest,
 )
 from features.master_data.service import delivery_service_service
@@ -15,11 +14,6 @@ router = APIRouter(
     tags=["delivery_services"],
     dependencies=[Depends(get_db), Depends(get_current_actor)],
 )
-
-
-@router.get("/")
-async def get_delivery_services(db: Session = Depends(get_db)):
-    return delivery_service_service(db).list()
 
 
 @router.post("/")
@@ -50,8 +44,3 @@ async def delete_delivery_service(
     _: object = Depends(require_admin),
 ):
     return {"message": delivery_service_service(db).delete(delivery_service_id)}
-
-
-@router.get("/{delivery_service_id}")
-async def get_delivery_service(delivery_service_id: int, db: Session = Depends(get_db)):
-    return delivery_service_service(db).get(delivery_service_id)

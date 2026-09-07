@@ -1,16 +1,17 @@
 # Analytics 讀取遷移與舊功能移除
 
-> 文件狀態：遷移中；不可視為已完成清單
+> 文件狀態：已完成（2026-09-06）
 >
 > 導覽：[Backend 文件索引](README.md)
 >
-> 最後核對：2026-09-03
+> 最後核對：2026-09-06
 
-目前程式仍在 `backend/app.py` 註冊 `/dashboard/*` router，因此步驟 5 尚未完成。新 Analytics
-及 record query implementation 已存在，但每個 production profile 的 enablement、shadow
-comparison 與 client cutover 證據不由本文件宣告完成；移除 legacy route 前必須重新驗證 gate。
+Production 七天無 legacy traffic gate 已確認通過。`/dashboard/*` router、survey GET／download、
+channel／delivery-service／topic GET 已 hard-remove；這些路徑不提供 redirect、`410` 或
+compatibility shim，現行結果為 `404`。
 
-採用兩階段遷移。第一階段新增受治理的 Analytics 記錄查詢等效能力、以管理員角色保護資料異動，並移除明確淘汰的 action／log／classification API 與資料。第二階段只會在用戶端完成遷移，且每個設定檔皆已啟用 Analytics 後，才移除舊讀取端點。
+遷移採用的兩階段已完成：第一階段建立受治理 Analytics record/query 能力及管理員 mutation
+boundary；第二階段完成 client cutover 後移除 legacy reads。
 
 受治理的 Analytics 語意仍是唯一準則：軟刪除的問卷持續排除、assignment grain 持續分離，並接受 Cube 的新鮮度窗口。為維持相容性，問卷記錄回應會保留舊有 `sentiment` 欄位與標準的 `topic_sentiment`。
 
@@ -43,12 +44,24 @@ comparison 與 client cutover 證據不由本文件宣告完成；移除 legacy 
 - 測試 viewer/admin 授權、Analytics 功能閘門、no-store 標頭、匯出、儀表板等效性、已移除的 OpenAPI 路徑、遷移中繼資料與資料保留清理。執行完整的後端 pytest 與 Cube 測試套件。
 - 發佈 query book 並將用戶端遷移至 Analytics。在每個部署設定檔啟用 Analytics，然後觀察請求日誌，直到連續七天沒有呼叫舊讀取路由。
 
-## 步驟 5 — 移除已遷移的舊讀取路由
+## 步驟 5 — 移除已遷移的舊讀取路由（完成）
 
-- 通過第一階段驗收閘門後，移除所有 `/dashboard/*` 路由。
-- 移除 `GET /surveys`、`GET /surveys/{survey_id}` 與 `GET /surveys/download`。
-- 移除 `/channels`、`/delivery_services` 與 `/topics` 下的 GET 清單／詳細資料路由，但保留其僅限管理員的異動路由。
-- 更新 OpenAPI 與遷移文件，並重新執行等效性、授權、後端及 Cube 回歸測試。
+- 已移除所有 `/dashboard/*` 路由及 package／app registration。
+- 已移除 `GET /surveys`、`GET /surveys/{survey_id}` 與 `GET /surveys/download`。
+- 已移除 `/channels`、`/delivery_services` 與 `/topics` 下的 GET 清單／詳細資料路由，保留其僅限管理員的異動路由。
+- 保留 store／department GET 與 `/stores/export`；讀取重疊留待另一項 migration 評估。
+- Legacy comparison manifest／environment 已刪除，live E2E 只驗證 Analytics contract。
+
+## Release checklist
+
+- Backend 與 Frontend 必須在同一 release 部署，避免舊 client 呼叫已移除的
+  `builder/measures` 或 `analytics/drilldown`。
+- 部署前逐個 production profile 確認 `analytics_export_jobs` 沒有 `queued`／`processing`
+  且 request `mode = "drilldown"` 的工作；新 worker 只執行 `query` 與 `record_query`。
+- 已完成的舊 export metadata 與 artifact 保留，仍可經現有 download endpoint 下載。
+- 上線後監察 removed-path `404`、projected records 的 `422`／`429`／`503`，以及 export
+  failure rate。
+- 本次沒有 Alembic migration；query、audit、export 歷史資料及 20-table metadata 均不改動。
 
 ## 假設
 

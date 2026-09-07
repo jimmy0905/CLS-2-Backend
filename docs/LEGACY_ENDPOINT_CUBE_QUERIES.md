@@ -6,7 +6,10 @@
 >
 > 現行契約：[Analytics API 參考](ANALYTICS_API_REFERENCE.md)
 
-本文件保留 pre-0012 舊儀表板端點的遷移脈絡，供歷史等效性工作使用。舊範例中的 `metrics: []` 為已淘汰的多 metric 契約，**不可執行**。目前可直接送出的單一 metric 請求，請使用[儀表板 Analytics 遷移指南](DASHBOARD_ANALYTICS_MIGRATION.md)。
+本文件保留 pre-0012 舊儀表板端點的遷移脈絡，供歷史等效性工作使用。表內 `/dashboard/*`、
+survey GET／download 及 channel／delivery-service／topic GET 已於 2026-09-06 hard-remove，呼叫會
+回傳 `404`。舊範例中的 `metrics: []` 為已淘汰的多 metric 契約，**不可執行**。目前可直接送出
+的單一 metric 請求，請使用[儀表板 Analytics 遷移指南](DASHBOARD_ANALYTICS_MIGRATION.md)。
 
 目前 `POST /analytics/query` 契約要求 0–3 個 `dimensions`、一個邏輯 `metric` 與一個 `aggregation`；彙總值一律在 `value`：
 
@@ -143,7 +146,7 @@ dashboard_last_updated_at
 | `GET /topics/{topic_id}` | `{ "resource": "topics", "filters": [{"member":"id","operator":"equals","value":123}], "page": 1, "size": 1 }` |
 | `GET /surveys` | `{ "resource": "surveys", "page": 1, "size": 100 }` |
 | `GET /surveys/{survey_id}` | `{ "resource": "surveys", "filters": [{"member":"id","operator":"equals","value":123}], "page": 1, "size": 1 }` |
-| `GET /surveys/download` | 以 `record_query: {"resource":"surveys", ...}` 及 `export_format: "csv"` 或 `"xlsx"` 呼叫 `POST /analytics/exports`。 |
+| `GET /surveys/download` | 以 `record_query: {"resource":"surveys", "representation":"full", ...}` 及 `export_format: "csv"` 或 `"xlsx"` 呼叫 `POST /analytics/exports`。若只需要指定 flat fields，使用 `representation: "projected"`。 |
 | `GET /stores` | `{ "resource": "stores", "page": 1, "size": 1000 }` |
 | `GET /departments` | `{ "resource": "departments", "page": 1, "size": 1000 }` |
 
@@ -156,7 +159,7 @@ dashboard_last_updated_at
 1. 從 `rows` 讀取 aggregate value，而非從舊 list response 讀取。
 2. 需要重現 `total_count_for_option` 時，以 dimension key 合併第二個 query 的 count。
 3. 從 master-data record query 為門市、topic 與 department 補零。
-4. 過渡期需要維持舊 response DTO 時，轉換 daily time bucket，並將 metric 對應回舊 property name。
+4. 歷史報表仍需解讀舊 response DTO 時，轉換 daily time bucket，並將 metric 對應回舊 property name。
 5. 將 topic、department 與 keyword assignment filter 限制於各自 semantic view。
 
 Aggregate query 最多 1,000 列。大型報表應分頁取得 filter option，或使用受治理 export。Cube 結果也以新鮮度為準；UI 需顯示資料時效時，使用回傳的 `freshness_time`。

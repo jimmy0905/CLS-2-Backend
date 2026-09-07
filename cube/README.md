@@ -40,6 +40,13 @@ Production 的 `cube-api` 只讀由 `cube-refresh` 建立的 pre-aggregation。L
 API on-demand fallback：catalog 或 schema 變更令舊 partition 失效時，第一個 query 可自行建立
 缺少的 partition；此設定不得帶到 production。
 
+所有有 time partition 的 core 及 catalog-generated rollup 都使用 incremental refresh，並以
+`ANALYTICS_PRE_AGGREGATION_UPDATE_WINDOW`（預設 `90 day`）限制 scheduled refresh 的活動窗口；
+15 分鐘刷新 cadence 及原有 month／year partition granularity 不變。上傳後的 targeted refresh
+仍帶明確 `dateRange`，所以可重建窗口以外的歷史月份。每次部署會在 Cube `/readyz` 成功後執行
+一次 profile-scoped pre-warm，輪詢所有 job token 至 `done`；失敗只令 analytics degraded，不能
+阻止 surveys、uploads 或 administration 上線。
+
 ## Model 與 image
 
 - [`cube.js`](cube.js) 組合 registry、catalog repository 與 refresh config。

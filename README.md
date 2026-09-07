@@ -2,9 +2,9 @@
 
 > 文件狀態：現行元件導覽
 >
-> 最後核對：2026-09-03
+> 最後核對：2026-09-06
 
-FastAPI Backend 提供問卷、CSV 上傳、主資料、策略、translation、legacy dashboard 及受治理
+FastAPI Backend 提供問卷寫入、CSV 上傳、主資料、策略、translation 及受治理
 Analytics API。Production image 是 profile-neutral；region、database、API base path、static
 bearer、logging identity 及 Cube HMAC secret 都由 superproject 的 regional generator 在 runtime
 注入。
@@ -32,10 +32,12 @@ bearer、logging identity 及 Cube HMAC secret 都由 superproject 的 regional 
 主要 router family：
 
 - `/health`：同時驗證 API process 與 database connectivity。
-- `/surveys`、`/tasks`、`/stores`、`/departments`、`/channels`、`/delivery_services`、`/topics`：問卷、上傳及主資料。
+- `/surveys`：管理員問卷寫入／修改／軟刪除；讀取改用 `/analytics/records/query`。
+- `/tasks`、`/stores`、`/departments`：上傳及仍保留的 store／department 主資料讀取。
+- `/channels`、`/delivery_services`、`/topics`：僅保留管理員 POST／PUT／DELETE。
 - `/strategy`、`/translator`：策略生成與翻譯整合。
 - `/analytics`、`/admin/analytics`、`/internal/analytics`：受治理分析；完整契約見 [`docs/README.md`](docs/README.md)。
-- `/dashboard`：遷移期間保留的 legacy read endpoints；新 client 不應增加依賴。
+- 已移除的 `/dashboard/*`、survey GET／download 及 channel／delivery-service／topic GET 會回傳 `404`。
 
 Production 的外部 prefix 由 profile catalog 生成，例如 `wtchk_cls` 是 `/wtchk/api`；FastAPI
 內部 route 本身不硬編碼 customer prefix。Browser 不直接持有 Backend bearer，必須經

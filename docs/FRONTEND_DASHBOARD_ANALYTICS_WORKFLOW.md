@@ -4,11 +4,13 @@
 >
 > 導覽：[Backend 文件索引](README.md)
 >
-> 最後核對：2026-09-03
+> 最後核對：2026-09-06
 
 > Query builder 請使用[目標優先的 Analytics 查詢契約](ANALYTICS_GOAL_FIRST_CONTRACT.md)定義的邏輯 target 探索順序。
 
-此工作流程說明前端如何以受治理的 `/analytics` API 取代舊有 `GET /dashboard/*` 請求。流程先探索已發佈、且在目前 BU 確實有資料的 dimension，再載入 filter value 與已發佈 dashboard chart data。
+此工作流程說明前端如何使用受治理的 `/analytics` API；舊有 `GET /dashboard/*` 已移除並回傳
+`404`。流程先探索已發佈、且在目前 BU 確實有資料的 dimension，再載入 filter value 與已發佈
+dashboard chart data。
 
 以下所有路徑皆相對於部署 API prefix（一般為 `/wtchk/api`），且需要 `Authorization: Bearer <access-token>`。
 
@@ -218,4 +220,4 @@ series: department
 - `401` 表示缺少、無效、已刪除或錯誤設定檔的 token；`403` 表示角色不足；`404` 表示 Analytics 停用或資源不可見；`422` 表示受治理的輸入或語意 query 無效；`503` 表示 Cube 或資料庫目前無法使用。
 - 所有 Analytics 回應均為 `Cache-Control: no-store, private`。以前端記憶體保存同一個 catalog 的暫存即可；切換帳號、profile 或 model version 時必須丟棄。
 - 每張 API 回應應保存並顯示 `freshness_time` 與 `model_version`。Chart 的 model version 與 catalog 不一致時，重新載入 catalog 和 chart list。
-- 以 [Analytics 儀表板遷移驗證請求](ANALYTICS_DASHBOARD_TEST_REQUEST.md#可重複使用的-pytest-執行器)中的 live pytest suite 驗證登入、filter discovery、static bearer 存取、non-UTC time range、assignment-grain isolation、chart／legacy parity 與 freshness metadata。
+- 以 [Analytics 儀表板驗證請求](ANALYTICS_DASHBOARD_TEST_REQUEST.md#可重複使用的-pytest-執行器)中的 live pytest suite 驗證登入、filter discovery、static bearer 存取、non-UTC time range、assignment-grain isolation、chart contract 與 freshness metadata。

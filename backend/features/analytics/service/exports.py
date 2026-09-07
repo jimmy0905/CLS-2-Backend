@@ -122,49 +122,21 @@ def write_export(
     return len(rows)
 
 
-def _collect_drilldown_rows(
-    payload: dict[str, Any], role: str, max_rows: int
-) -> list[dict[str, Any]]:
-    """Collect governed drilldown pages in a worker thread."""
-    from features.analytics.endpoints.analytics import _catalog, _raw_field_sources
-    from features.analytics.repository.drilldown import DrilldownSpec, execute_drilldown
-    from infrastructure.database.session import SessionLocal
-
-    db = SessionLocal()
-    try:
-        spec = DrilldownSpec.model_validate(payload)
-        catalog = _catalog(db, role)
-        raw_fields = _raw_field_sources(db, role)
-        rows: list[dict[str, Any]] = []
-        cursor = spec.cursor
-        while len(rows) < max_rows:
-            page_spec = spec.model_copy(
-                update={"cursor": cursor, "limit": min(250, max_rows - len(rows))}
-            )
-            page = execute_drilldown(
-                db,
-                page_spec,
-                catalog,
-                role=role,
-                raw_fields=raw_fields,
-            )
-            rows.extend(page["rows"])
-            if not page["has_more"] or page["next_cursor"] is None:
-                break
-            cursor = page["next_cursor"]
-        return rows
-    finally:
-        db.close()
-
-
 def _collect_record_rows(
-    payload: dict[str, Any], max_rows: int
+    payload: dict[str, Any], role: str, max_rows: int
 ) -> list[dict[str, Any]]:
     """Collect a live record query in bounded pages for an export worker."""
     from core.config import is_survey_export_column_enabled
-    from features.analytics.endpoints.analytics import RecordQueryInput
+    from features.analytics.endpoints.analytics import (
+        RecordQueryInput,
+        _active_model_version,
+        _catalog_from_version,
+        _raw_field_sources_from_version,
+    )
     from features.analytics.repository.records import (
+        DEFAULT_PROJECTED_RECORD_FIELDS,
         build_record_query,
+        execute_projected_records,
         serialize_record,
     )
     from infrastructure.database.session import SessionLocal
@@ -172,6 +144,33 @@ def _collect_record_rows(
     spec = RecordQueryInput.model_validate(payload)
     db = SessionLocal()
     try:
+        if spec.representation == "projected":
+            version = _active_model_version(db)
+            catalog = _catalog_from_version(version, role)
+            rows: list[dict[str, Any]] = []
+            cursor = spec.cursor
+            while len(rows) < max_rows:
+                page = execute_projected_records(
+                    db,
+                    fields=spec.fields or DEFAULT_PROJECTED_RECORD_FIELDS,
+                    filters=tuple(spec.filters),
+                    cursor=cursor,
+                    size=min(250, max_rows - len(rows)),
+                    timezone_name=spec.timezone,
+                    catalog=catalog,
+                    role=role,
+                    raw_fields=_raw_field_sources_from_version(version, role),
+                )
+                rows.extend(page["items"])
+                if page["has_more"] and len(rows) >= max_rows:
+                    raise ValueError(
+                        "Analytics export exceeds the configured row limit"
+                    )
+                if not page["has_more"] or page["next_cursor"] is None:
+                    break
+                cursor = page["next_cursor"]
+            return rows
+
         query = build_record_query(
             db,
             spec.resource,
@@ -246,12 +245,10 @@ async def _execute_export_job(job_id: str) -> None:
             active_version.id if active_version is not None else None,
         )
         catalog = _catalog_from_version(active_version, role)
-        if mode not in {"query", "drilldown", "record_query"}:
+        if mode not in {"query", "record_query"}:
             raise ValueError("Export job contains an invalid governed query")
         if mode == "query" and not isinstance(cube_query, dict):
             raise ValueError("Export job contains an invalid governed query")
-        if mode == "drilldown" and not isinstance(request.get("drilldown"), dict):
-            raise ValueError("Export job contains an invalid governed drilldown")
         if mode == "record_query" and not isinstance(request.get("record_query"), dict):
             raise ValueError("Export job contains an invalid governed record query")
 
@@ -292,17 +289,11 @@ async def _execute_export_job(job_id: str) -> None:
                 request_id=job.id,
             )
             rows = format_query_result(result, semantic_query, catalog, role)["rows"]
-        elif mode == "drilldown":
-            rows = await asyncio.to_thread(
-                _collect_drilldown_rows,
-                request["drilldown"],
-                role,
-                ANALYTICS_EXPORT_MAX_ROWS,
-            )
         else:
             rows = await asyncio.to_thread(
                 _collect_record_rows,
                 request["record_query"],
+                role,
                 ANALYTICS_EXPORT_MAX_ROWS,
             )
         db.expire_all()

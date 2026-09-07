@@ -21,7 +21,6 @@ from core.errors import ApplicationError
 from core.logging import bind_request_id, configure_logging, logger, reset_request_id
 from core.openapi import install_openapi_component_compatibility
 from features.analytics.endpoints import analytics
-from features.dashboard.endpoints import dashboard
 from features.feedback.endpoint import surveys
 from features.ingestion.endpoints import tasks
 from features.master_data.endpoints import (
@@ -55,6 +54,48 @@ def _client_ip(request: Request) -> str | None:
 
 def _is_analytics_path(path: str) -> bool:
     return path.startswith(("/analytics", "/admin/analytics", "/internal/analytics"))
+
+
+_REMOVED_LEGACY_READ_PATHS = frozenset(
+    {
+        "/dashboard/department-distribution",
+        "/dashboard/keyword-analysis",
+        "/dashboard/topic-distribution",
+        "/dashboard/sentiment-distribution",
+        "/dashboard/store-distribution",
+        "/dashboard/channel-and-delivery-service-distribution",
+        "/dashboard/topic-sentiment-score",
+        "/dashboard/last-updated-date",
+        "/dashboard/data-coverage",
+        "/dashboard/store-column-sentiment-distribution",
+        "/surveys",
+        "/surveys/download",
+        "/channels",
+        "/delivery_services",
+        "/topics",
+    }
+)
+_REMOVED_LEGACY_DETAIL_PREFIXES = (
+    "/surveys/",
+    "/channels/",
+    "/delivery_services/",
+    "/topics/",
+)
+
+
+def _is_removed_legacy_read(method: str, path: str) -> bool:
+    """Return 404 for retired GET operations that share paths with mutations."""
+
+    if method != "GET":
+        return False
+    normalized_path = path.rstrip("/") or "/"
+    if normalized_path in _REMOVED_LEGACY_READ_PATHS:
+        return True
+    return any(
+        normalized_path.startswith(prefix)
+        and normalized_path.removeprefix(prefix).isdigit()
+        for prefix in _REMOVED_LEGACY_DETAIL_PREFIXES
+    )
 
 
 @asynccontextmanager
@@ -101,7 +142,13 @@ async def log_request(request: Request, call_next) -> Response:
     request_token = bind_request_id(request_id)
     started_at = time.perf_counter()
     try:
-        response = await call_next(request)
+        if _is_removed_legacy_read(request.method, request.url.path):
+            response = JSONResponse(
+                status_code=404,
+                content={"detail": "Not Found"},
+            )
+        else:
+            response = await call_next(request)
     except Exception:
         logger.exception(
             "Request failed",
@@ -178,7 +225,6 @@ def create_app() -> FastAPI:
     application.include_router(operations_router)
     application.include_router(analytics.router)
     application.include_router(surveys.router)
-    application.include_router(dashboard.router)
     application.include_router(strategy.router)
     application.include_router(stores.router)
     application.include_router(departments.router)

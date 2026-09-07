@@ -43,6 +43,10 @@ Content-Type: application/json
 `dateRange` 只會選取建置範圍與指定範圍相交的分割區。結束日期是最後一個受影響月份之後那個月的第一天。部署的 `ANALYTICS_CUBE_REFRESH_TIME_ZONES` 設定會同時套用至排程重新整理工作者與上傳觸發的重新整理請求。它必須包含儀表板預期提供服務的所有時區；預設值為 UTC 加上 `Asia/Hong_Kong`。
 語意檢視受影響的已發佈圖表彙總，會從啟用中的 catalog 版本附加至請求；這對精確維度的非可加性彙總尤其重要。
 
-每個 `survey_assignments` 指標都是對 response key 的相異計數，因此都不可加；其彙總只能用於維度完全相同的查詢。由於 `topic` 與 `department` 來自封閉的擷取清單、且組合數維持很小，因此會建置 `daily_topic_departments`；涉及 `keyword` 的組合則交由 PostgreSQL，因為該維度沒有上限。呼叫端會將請求狀態記錄在上傳作業上。遭拒的請求會顯示為 `analytics_refresh_status=failed`，但不會使已提交的上傳失敗。排查重新整理延遲時，操作人員可透過 Cube 的 `action: get` 契約輪詢回傳的工作 token。
+每個 `survey_assignments` 指標都是對 response key 的相異計數，因此都不可加；其彙總只能用於維度完全相同的查詢。由於 `topic` 與 `department` 來自封閉的擷取清單、且組合數維持很小，因此會建置 `daily_topic_departments`；涉及 `keyword` 的組合則交由 PostgreSQL，因為該維度沒有上限。呼叫端會將請求狀態記錄在上傳作業上。遭拒的請求會顯示為 `analytics_refresh_status=failed`，但不會使已提交的上傳失敗。
+
+部署 pre-warm client 亦使用同一 Jobs API，不帶 `dateRange`／`preAggregations` 以選取該 profile 的全部 scheduled rollup，之後每兩秒以 `action: get` 輪詢回傳 token。只有全部 token 為 `done` 才完成；`scheduled`／`processing` 繼續等待，`missing_partition`、未知狀態或 timeout 均視為 degraded。
+
+所有 time-partitioned rollup 的 scheduled refresh 使用 `incremental: true` 和預設 `90 day` 的 update window。這個窗口不會改寫上述帶有明確歷史 `dateRange` 的 targeted refresh，所以舊月份上傳仍會建立指定 partition。
 
 Catalog 發佈獨立運作。它會遞增 `catalogVersion`；Cube 的 `schemaVersion` 回呼會在五秒的本機中繼資料快取內觀察到新版本並重新編譯。絕不可將 catalog 版本變更視為重新整理資料分割區的替代方案。

@@ -13,11 +13,6 @@ router = APIRouter(
 )
 
 
-@router.get("/")
-async def get_topics(db: Session = Depends(get_db)):
-    return topic_service(db).list()
-
-
 @router.post("/")
 async def create_topic(
     create_topic_request: CreateTopicRequest,
@@ -44,8 +39,3 @@ async def delete_topic(
     _: object = Depends(require_admin),
 ):
     return {"message": topic_service(db).delete(topic_id)}
-
-
-@router.get("/{topic_id}")
-async def get_topic(topic_id: int, db: Session = Depends(get_db)):
-    return topic_service(db).get(topic_id)

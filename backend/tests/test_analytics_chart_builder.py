@@ -309,15 +309,14 @@ def test_an_unknown_enum_value_is_rejected(catalog) -> None:
         )
 
 
-def test_builder_measures_endpoint_lists_expanded_enum_targets(client) -> None:
-    response = client.get("/analytics/builder/measures")
+def test_builder_options_bootstrap_lists_expanded_enum_targets(client) -> None:
+    response = client.post("/analytics/builder/options", json={})
 
     assert response.status_code == 200
     body = response.json()
-    keys = {item["key"] for item in body["measures"]}
+    keys = {item["key"] for item in body["available_measures"]}
     assert "topic_sentiment:MIXED" in keys
     assert "cls" in keys
-    assert body["count"] == len(body["measures"])
 
 
 def test_builder_options_resolves_in_any_selection_order(client) -> None:

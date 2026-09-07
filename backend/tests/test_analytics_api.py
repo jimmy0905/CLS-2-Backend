@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import base64
 import os
-from pathlib import Path
 import re
-from types import SimpleNamespace
 import sys
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
-
+from sqlalchemy.exc import SQLAlchemyError
 
 os.environ.setdefault("DATABASE_USER", "test")
 os.environ.setdefault("DATABASE_PASSWORD", "test")
@@ -35,22 +35,31 @@ from features.analytics.model.semantic import (
     compile_cube_query,
     validate_query,
 )
-from infrastructure.integrations.cube import CubeQueryError, CubeUnavailableError
-from infrastructure.integrations.analytics_metadata_auth import sign_metadata_request
-from infrastructure.database.session import get_db
 from features.identity.service.security import get_current_actor, require_admin
+from infrastructure.database.session import get_db
+from infrastructure.integrations.analytics_metadata_auth import sign_metadata_request
+from infrastructure.integrations.cube import (
+    CubePreAggregationNotReadyError,
+    CubeQueryError,
+    CubeQueryPendingError,
+    CubeUnavailableError,
+)
 
 
 class FakeDb:
     def __init__(self) -> None:
         self.added: list[object] = []
         self.commits = 0
+        self.rollbacks = 0
 
     def add(self, value: object) -> None:
         self.added.append(value)
 
     def commit(self) -> None:
         self.commits += 1
+
+    def rollback(self) -> None:
+        self.rollbacks += 1
 
 
 class FakeCube:
@@ -563,7 +572,7 @@ def test_openapi_describes_every_analytics_endpoint() -> None:
         "OrderSpec",
         "QuerySpec",
         "QueryCapabilitiesInput",
-        "DrilldownSpec",
+        "RecordQueryInput",
         "ChartDefinitionInput",
         "ChartInput",
         "ChartDataInput",
@@ -1501,6 +1510,46 @@ def test_cube_unavailable_is_isolated_to_an_analytics_503(monkeypatch) -> None:
     assert response.json()["detail"]["code"] == "analytics_unavailable"
 
 
+@pytest.mark.parametrize(
+    ("error", "code", "message"),
+    [
+        (
+            CubeQueryPendingError("still running"),
+            "analytics_query_pending",
+            "The analytics query is still processing; retry shortly",
+        ),
+        (
+            CubePreAggregationNotReadyError("not ready"),
+            "analytics_warming",
+            "Analytics data is preparing; retry shortly",
+        ),
+    ],
+)
+def test_cube_warming_states_are_retryable_analytics_503s(
+    monkeypatch, error, code: str, message: str
+) -> None:
+    db = FakeDb()
+    monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
+    monkeypatch.setattr(config, "DEPLOYMENT_PROFILE", "wtchk_cls")
+    monkeypatch.setattr(analytics, "_catalog", lambda db, role: _catalog())
+    monkeypatch.setattr(analytics, "_active_model_version", lambda db: None)
+    monkeypatch.setattr(analytics, "_cube_client", lambda: FakeCube(error=error))
+
+    response = _client(db).post(
+        "/analytics/query",
+        json={
+            "semantic_view": "survey_responses",
+            "metric": "survey",
+            "aggregation": "count",
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "2"
+    assert response.json()["detail"] == {"code": code, "message": message}
+    assert len(db.added) == 1
+
+
 def test_cube_query_errors_do_not_expose_generated_sql(monkeypatch) -> None:
     db = FakeDb()
     monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
@@ -1710,25 +1759,90 @@ def test_export_admission_lock_is_stable_and_profile_scoped() -> None:
     ) != analytics._export_admission_lock_key("wtchk_ecls")
 
 
-def test_drilldown_capacity_returns_a_bounded_429(monkeypatch) -> None:
+def test_projected_record_capacity_returns_a_bounded_429(monkeypatch) -> None:
     class FullSemaphore:
         def acquire(self, blocking: bool = False) -> bool:
             assert blocking is False
             return False
 
     monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
-    monkeypatch.setattr(analytics, "_DRILLDOWN_SEMAPHORE", FullSemaphore())
+    monkeypatch.setattr(analytics, "_PROJECTED_RECORDS_SEMAPHORE", FullSemaphore())
 
     response = _client(FakeDb()).post(
-        "/analytics/drilldown",
-        json={"semantic_view": "survey_responses", "fields": ["id"]},
+        "/analytics/records/query",
+        json={
+            "resource": "surveys",
+            "representation": "projected",
+            "fields": ["id"],
+        },
     )
 
     assert response.status_code == 429
     assert response.headers["retry-after"] == "2"
+    assert response.json()["detail"]["code"] == "analytics_records_capacity"
 
 
-def test_drilldown_raw_sources_are_pinned_to_the_active_snapshot(monkeypatch) -> None:
+def test_projected_record_database_failure_returns_record_oriented_503(monkeypatch) -> None:
+    class Semaphore:
+        def acquire(self, blocking: bool = False) -> bool:
+            return True
+
+        def release(self) -> None:
+            pass
+
+    db = FakeDb()
+    monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
+    monkeypatch.setattr(analytics, "_PROJECTED_RECORDS_SEMAPHORE", Semaphore())
+    monkeypatch.setattr(analytics, "_active_model_version", lambda db: None)
+    monkeypatch.setattr(analytics, "_catalog_from_version", lambda version, role: object())
+    monkeypatch.setattr(
+        analytics, "_raw_field_sources_from_version", lambda version, role: {}
+    )
+    monkeypatch.setattr(
+        analytics,
+        "execute_projected_records",
+        lambda *args, **kwargs: (_ for _ in ()).throw(SQLAlchemyError("failed")),
+    )
+
+    response = _client(db).post(
+        "/analytics/records/query",
+        json={"resource": "surveys", "representation": "projected"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "analytics_records_unavailable"
+    assert db.rollbacks == 1
+
+
+def test_projected_record_query_rejects_catalog_race(monkeypatch) -> None:
+    versions = iter(
+        [
+            SimpleNamespace(id=1, catalog_version=4),
+            SimpleNamespace(id=2, catalog_version=5),
+        ]
+    )
+    monkeypatch.setattr(config, "ANALYTICS_ENABLED", True)
+    monkeypatch.setattr(analytics, "_active_model_version", lambda db: next(versions))
+    monkeypatch.setattr(analytics, "_catalog_from_version", lambda version, role: object())
+    monkeypatch.setattr(
+        analytics, "_raw_field_sources_from_version", lambda version, role: {}
+    )
+    monkeypatch.setattr(
+        analytics,
+        "execute_projected_records",
+        lambda *args, **kwargs: {"items": [], "next_cursor": None, "has_more": False},
+    )
+
+    response = _client(FakeDb()).post(
+        "/analytics/records/query",
+        json={"resource": "surveys", "representation": "projected"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "analytics_catalog_changed"
+
+
+def test_projected_record_raw_sources_are_pinned_to_the_active_snapshot() -> None:
     snapshot = {
         "cubeCatalog": {
             "profile": "wtchk_cls",
@@ -1755,12 +1869,11 @@ def test_drilldown_raw_sources_are_pinned_to_the_active_snapshot(monkeypatch) ->
         }
     }
     version = SimpleNamespace(catalog_snapshot=snapshot)
-    monkeypatch.setattr(analytics, "_active_model_version", lambda db: version)
 
-    assert analytics._raw_field_sources(object(), "viewer") == {
+    assert analytics._raw_field_sources_from_version(version, "viewer") == {
         "public_score": ("Published Score Header", analytics.FieldType.NUMBER)
     }
-    assert analytics._raw_field_sources(object(), "admin") == {
+    assert analytics._raw_field_sources_from_version(version, "admin") == {
         "public_score": ("Published Score Header", analytics.FieldType.NUMBER),
         "private_note": ("Private Note Header", analytics.FieldType.STRING),
     }
@@ -1868,25 +1981,6 @@ def test_admin_can_define_governed_metrics_over_fixed_core_members(monkeypatch) 
     assert analytics._cube_catalog_payload([], [metric], 1)["metrics"][0][
         "sourceField"
     ] == "latitude"
-
-
-def test_field_archive_dependency_scan_covers_chart_filters_time_and_order() -> None:
-    definition = {
-        "dimensions": ["store_name"],
-        "metric": "raw_score",
-        "time_dimension": "reported_at",
-        "filters": [
-            {"member": "topic_sentiment", "operator": "equals", "value": "ok"}
-        ],
-        "order": [{"member": "raw_score", "direction": "desc"}],
-    }
-
-    assert analytics._chart_dimension_dependencies(definition) == {
-        "store_name",
-        "reported_at",
-        "topic_sentiment",
-        "raw_score",
-    }
 
 
 def test_published_chart_query_preserves_requested_limit_without_pie_shaping() -> None:

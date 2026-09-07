@@ -1,14 +1,16 @@
 # 以受治理的 Analytics 查詢取代儀表板路由
 
-> 文件狀態：遷移中的 query book；不是 endpoint canonical reference
+> 文件狀態：已完成遷移的歷史 query book；不是 endpoint canonical reference
 >
 > 導覽：[Backend 文件索引](README.md)
 >
-> 最後核對：2026-09-03
+> 最後核對：2026-09-06
 
 > 此 query book 使用 [目標優先的 Analytics 查詢契約](ANALYTICS_GOAL_FIRST_CONTRACT.md) 所述的目前 logical-target contract。
 
-這是既有 `/dashboard/*` API 的遷移 query book。它使用 `POST /analytics/query` 及受治理的 semantic catalog，而非直接 SQL。文件以 `wtchk_cls` 資料模型為準，其標準 response sentiment 是 `surveys.topic_sentiment`；不使用舊有的 `surveys.sentiment` 欄位。
+這是已移除 `/dashboard/*` API 的歷史遷移 query book。舊路徑現時回傳 `404`；現行 client 使用
+`POST /analytics/query` 及受治理的 semantic catalog。文件以 `wtchk_cls` 資料模型為準，其標準
+response sentiment 是 `surveys.topic_sentiment`；不使用舊有的 `surveys.sentiment` 欄位。
 
 如需從 catalog、field availability、filter option 到已發佈 chart data 的前端初始化順序，請參閱[前端儀表板 Analytics 工作流程](FRONTEND_DASHBOARD_ANALYTICS_WORKFLOW.md)。
 
@@ -315,9 +317,9 @@ from_date=2024-08-01T00:00:00Z&to_date=2024-09-01T00:00:00Z
 
 Semantic view 刻意排除軟刪除 survey。因此，這代表有效 survey row 中的最新更新；舊端點沒有套用此排除。對報表而言，這通常是更安全的意義。
 
-## 4. 移除 `/dashboard/*` 前需解決的差異
+## 4. 移除 `/dashboard/*` 時已處理的差異
 
-以上 semantic request 取代了分析計算。在完全移除舊端點前，三項舊有 response-shaping 行為需要明確的 frontend／product 決策：
+以上 semantic request 已取代分析計算。Hard removal 前已對下列三項舊 response-shaping 行為作出明確 frontend／product 決策：
 
 1. **`total_count_for_option`。** 舊 distribution route 在計算 option total 時會移除自身 selected-field filter。請以目標 field 呼叫 `POST /analytics/filter-options`，傳入所有*其他*共用 filter，但排除目標 field filter。其 `count` 即為等效 option total。範例：對 store-format selector，傳入 region 與 date filter，但不要傳入 `store_format` filter。
 2. **零計數 master value。** 舊 store／topic／department route 即使沒有相符 survey，也會回傳 master-data entry 並以零填補。Semantic aggregate query 刻意只回傳觀察到的 group。當 UI 必須顯示 inactive store 或未使用的 topic／department definition 時，請為對應 master resource 使用 `POST /analytics/records/query`，再將其 value 與 aggregate result join／zero-fill。

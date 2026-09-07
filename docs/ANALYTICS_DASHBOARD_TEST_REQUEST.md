@@ -1,12 +1,13 @@
-# QA 請求：Analytics 儀表板遷移驗證
+# QA 請求：Analytics 儀表板驗證
 
 > 文件狀態：現行 QA 操作手冊
 >
 > 導覽：[Backend 文件索引](README.md)
 >
-> 最後核對：2026-09-03
+> 最後核對：2026-09-06
 
-請端對端測試 `wtchk_cls` 的 Analytics 儀表板遷移。目標是確認使用者可登入、探索有效篩選器、載入預設圖表物件，並取得等同於舊儀表板端點的結果。
+請端對端測試 `wtchk_cls` 的 Analytics 儀表板。目標是確認使用者可登入、探索有效篩選器、
+載入預設圖表物件，並驗證現行 Analytics contract；已移除的 legacy endpoints 不再作比較來源。
 
 ## 測試流程
 
@@ -15,9 +16,9 @@
 3. 從 Analytics filter-options API 載入可用的篩選值。
 4. 個別及組合套用篩選條件，確認可用的相依選項正確更新。
 5. 開啟下列列出的每個儀表板圖表。
-6. 在相同篩選條件與日期脈絡下，擷取舊端點回應及新圖表／Analytics 回應。
-7. 比較總數、類別標籤、sentiment 計數、平均值、日期區間、空值與排序。
-8. 為每一項差異記錄螢幕截圖或回應內容。
+6. 在相同篩選條件與日期脈絡下，擷取圖表／Analytics 回應。
+7. 驗證總數、類別標籤、sentiment 計數、平均值、日期區間、空值與排序。
+8. 為每一項失敗記錄螢幕截圖或回應內容。
 
 ## 儀表板涵蓋範圍
 
@@ -53,9 +54,9 @@
 
 不得將 topic 篩選套用至 department 或 keyword assignment 圖表，也不得將 department 篩選套用至 topic 或 keyword 圖表。受治理 API 刻意將這些 assignment grain 分開，以避免多對多列膨脹。
 
-## 比較要求
+## 結果要求
 
-每個情境中，請以相同的有效篩選脈絡比較舊端點與新圖表資料：
+每個情境中，請以相同的有效篩選脈絡驗證圖表資料：
 
 - response-level 圖表必須使用 `surveys.topic_sentiment`，並比較正向、負向、中性與混合的計數，以及平均主題情緒分數。
 - topic、department 與 keyword 圖表必須使用各自 assignment view 的 assignment sentiment。
@@ -82,13 +83,15 @@
 1. 測試環境與建置／映像版本。
 2. 測試使用的帳號角色。
 3. 每個情境使用的篩選值與時區。
-4. 舊端點回應內容及新圖表／Analytics 回應內容；若無法擷取內容，請提供螢幕截圖。
+4. 圖表／Analytics 回應內容；若無法擷取內容，請提供螢幕截圖。
 5. 涵蓋範圍表中每個儀表板的通過／失敗結果。
 6. 任何不一致之處，包括端點、圖表 slug、篩選脈絡、預期值、實際值，以及其是否由新鮮度、零補列行為、回應塑形或真實計算差異造成。
 
 ## 驗收條件
 
-當登入與篩選器探索可運作、所有預設圖表皆可載入、所有已記錄的篩選情境均不發生未預期錯誤，且依據已記錄的時區、Cube 新鮮度、assignment grain、零補列及 `total_count_for_option` 規則後，新結果與舊計算相符，即通過遷移。
+當登入與篩選器探索可運作、所有預設圖表皆可載入、所有已記錄的篩選情境均不發生未預期
+錯誤，且結果符合時區、Cube 新鮮度、assignment grain、零補列及
+`total_count_for_option` 規則，即通過驗證。
 
 ## 可重複使用的 pytest 執行器
 
@@ -114,4 +117,6 @@ VS Code Test Explorer 會使用工作區的 `.env`，並依已提交的工作區
 
 所有 bearer-authenticated 呼叫端都可存取圖表管理路徑；E2E 測試對 `/admin/analytics/charts` 預期回傳 `200`。
 
-舊計算比較可透過 `ANALYTICS_E2E_COMPARISON_MANIFEST=/path/to/cases.json` 啟用，並可選擇設定 `ANALYTICS_E2E_LEGACY_BASE_URL`。每個 manifest case 會指定舊請求、已發佈圖表 slug，以及從新列 key 對應至等效舊列 key 的 `row_key_map`。比較前會排序列，因此測試可將計算不一致與排序差異分別報告。執行器亦會驗證驗證流程、已發佈圖表／model-version 一致性、篩選器探索、非 UTC 的有界日期、數值／無匹配篩選、assignment-grain 隔離、新鮮度中繼資料，以及 static bearer 存取。
+執行器只驗證現行 Analytics：已發佈圖表／model-version 一致性、篩選器探索、非 UTC 的有界
+日期、數值／無匹配篩選、assignment-grain 隔離、新鮮度中繼資料及 static bearer 存取。
+Legacy comparison manifest 與 legacy base URL environment 已移除。

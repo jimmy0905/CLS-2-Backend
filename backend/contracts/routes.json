@@ -35,11 +35,6 @@
     "path": "/admin/analytics/dashboard-layout/publish"
   },
   {
-    "method": "GET",
-    "operation_id": "get_builder_measures_analytics_builder_measures_get",
-    "path": "/analytics/builder/measures"
-  },
-  {
     "method": "POST",
     "operation_id": "post_builder_options_analytics_builder_options_post",
     "path": "/analytics/builder/options"
@@ -68,11 +63,6 @@
     "method": "POST",
     "operation_id": "get_published_chart_data_analytics_charts__chart_id__data_post",
     "path": "/analytics/charts/{chart_id}/data"
-  },
-  {
-    "method": "POST",
-    "operation_id": "drilldown_analytics_analytics_drilldown_post",
-    "path": "/analytics/drilldown"
   },
   {
     "method": "POST",
@@ -115,11 +105,6 @@
     "path": "/analytics/records/query"
   },
   {
-    "method": "GET",
-    "operation_id": "get_channels_channels__get",
-    "path": "/channels/"
-  },
-  {
     "method": "POST",
     "operation_id": "create_channel_channels__post",
     "path": "/channels/"
@@ -130,69 +115,9 @@
     "path": "/channels/{channel_id}"
   },
   {
-    "method": "GET",
-    "operation_id": "get_channel_channels__channel_id__get",
-    "path": "/channels/{channel_id}"
-  },
-  {
     "method": "PUT",
     "operation_id": "update_channel_channels__channel_id__put",
     "path": "/channels/{channel_id}"
-  },
-  {
-    "method": "GET",
-    "operation_id": "get_channel_and_delivery_service_distribution_dashboard_channel_and_delivery_service_distribution_get",
-    "path": "/dashboard/channel-and-delivery-service-distribution"
-  },
-  {
-    "method": "GET",
-    "operation_id": "get_data_coverage_dashboard_data_coverage_get",
-    "path": "/dashboard/data-coverage"
-  },
-  {
-    "method": "GET",
-    "operation_id": "get_department_distribution_dashboard_department_distribution_get",
-    "path": "/dashboard/department-distribution"
-  },
-  {
-    "method": "GET",
-    "operation_id": "get_keyword_analysis_dashboard_keyword_analysis_get",
-    "path": "/dashboard/keyword-analysis"
-  },
-  {
-    "method": "GET",
-    "operation_id": "get_last_updated_date_dashboard_last_updated_date_get",
-    "path": "/dashboard/last-updated-date"
-  },
-  {
-    "method": "GET",
-    "operation_id": "get_sentiment_distribution_dashboard_sentiment_distribution_get",
-    "path": "/dashboard/sentiment-distribution"
-  },
-  {
-    "method": "GET",
-    "operation_id": "get_store_column_sentiment_distribution_dashboard_store_column_sentiment_distribution_get",
-    "path": "/dashboard/store-column-sentiment-distribution"
-  },
-  {
-    "method": "GET",
-    "operation_id": "get_store_distribution_dashboard_store_distribution_get",
-    "path": "/dashboard/store-distribution"
-  },
-  {
-    "method": "GET",
-    "operation_id": "get_topic_distribution_dashboard_topic_distribution_get",
-    "path": "/dashboard/topic-distribution"
-  },
-  {
-    "method": "GET",
-    "operation_id": "get_topic_sentiment_score_dashboard_topic_sentiment_score_get",
-    "path": "/dashboard/topic-sentiment-score"
-  },
-  {
-    "method": "GET",
-    "operation_id": "get_delivery_services_delivery_services__get",
-    "path": "/delivery_services/"
   },
   {
     "method": "POST",
@@ -202,11 +127,6 @@
   {
     "method": "DELETE",
     "operation_id": "delete_delivery_service_delivery_services__delivery_service_id__delete",
-    "path": "/delivery_services/{delivery_service_id}"
-  },
-  {
-    "method": "GET",
-    "operation_id": "get_delivery_service_delivery_services__delivery_service_id__get",
     "path": "/delivery_services/{delivery_service_id}"
   },
   {
@@ -325,28 +245,13 @@
     "path": "/strategy/get_top_k_performance_stores"
   },
   {
-    "method": "GET",
-    "operation_id": "get_surveys_surveys_get",
-    "path": "/surveys"
-  },
-  {
     "method": "POST",
     "operation_id": "create_survey_surveys__post",
     "path": "/surveys/"
   },
   {
-    "method": "GET",
-    "operation_id": "download_surveys_surveys_download_get",
-    "path": "/surveys/download"
-  },
-  {
     "method": "DELETE",
     "operation_id": "delete_survey_surveys__survey_id__delete",
-    "path": "/surveys/{survey_id}"
-  },
-  {
-    "method": "GET",
-    "operation_id": "get_survey_surveys__survey_id__get",
     "path": "/surveys/{survey_id}"
   },
   {
@@ -380,11 +285,6 @@
     "path": "/tasks/upload_tasks/{upload_task_id}"
   },
   {
-    "method": "GET",
-    "operation_id": "get_topics_topics__get",
-    "path": "/topics/"
-  },
-  {
     "method": "POST",
     "operation_id": "create_topic_topics__post",
     "path": "/topics/"
@@ -392,11 +292,6 @@
   {
     "method": "DELETE",
     "operation_id": "delete_topic_topics__topic_id__delete",
-    "path": "/topics/{topic_id}"
-  },
-  {
-    "method": "GET",
-    "operation_id": "get_topic_topics__topic_id__get",
     "path": "/topics/{topic_id}"
   },
   {

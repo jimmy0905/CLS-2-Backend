@@ -939,8 +939,24 @@ function preAggregationRefreshEvery(
   return normalized;
 }
 
-function compileRollup(rollup, metrics = [], refreshEvery = undefined) {
+function preAggregationUpdateWindow(
+  value = process.env.ANALYTICS_PRE_AGGREGATION_UPDATE_WINDOW || '90 day',
+) {
+  const normalized = String(value).trim();
+  if (!REFRESH_INTERVAL.test(normalized)) {
+    throw new Error('Invalid pre-aggregation update window');
+  }
+  return normalized;
+}
+
+function compileRollup(
+  rollup,
+  metrics = [],
+  refreshEvery = undefined,
+  updateWindow = undefined,
+) {
   const refreshInterval = preAggregationRefreshEvery(refreshEvery);
+  const incrementalWindow = preAggregationUpdateWindow(updateWindow);
   const metricBySlug = new Map(metrics.map((metric) => [metric.slug, metric]));
   const materializedMeasures = rollup.measures.flatMap((member) => {
     const metric = metricBySlug.get(member);
@@ -973,6 +989,12 @@ function compileRollup(rollup, metrics = [], refreshEvery = undefined) {
     '        refresh_key:',
     `          every: ${refreshInterval}`,
   );
+  if (rollup.timeDimension) {
+    result.push(
+      '          incremental: true',
+      `          update_window: ${incrementalWindow}`,
+    );
+  }
   return result.join('\n');
 }
 
@@ -981,8 +1003,10 @@ function injectCatalog(
   catalog,
   semanticView = 'survey_responses',
   refreshEvery = undefined,
+  updateWindow = undefined,
 ) {
   const refreshInterval = preAggregationRefreshEvery(refreshEvery);
+  const incrementalWindow = preAggregationUpdateWindow(updateWindow);
   const fields = compileFieldMap(catalog, semanticView);
   const dimensions = catalog.fields
     .filter((field) => field.semanticView === semanticView && field.sourceKind === 'raw_json')
@@ -998,10 +1022,12 @@ function injectCatalog(
       rollup,
       catalog.metrics.filter((metric) => metric.semanticView === semanticView),
       refreshInterval,
+      incrementalWindow,
     ))
     .join('\n');
   return core
     .replaceAll('__PRE_AGGREGATION_REFRESH_EVERY__', refreshInterval)
+    .replaceAll('__PRE_AGGREGATION_UPDATE_WINDOW__', incrementalWindow)
     .replace('      # __LOCAL_DIMENSIONS__', dimensions || '      # no published local dimensions')
     .replace('      # __LOCAL_MEASURES__', measures || '      # no published local measures')
     .replace('      # __LOCAL_PREAGGREGATIONS__', rollups || '      # no published chart rollups');
@@ -1135,6 +1161,7 @@ module.exports = {
   enforceSecurityContext,
   injectCatalog,
   preAggregationRefreshEvery,
+  preAggregationUpdateWindow,
   signature,
   sqlLiteral,
   validateCatalog,

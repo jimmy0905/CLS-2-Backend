@@ -8,6 +8,7 @@ from openpyxl import load_workbook
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from features.analytics.service.exports import (
+    _collect_record_rows,
     authorize_export_role,
     build_export_path,
     cube_response_rows,
@@ -15,6 +16,55 @@ from features.analytics.service.exports import (
     remove_export_file,
     write_export,
 )
+
+
+def test_projected_record_export_keeps_only_selected_flat_fields(monkeypatch) -> None:
+    from features.analytics.endpoints import analytics
+    from features.analytics.repository import records
+    from infrastructure.database import session as database_session
+
+    class FakeDb:
+        def close(self) -> None:
+            pass
+
+    calls = []
+
+    def execute_projected_records(db, **kwargs):
+        calls.append(kwargs)
+        return {
+            "items": [{"survey_id": "S-1", "comment": "Helpful"}],
+            "next_cursor": None,
+            "has_more": False,
+        }
+
+    monkeypatch.setattr(database_session, "SessionLocal", FakeDb)
+    monkeypatch.setattr(analytics, "_active_model_version", lambda db: None)
+    monkeypatch.setattr(
+        analytics,
+        "_catalog_from_version",
+        lambda version, role: object(),
+    )
+    monkeypatch.setattr(
+        analytics,
+        "_raw_field_sources_from_version",
+        lambda version, role: {},
+    )
+    monkeypatch.setattr(records, "execute_projected_records", execute_projected_records)
+
+    rows = _collect_record_rows(
+        {
+            "resource": "surveys",
+            "representation": "projected",
+            "fields": ["survey_id", "comment"],
+            "size": 250,
+        },
+        "viewer",
+        1_000,
+    )
+
+    assert rows == [{"survey_id": "S-1", "comment": "Helpful"}]
+    assert calls[0]["fields"] == ("survey_id", "comment")
+    assert calls[0]["role"] == "viewer"
 
 
 def test_export_path_is_confined_to_the_export_root(tmp_path: Path) -> None:

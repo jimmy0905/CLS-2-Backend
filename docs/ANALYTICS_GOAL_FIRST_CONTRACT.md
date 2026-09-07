@@ -54,7 +54,10 @@ Enum-value target 只提供 `count`。assignment sentiment 另有三個受治理
 
 ## 探索流程
 
-載入 `GET /analytics/builder/measures`，選擇一個可衡量 target 及其中一項 aggregation，接著以 `POST /analytics/builder/options` 探索相容 dimension。直接呼叫 `POST /analytics/query` 時，傳送相同的 metric、aggregation 及已選 member；伺服器會解析 grain。`GET /analytics/catalog` 仍可用於受治理中繼資料及 view-scope 的管理／探索端點。
+先以 `POST /analytics/builder/options` 及空本文 `{}` 載入 `available_measures`，選擇一個可衡量
+target 及其中一項 aggregation，接著繼續呼叫相同 endpoint 探索相容 dimension。直接呼叫
+`POST /analytics/query` 時，傳送相同的 metric、aggregation 及已選 member；伺服器會解析
+grain。`GET /analytics/catalog` 仍可用於受治理中繼資料及 view-scope 的管理／探索端點。
 
 ```http
 POST /analytics/query-capabilities
@@ -155,7 +158,8 @@ Catalog field 包含：
 - `time_dimension` 不可同時出現於 `dimensions`；前端若以它繪製 line／area，必須同時提供 `time_granularity`。
 - `order.member` 必須是已選 dimension、已選 time dimension 或 `value`。
 - query、chart data 與 aggregate export 皆使用此契約。
-- `filter-options`、record query 與 drilldown 保留各自專用的回應形狀。
+- `filter-options` 與 record query 保留各自專用的回應形狀；flat cursor projection 使用
+  `record_query.representation = "projected"`。
 
 每個 aggregate result 都使用 flat row，並有一個固定 result key：
 

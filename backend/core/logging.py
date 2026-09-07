@@ -46,6 +46,11 @@ _STRUCTURED_EXTRA_FIELDS = (
     "error_type",
     "upload_task_id",
     "export_job_id",
+    "sequence",
+    "elapsed_seconds",
+    "remaining_seconds",
+    "profile",
+    "job_count",
 )
 
 

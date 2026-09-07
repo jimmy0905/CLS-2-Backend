@@ -1026,7 +1026,7 @@ def validate_query_fields(
     role: str = "viewer",
     time_dimension: str | None = None,
 ) -> None:
-    """Validate dimensions and filters for aggregate queries and drilldowns."""
+    """Validate dimensions and filters for aggregates and record projections."""
 
     if role not in {"viewer", "admin"}:
         raise AnalyticsValidationError("Unknown analytics role")
