@@ -155,7 +155,7 @@ Catalog field 包含：
 - `semantic_view` 不再是 query selector。舊用戶端仍可傳送它，但伺服器會忽略它並回傳實際推導出的 grain。
 - 已移除的 `metrics` field 會以 `422` 拒絕。
 - 只接受在 `metric_targets` 下發佈的 pair。
-- `time_dimension` 不可同時出現於 `dimensions`；前端若以它繪製 line／area，必須同時提供 `time_granularity`。
+- `time_dimension` 不可同時出現於 `dimensions`；前端若以它繪製 line／area，必須同時提供 `time_granularity`。只提供 `time_range` 時，Server 以 `reported_at` 過濾但不在 response 加入時間軸。
 - `order.member` 必須是已選 dimension、已選 time dimension 或 `value`。
 - query、chart data 與 aggregate export 皆使用此契約。
 - `filter-options` 與 record query 保留各自專用的回應形狀；flat cursor projection 使用

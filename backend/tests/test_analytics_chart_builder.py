@@ -192,6 +192,51 @@ def test_routing_prefers_the_narrowest_grain_that_answers_the_selection(
     )[0] == "survey_assignments"
 
 
+@pytest.mark.parametrize(
+    ("breakdown", "measure", "expected_view"),
+    [
+        ("department", "department_sentiment", "survey_departments"),
+        ("topic", "topic_assignment_sentiment", "survey_topics"),
+    ],
+)
+def test_store_breakdowns_resolve_to_the_safe_single_assignment_grain(
+    catalog, breakdown: str, measure: str, expected_view: str
+) -> None:
+    semantic_view, query, warnings = _resolved(
+        {
+            "measure": {"field": measure},
+            "aggregation": "average",
+            "breakdown": breakdown,
+            "filters": [
+                {
+                    "member": "store_name_english",
+                    "operator": "equals",
+                    "value": "Store A",
+                }
+            ],
+            "time_range": ["2026-08-01", "2026-08-31"],
+            "timezone": "Asia/Hong_Kong",
+        },
+        catalog,
+    )
+
+    assert warnings == []
+    assert semantic_view == expected_view
+    assert query is not None
+    assert query.dimensions == (breakdown,)
+    assert query.metric == measure
+    assert query.aggregation.value == "average"
+    assert query.time_dimension is None
+    assert query.filters[0].member == "store_name_english"
+    assert analytics._query_schema(query, catalog, "viewer")["time_dimension"] is None
+    assert compile_cube_query(query, catalog, "viewer")["timeDimensions"] == [
+        {
+            "dimension": f"{expected_view}.reported_at",
+            "dateRange": ["2026-08-01", "2026-08-31"],
+        }
+    ]
+
+
 def test_raw_query_infers_its_view_and_ignores_legacy_view_hint(catalog) -> None:
     payload = {
         "dimensions": ("keyword",),

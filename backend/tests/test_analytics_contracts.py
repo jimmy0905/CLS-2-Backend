@@ -181,6 +181,40 @@ def test_query_validation_blocks_unanswerable_grains_and_bad_filter_values(
         )
 
 
+def test_query_filter_accepts_one_thousand_values_but_not_more(
+    catalog: SemanticCatalog,
+) -> None:
+    values = [f"Store {index}" for index in range(1_000)]
+    query = validate_query(
+        QuerySpec(
+            metric="survey",
+            aggregation="count",
+            filters=[
+                FilterSpec(member="store_name", operator="in", values=values)
+            ],
+        ),
+        catalog,
+    )
+
+    assert query.semantic_view == "survey_responses"
+    assert len(query.filters[0].values or ()) == 1_000
+    with pytest.raises(AnalyticsValidationError, match="invalid values list"):
+        validate_query(
+            QuerySpec(
+                metric="survey",
+                aggregation="count",
+                filters=[
+                    FilterSpec(
+                        member="store_name",
+                        operator="in",
+                        values=[*values, "Store 1000"],
+                    )
+                ],
+            ),
+            catalog,
+        )
+
+
 def test_compiler_emits_governed_measure_and_value_order(
     catalog: SemanticCatalog,
 ) -> None:

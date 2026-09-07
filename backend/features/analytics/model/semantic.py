@@ -19,6 +19,7 @@ from core.time import resolve_timezone
 
 MAX_DIMENSIONS = 3
 MAX_FILTERS = 20
+MAX_FILTER_VALUES = 1_000
 MAX_AGGREGATE_ROWS = 1_000
 
 _SAFE_IDENTIFIER = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
@@ -802,13 +803,21 @@ class QuerySpec(BaseModel):
     def _time_contract(self) -> "QuerySpec":
         if "value" in self.dimensions or self.time_dimension == "value":
             raise ValueError("value is the reserved output key for the selected metric")
-        if (self.time_range is not None or self.time_granularity is not None) and not self.time_dimension:
-            raise ValueError("time range and granularity require a time dimension")
+        if self.time_granularity is not None and not self.time_dimension:
+            raise ValueError("time granularity requires a time dimension")
         if self.time_dimension in self.dimensions:
             raise ValueError(
                 "a time dimension must not also be selected as a raw dimension"
             )
         return self
+
+
+def _query_time_filter_dimension(query: QuerySpec) -> str | None:
+    """Use reported_at for a period-only query without exposing a time axis."""
+
+    return query.time_dimension or (
+        "reported_at" if query.time_range is not None else None
+    )
 
 
 def _visible(member: _CatalogModel, role: str) -> bool:
@@ -886,7 +895,11 @@ def _validate_filter(filter_spec: FilterSpec, field: CatalogField) -> None:
             )
         values = filter_spec.values
         expected = 2 if filter_spec.operator == "between" else None
-        if not values or len(values) > 100 or (expected and len(values) != expected):
+        if (
+            not values
+            or len(values) > MAX_FILTER_VALUES
+            or (expected and len(values) != expected)
+        ):
             raise AnalyticsValidationError(
                 f"Filter {filter_spec.operator} has an invalid values list"
             )
@@ -1060,10 +1073,11 @@ def validate_query(
     role: str = "viewer",
 ) -> QuerySpec:
     query = query if isinstance(query, QuerySpec) else QuerySpec.model_validate(query)
+    time_filter_dimension = _query_time_filter_dimension(query)
     members = (
         *query.dimensions,
         *(filter_spec.member for filter_spec in query.filters),
-        *((query.time_dimension,) if query.time_dimension is not None else ()),
+        *((time_filter_dimension,) if time_filter_dimension is not None else ()),
     )
     resolution = resolve_semantic_view(
         catalog,
@@ -1098,7 +1112,7 @@ def validate_query(
         filters=query.filters,
         catalog=catalog,
         role=role,
-        time_dimension=query.time_dimension,
+        time_dimension=time_filter_dimension,
     )
     resolve_query_metric(query, catalog, role)
 
@@ -1222,8 +1236,9 @@ def compile_cube_query(
     if filters:
         result["filters"] = filters
 
-    if query.time_dimension:
-        time_dimension: dict[str, Any] = {"dimension": prefix + query.time_dimension}
+    time_filter_dimension = _query_time_filter_dimension(query)
+    if time_filter_dimension:
+        time_dimension: dict[str, Any] = {"dimension": prefix + time_filter_dimension}
         if query.time_range:
             time_dimension["dateRange"] = list(query.time_range)
         if query.time_granularity:

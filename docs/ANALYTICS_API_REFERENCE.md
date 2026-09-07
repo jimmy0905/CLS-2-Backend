@@ -62,9 +62,9 @@ Authorization: Bearer <profile-api-bearer>
 | `dimensions` | 0–3 個已發佈 dimension slug；連同 filter／time 決定 grain。 |
 | `metric` | resolved grain 可回答的一個邏輯 target。 |
 | `aggregation` | target 在 resolved grain 發佈的一種方法；使用 `average`，而非 `avg`。 |
-| `filters` | 最多 20 個具型別 filter。operator 包含 `equals`、`not_equals`、`contains`、`not_contains`、`starts_with`、`ends_with`、比較 operator、`in`、`not_in`、`set`、`not_set` 與 `between`（依 member type 決定）。 |
-| `time_dimension` | 已發佈的 date/time dimension；可搭配 `time_range`、`time_granularity`，但不得同時作為一般 dimension。 |
-| `time_range` | 兩個 ISO-8601 date/datetime 值，每個最多 64 字元，開始不得晚於結束。 |
+| `filters` | 最多 20 個具型別 filter。operator 包含 `equals`、`not_equals`、`contains`、`not_contains`、`starts_with`、`ends_with`、比較 operator、`in`、`not_in`、`set`、`not_set` 與 `between`（依 member type 決定）；`in`／`not_in` 最多接受 1,000 個 values。 |
+| `time_dimension` | 已發佈的 date/time dimension；搭配 `time_granularity` 時必填，且不得同時作為一般 dimension。 |
+| `time_range` | 兩個 ISO-8601 date/datetime 值，每個最多 64 字元，開始不得晚於結束。未提供 `time_dimension` 時，只以 `reported_at` 過濾，不在 response 加入時間軸。 |
 | `time_granularity` | 當 time member 支援時，可用 `day`、`week`、`month`、`quarter`、`year` 等 Cube 粒度。 |
 | `timezone` | 可選 IANA timezone，例如 `Asia/Hong_Kong`；用於 time-range boundary、time bucket 與 timestamp display。未提供時為 UTC。 |
 | `order` | `{ "member": "<slug-or-value>", "direction": "asc" \| "desc" }` 清單。member 必須是已選 dimension、selected time dimension 或 `value`。 |
@@ -184,6 +184,9 @@ freshness，加上 `semantic_view_reason`。
 
 Builder 是 goal-first contract 的 column-first facade；它不會繞過 catalog visibility、typed
 filters、grain safety 或 Cube security。無法解析的組合回傳 `422`。
+`time_range` 可在沒有 time series 時獨立使用；此時 Server 以 resolved view 的
+`reported_at` 限制期間，而 response 的 `schema.time_dimension` 維持 `null`。只有選擇
+time series／`time_granularity` 時才會產生時間軸。
 
 ### `GET /analytics/catalog/availability`
 
