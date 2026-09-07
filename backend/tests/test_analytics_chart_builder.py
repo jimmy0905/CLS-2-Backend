@@ -274,6 +274,57 @@ def test_comparison_breakdowns_resolve_to_the_safe_single_assignment_grain(
     ]
 
 
+@pytest.mark.parametrize(
+    ("source_member", "source_value", "expected_view"),
+    [
+        ("store_name_english", "Store A", "survey_responses"),
+        ("department", "Department A", "survey_departments"),
+        ("topic", "Topic A", "survey_topics"),
+    ],
+)
+def test_comparison_survey_breakdown_resolves_at_each_source_grain(
+    catalog,
+    source_member: str,
+    source_value: str,
+    expected_view: str,
+) -> None:
+    semantic_view, query, warnings = _resolved(
+        {
+            "measure": {"field": "survey"},
+            "aggregation": "count",
+            "breakdown": "survey_id",
+            "filters": [
+                {
+                    "member": source_member,
+                    "operator": "equals",
+                    "value": source_value,
+                }
+            ],
+            "time_range": ["2026-08-01", "2026-08-31"],
+            "timezone": "Asia/Hong_Kong",
+        },
+        catalog,
+    )
+
+    assert warnings == []
+    assert semantic_view == expected_view
+    assert query is not None
+    assert query.dimensions == ("survey_id",)
+    assert query.metric == "survey"
+    assert query.aggregation.value == "count"
+    assert query.time_dimension is None
+    assert query.filters[0].member == source_member
+    assert (
+        analytics._query_schema(query, catalog, "viewer")["time_dimension"] is None
+    )
+    assert compile_cube_query(query, catalog, "viewer")["timeDimensions"] == [
+        {
+            "dimension": f"{expected_view}.reported_at",
+            "dateRange": ["2026-08-01", "2026-08-31"],
+        }
+    ]
+
+
 def test_raw_query_infers_its_view_and_ignores_legacy_view_hint(catalog) -> None:
     payload = {
         "dimensions": ("keyword",),

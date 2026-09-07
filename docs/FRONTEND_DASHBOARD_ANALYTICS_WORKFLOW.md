@@ -150,18 +150,26 @@ Target 同樣需要以單位說明，避免使用者不小心變更問題：
 
 Comparison 使用單一矩陣模型：每次建立 2–6 個 comparison groups，每組各自選擇同一種
 source object 的 value 與 reported-at period，再共同按另一個 dimension 比較。為避免把同一份
-問卷的 assignment 重複次數錯當成 sentiment 權重，Frontend 只公開以下四個方向：
+問卷的 assignment 重複次數錯當成 sentiment 權重，Frontend 只公開以下方向；Survey 是
+breakdown-only dimension，不會新增 Survey source route：
 
 | Source object | Breakdown | Semantic view | 預設 measure |
 | --- | --- | --- | --- |
 | Store | Department | `survey_departments` | `department_sentiment` + `average` |
 | Store | Topic | `survey_topics` | `topic_assignment_sentiment` + `average` |
+| Store | Survey ID | `survey_responses` | `survey` + `count` |
 | Department | Store | `survey_departments` | `department_sentiment` + `average` |
+| Department | Survey ID | `survey_departments` | `survey` + `count` |
 | Topic | Store | `survey_topics` | `topic_assignment_sentiment` + `average` |
+| Topic | Survey ID | `survey_topics` | `survey` + `count` |
 
 Department ↔ Topic 不公開。選擇其他 measure 時，Frontend 必須將
 `POST /analytics/builder/options {}` 的 `available_measures`、measure 的
-`semantic_views`，以及 catalog 對 resolved view 發佈的 target／aggregation 取交集。
+`semantic_views`，以及 catalog 對 resolved view 發佈的 target／aggregation 取交集，並要求
+catalog metric `entity` 符合 breakdown 的業務家族。Department、Topic、Survey 分別只接受
+`department_assignment`、`topic_assignment`、`survey`；Department／Topic → Store 則沿用
+source assignment family。Measure selector 優先顯示 catalog 的 domain-specific aggregation
+label，例如 `Average Department Assignment Sentiment`，不顯示其他 family 的可執行 measure。
 
 例如 Store A 在八月及九月按 Department 比較時，Frontend 會為每個 object-period group
 發出一個 query。九月的 request 為：
@@ -196,9 +204,13 @@ breakdown 與 filters 共用。可以比較同一 object 的不同期間、不�
 不得重複 source object、breakdown member 或 `reported_at`，並最多 18 個，保留兩個位置給
 source object 與執行時的 target-value `in` filter。
 
-完整 breakdown 名單從 `POST /analytics/records/query` 的 `full` representation 讀取
-`stores`、`departments` 或 `topics`，每頁 1,000 筆並跟隨 `has_more`。空白名稱會略過，
-相同顯示值會去重。為避免 aggregate 的 1,000-row limit 把未回傳項目誤判為沒有資料，
+完整 breakdown 名單從 `POST /analytics/records/query` 讀取。Store、Department、Topic 使用
+`full` representation，每頁 1,000 筆並跟隨 `has_more`；Survey 使用 `surveys` 的
+`projected` representation，只選 `survey_id`、每頁 250 筆並跟隨 `next_cursor`。Survey pages
+必須具有一致的 `model_version`，缺少後續 cursor 或任一頁失敗時整批失敗。所有空白顯示值
+會略過並去重。這裡的 Survey 指 feedback source 的 `survey_id`，不是 Survey Title，也不是
+個別 response 的 database `id`；沒有任何 response 的外部 survey definition 不會出現在名單。
+為避免 aggregate 的 1,000-row limit 把未回傳項目誤判為沒有資料，
 Frontend 會按最多 1,000 個 master values 分段，對所有 `group × chunk` jobs 維持全域最多兩個
 並行 builder queries，再驗證所有回應的 semantic view、schema、metric、timezone 與
 `model_version` 相同後合併。
