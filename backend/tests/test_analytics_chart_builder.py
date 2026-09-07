@@ -193,14 +193,51 @@ def test_routing_prefers_the_narrowest_grain_that_answers_the_selection(
 
 
 @pytest.mark.parametrize(
-    ("breakdown", "measure", "expected_view"),
+    (
+        "breakdown",
+        "measure",
+        "expected_view",
+        "source_member",
+        "source_value",
+    ),
     [
-        ("department", "department_sentiment", "survey_departments"),
-        ("topic", "topic_assignment_sentiment", "survey_topics"),
+        (
+            "department",
+            "department_sentiment",
+            "survey_departments",
+            "store_name_english",
+            "Store A",
+        ),
+        (
+            "topic",
+            "topic_assignment_sentiment",
+            "survey_topics",
+            "store_name_english",
+            "Store A",
+        ),
+        (
+            "store_name_english",
+            "department_sentiment",
+            "survey_departments",
+            "department",
+            "Department A",
+        ),
+        (
+            "store_name_english",
+            "topic_assignment_sentiment",
+            "survey_topics",
+            "topic",
+            "Topic A",
+        ),
     ],
 )
-def test_store_breakdowns_resolve_to_the_safe_single_assignment_grain(
-    catalog, breakdown: str, measure: str, expected_view: str
+def test_comparison_breakdowns_resolve_to_the_safe_single_assignment_grain(
+    catalog,
+    breakdown: str,
+    measure: str,
+    expected_view: str,
+    source_member: str,
+    source_value: str,
 ) -> None:
     semantic_view, query, warnings = _resolved(
         {
@@ -209,9 +246,9 @@ def test_store_breakdowns_resolve_to_the_safe_single_assignment_grain(
             "breakdown": breakdown,
             "filters": [
                 {
-                    "member": "store_name_english",
+                    "member": source_member,
                     "operator": "equals",
-                    "value": "Store A",
+                    "value": source_value,
                 }
             ],
             "time_range": ["2026-08-01", "2026-08-31"],
@@ -227,7 +264,7 @@ def test_store_breakdowns_resolve_to_the_safe_single_assignment_grain(
     assert query.metric == measure
     assert query.aggregation.value == "average"
     assert query.time_dimension is None
-    assert query.filters[0].member == "store_name_english"
+    assert query.filters[0].member == source_member
     assert analytics._query_schema(query, catalog, "viewer")["time_dimension"] is None
     assert compile_cube_query(query, catalog, "viewer")["timeDimensions"] == [
         {

@@ -146,13 +146,13 @@ Target 同樣需要以單位說明，避免使用者不小心變更問題：
 
 例如，在 `survey_topics` 中以 `topic` 分組並使用 `topic_assignment/count` 回答「有多少個 topic assignment？」；改用 `survey/count` 則回答「有多少份問卷提到此 topic？」。
 
-## Comparison 的單一 Entity Breakdown
+## Comparison 的多組 Object × Breakdown
 
-Comparison 除了「相同 entity／不同期間」與「不同 entity／相同期間」，也支援固定一個
-entity，再按另一個 assignment dimension 比較。為避免把同一份問卷的 assignment 重複次數
-錯當成 sentiment 權重，Frontend 只公開以下四個組合：
+Comparison 使用單一矩陣模型：每次建立 2–6 個 comparison groups，每組各自選擇同一種
+source object 的 value 與 reported-at period，再共同按另一個 dimension 比較。為避免把同一份
+問卷的 assignment 重複次數錯當成 sentiment 權重，Frontend 只公開以下四個方向：
 
-| 固定 entity | Breakdown | Semantic view | 預設 measure |
+| Source object | Breakdown | Semantic view | 預設 measure |
 | --- | --- | --- | --- |
 | Store | Department | `survey_departments` | `department_sentiment` + `average` |
 | Store | Topic | `survey_topics` | `topic_assignment_sentiment` + `average` |
@@ -163,7 +163,8 @@ Department ↔ Topic 不公開。選擇其他 measure 時，Frontend 必須將
 `POST /analytics/builder/options {}` 的 `available_measures`、measure 的
 `semantic_views`，以及 catalog 對 resolved view 發佈的 target／aggregation 取交集。
 
-例如 Store A 按 Department 比較：
+例如 Store A 在八月及九月按 Department 比較時，Frontend 會為每個 object-period group
+發出一個 query。九月的 request 為：
 
 ```json
 {
@@ -175,29 +176,39 @@ Department ↔ Topic 不公開。選擇其他 measure 時，Frontend 必須將
       "member": "store_name_english",
       "operator": "equals",
       "value": "Store A"
+    },
+    {
+      "member": "department",
+      "operator": "in",
+      "values": ["...master-data chunk..."]
     }
   ],
-  "time_range": ["2026-08-01", "2026-08-31"],
+  "time_range": ["2026-09-01", "2026-09-30"],
   "timezone": "Asia/Hong_Kong",
   "order": [{"member": "value", "direction": "desc"}],
   "limit": 1000
 }
 ```
 
-這個模式使用一個 shared date range，沒有 time series。額外 filters 不得重複固定 entity、
-breakdown member 或 `reported_at`，並最多 18 個，保留兩個位置給固定 entity 與執行時的
-target-value `in` filter。
+每個 group 都沒有 time series，object value 及 date range 獨立；其餘 metric、aggregation、
+breakdown 與 filters 共用。可以比較同一 object 的不同期間、不同 objects 的相同期間，或兩者
+同時不同。完全相同的 object-period group 會被拒絕；期間可以重疊或有不同日數。額外 filters
+不得重複 source object、breakdown member 或 `reported_at`，並最多 18 個，保留兩個位置給
+source object 與執行時的 target-value `in` filter。
 
 完整 breakdown 名單從 `POST /analytics/records/query` 的 `full` representation 讀取
 `stores`、`departments` 或 `topics`，每頁 1,000 筆並跟隨 `has_more`。空白名稱會略過，
 相同顯示值會去重。為避免 aggregate 的 1,000-row limit 把未回傳項目誤判為沒有資料，
-Frontend 會按最多 1,000 個 master values 分段，以最多兩個並行 builder query 執行，再驗證
-所有回應的 semantic view、schema、metric 與 `model_version` 相同後合併。
+Frontend 會按最多 1,000 個 master values 分段，對所有 `group × chunk` jobs 維持全域最多兩個
+並行 builder queries，再驗證所有回應的 semantic view、schema、metric、timezone 與
+`model_version` 相同後合併。
 
-有數值的 rows 依 metric 由高至低排列並交給 chart；缺少 aggregate row 的 master value 只在
-完整表格中顯示 `No data`，不會轉成 `0`。若全部沒有資料，仍顯示完整 master-data 表格及
-chart empty state。Assignment sentiment 的數值定義維持 `POSITIVE=1`、`NEGATIVE=0`、
-`NEUTRAL=-1`，所以平均值範圍是 `-1` 至 `1`。
+完整表格以 breakdown value 為 row、comparison group 為 column；缺少 aggregate row 的 cell
+顯示 `No data`，不會轉成 `0`。有資料的 rows 按各組最高 metric 降序排列，完全無資料者置底
+並按名稱排序。Numeric chart 提供 grouped bar 或 heatmap，只顯示相同排序的前 20 個有資料
+values，不合併成 `Other`；完整 master-data list 永遠保留在表格。若全部沒有資料，仍顯示完整
+表格及 chart empty state。`count`／`sum` 比較不同日數期間時會顯示提示。Assignment sentiment
+定義維持 `POSITIVE=1`、`NEGATIVE=0`、`NEUTRAL=-1`，所以平均值範圍是 `-1` 至 `1`。
 
 ## 圖表選擇與呈現
 
