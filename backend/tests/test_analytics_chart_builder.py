@@ -279,14 +279,14 @@ def test_two_builder_dimensions_are_marked_primary_and_secondary(catalog) -> Non
     assert schema["dimensions"] == [
         {
             "field": "delivery_service_name",
-            "label": "Delivery Service",
+                "label": "Delivery Service Name",
             "type": "string",
             "key": "delivery_service_name",
             "group_role": "primary",
         },
         {
             "field": "channel_name",
-            "label": "Channel",
+                "label": "Channel Name",
             "type": "string",
             "key": "channel_name",
             "group_role": "secondary",

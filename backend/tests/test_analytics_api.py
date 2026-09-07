@@ -912,7 +912,11 @@ def test_field_availability_reports_non_null_data_for_visible_fields(monkeypatch
             ),
         ]
     )
-    monkeypatch.setattr(analytics, "_raw_field_sources", lambda db, role: {})
+    monkeypatch.setattr(
+        analytics,
+        "_raw_field_sources_from_version",
+        lambda version, role: {},
+    )
     analytics._FIELD_AVAILABILITY_CACHE.clear()
 
     result = analytics._field_availability(
